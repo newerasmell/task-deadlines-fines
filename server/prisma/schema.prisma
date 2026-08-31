@@ -47,6 +47,7 @@ model User {
   templatesAssigned RecurringTaskTemplate[] @relation("TemplateAssignee")
   templatesOwned    RecurringTaskTemplate[] @relation("TemplateOwner")
   templatesCreated  RecurringTaskTemplate[] @relation("TemplateCreatedBy")
+  auditLogs     AuditLog[]
 }
 
 model Task {
@@ -70,6 +71,7 @@ model Task {
   reminderSentAt   DateTime?
   lastEscalationAt DateTime?
   completedAt      DateTime?
+  deletedAt        DateTime?
 
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -176,6 +178,23 @@ model NotificationChannelConfig {
   enabled   Boolean  @default(false)
   config    String   @default("{}")
   updatedAt DateTime @updatedAt
+}
+
+// Records every admin-driven mutation (task create/edit/delete, fine
+// issue/waive) so nothing can be silently deleted or changed without a
+// trace — see AdminAction below for the allowed `action` values.
+//   AdminAction: TASK_CREATED | TASK_UPDATED | TASK_DELETED | FINE_CREATED | FINE_WAIVED
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  summary    String
+  // JSON snapshot of the entity (full state for deletes, changed fields for updates).
+  details    String?
+  createdAt  DateTime @default(now())
 }
 
 model NotificationLog {

@@ -357,6 +357,35 @@ button.secondary:hover {
   font-size: 0.95rem;
 }
 
+.details-block {
+  background: #f9fafb;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.tabs button {
+  background: #e5e7eb;
+  color: var(--text);
+  padding: 7px 14px;
+  font-size: 0.85rem;
+}
+
+.tabs button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
 .attachment-grid {
   display: flex;
   flex-wrap: wrap;

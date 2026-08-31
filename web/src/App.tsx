@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AuditLog } from "./pages/AuditLog";
 import { Dashboard } from "./pages/Dashboard";
 import { Employees } from "./pages/Employees";
 import { Fines } from "./pages/Fines";
@@ -58,6 +59,14 @@ function AppRoutes() {
           element={
             <RequireAdmin>
               <Settings />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/audit-log"
+          element={
+            <RequireAdmin>
+              <AuditLog />
             </RequireAdmin>
           }
         />

@@ -1,6 +1,7 @@
 import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import { env } from "./lib/env";
+import { auditLogRouter } from "./routes/auditLog";
 import { authRouter } from "./routes/auth";
 import { fineRulesRouter } from "./routes/fineRules";
 import { finesRouter } from "./routes/fines";
@@ -24,6 +25,7 @@ export function createApp() {
   app.use("/api/fines", finesRouter);
   app.use("/api/fine-rules", fineRulesRouter);
   app.use("/api/notifications", notificationsRouter);
+  app.use("/api/audit-log", auditLogRouter);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

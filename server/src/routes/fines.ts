@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { logAction } from "../lib/auditLog";
 import { prisma } from "../lib/prisma";
 import { requireAdmin, requireAuth } from "../middleware/auth";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
@@ -60,6 +61,7 @@ finesRouter.post("/", requireAdmin, async (req, res) => {
     subject: "Ръчна глоба наложена",
     body: `${user.name}: ${fine.amount} ${fine.currency} — ${fine.reason} (от ${req.user!.email})`,
   });
+  await logAction(req.user!.sub, "FINE_CREATED", "Fine", fine.id, `Наложена глоба на ${user.name}: ${fine.amount} ${fine.currency}`, fine);
 
   res.status(201).json(fine);
 });
@@ -92,6 +94,13 @@ finesRouter.post("/:id/waive", requireAdmin, async (req, res) => {
       subject: "Глоба анулирана",
       body: `${fine.user.name}: ${fine.amount} ${fine.currency} анулирана от ${req.user!.email}. Причина: ${parsed.data.reason}`,
     });
+    await logAction(
+      req.user!.sub,
+      "FINE_WAIVED",
+      "Fine",
+      fine.id,
+      `Анулирана глоба на ${fine.user.name}: ${fine.amount} ${fine.currency} — ${parsed.data.reason}`
+    );
 
     res.json(fine);
   } catch {

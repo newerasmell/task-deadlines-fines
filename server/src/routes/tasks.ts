@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response, Router } from "express";
 import fs from "fs";
 import { z } from "zod";
+import { logAction } from "../lib/auditLog";
 import { verifyToken } from "../lib/auth";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
@@ -66,11 +67,14 @@ tasksRouter.get("/", async (req, res) => {
   const assigneeFilter = typeof req.query.assigneeId === "string" ? req.query.assigneeId : undefined;
 
   const tasks = await prisma.task.findMany({
-    where: isAdmin
-      ? assigneeFilter
-        ? { assigneeId: assigneeFilter }
-        : {}
-      : { OR: [{ assigneeId: req.user!.sub }, { ownerId: req.user!.sub }] },
+    where: {
+      deletedAt: null,
+      ...(isAdmin
+        ? assigneeFilter
+          ? { assigneeId: assigneeFilter }
+          : {}
+        : { OR: [{ assigneeId: req.user!.sub }, { ownerId: req.user!.sub }] }),
+    },
     include: taskInclude,
     orderBy: { deadline: "asc" },
   });
@@ -78,8 +82,8 @@ tasksRouter.get("/", async (req, res) => {
 });
 
 tasksRouter.get("/:id", async (req, res) => {
-  const task = await prisma.task.findUnique({
-    where: { id: req.params.id },
+  const task = await prisma.task.findFirst({
+    where: { id: req.params.id, deletedAt: null },
     include: {
       ...taskInclude,
       notificationLogs: { orderBy: { createdAt: "desc" }, take: 20 },
@@ -139,6 +143,7 @@ tasksRouter.post("/", requireAdmin, async (req, res) => {
     subject: "Нова задача създадена",
     body: `"${task.title}" → ${assignee.name}, срок ${task.deadline.toLocaleString("bg-BG")}.`,
   });
+  await logAction(req.user!.sub, "TASK_CREATED", "Task", task.id, `Създадена задача "${task.title}" → ${assignee.name}`);
 
   res.status(201).json(task);
 });
@@ -154,7 +159,7 @@ const updateSchema = z.object({
 });
 
 tasksRouter.patch("/:id", async (req, res) => {
-  const existing = await prisma.task.findUnique({ where: { id: req.params.id } });
+  const existing = await prisma.task.findFirst({ where: { id: req.params.id, deletedAt: null } });
   if (!existing) return res.status(404).json({ error: "Not found" });
 
   const isAdmin = req.user!.role === "ADMIN";
@@ -177,16 +182,38 @@ tasksRouter.patch("/:id", async (req, res) => {
   }
 
   const task = await prisma.task.update({ where: { id: req.params.id }, data });
+
+  if (isAdmin) {
+    const changed = Object.fromEntries(
+      Object.entries(parsed.data).filter(([key, value]) => value !== undefined && (existing as Record<string, unknown>)[key] !== value)
+    );
+    if (Object.keys(changed).length > 0) {
+      await logAction(
+        req.user!.sub,
+        "TASK_UPDATED",
+        "Task",
+        task.id,
+        `Редактирана задача "${task.title}" (${Object.keys(changed).join(", ")})`,
+        { before: Object.fromEntries(Object.keys(changed).map((k) => [k, (existing as Record<string, unknown>)[k]])), after: changed }
+      );
+    }
+  }
+
   res.json(task);
 });
 
 tasksRouter.delete("/:id", requireAdmin, async (req, res) => {
-  try {
-    await prisma.task.update({ where: { id: req.params.id }, data: { status: "CANCELLED" } });
-    res.status(204).send();
-  } catch {
-    res.status(404).json({ error: "Not found" });
-  }
+  const existing = await prisma.task.findFirst({ where: { id: req.params.id, deletedAt: null } });
+  if (!existing) return res.status(404).json({ error: "Not found" });
+
+  await prisma.task.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
+  await logAction(req.user!.sub, "TASK_DELETED", "Task", existing.id, `Изтрита задача "${existing.title}"`, existing);
+  await broadcastToAdmins({
+    subject: "Задача изтрита",
+    body: `"${existing.title}" изтрита от ${req.user!.email}.`,
+  });
+
+  res.status(204).send();
 });
 
 // --- Submit for review ---

@@ -18,6 +18,7 @@ export function Layout() {
           <NavLink to="/fines">Глоби</NavLink>
           {isAdmin && <NavLink to="/employees">Служители</NavLink>}
           {isAdmin && <NavLink to="/settings">Настройки</NavLink>}
+          {isAdmin && <NavLink to="/audit-log">Дневник</NavLink>}
         </nav>
         <div className="sidebar-footer">
           <div className="user-chip">

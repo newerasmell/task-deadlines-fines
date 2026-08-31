@@ -112,6 +112,27 @@ export interface ChannelStatus {
   configured: boolean;
 }
 
+export type AdminAction = "TASK_CREATED" | "TASK_UPDATED" | "TASK_DELETED" | "FINE_CREATED" | "FINE_WAIVED";
+
+export interface AuditLogEntry {
+  id: string;
+  actor: { id: string; name: string; email: string };
+  action: AdminAction;
+  entityType: string;
+  entityId: string;
+  summary: string;
+  details: string | null;
+  createdAt: string;
+}
+
+export const ADMIN_ACTION_LABELS: Record<AdminAction, string> = {
+  TASK_CREATED: "Създадена задача",
+  TASK_UPDATED: "Редактирана задача",
+  TASK_DELETED: "Изтрита задача",
+  FINE_CREATED: "Наложена глоба",
+  FINE_WAIVED: "Анулирана глоба",
+};
+
 export const CHANNEL_LABELS: Record<Channel, string> = {
   TELEGRAM: "Telegram",
   SLACK: "Slack",

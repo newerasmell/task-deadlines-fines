@@ -14,7 +14,8 @@ const statusBadgeClass: Record<Task["status"], string> = {
   CANCELLED: "badge",
 };
 
-type ExpandedMode = "submit" | "review" | null;
+type ExpandedMode = "submit" | "review" | "edit" | null;
+type Tab = "active" | "completed";
 
 export function Tasks() {
   const { user } = useAuth();
@@ -24,6 +25,7 @@ export function Tasks() {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<{ taskId: string; mode: ExpandedMode } | null>(null);
+  const [tab, setTab] = useState<Tab>("active");
 
   async function refresh() {
     const t = await api<Task[]>("/tasks");
@@ -42,30 +44,54 @@ export function Tasks() {
     refresh();
   }
 
+  async function deleteTask(t: Task) {
+    if (!window.confirm(`Наистина ли да изтрия "${t.title}"? Действието се записва в дневника.`)) return;
+    await api(`/tasks/${t.id}`, { method: "DELETE" });
+    refresh();
+  }
+
   function toggleExpanded(taskId: string, mode: ExpandedMode) {
     setExpanded((cur) => (cur?.taskId === taskId && cur.mode === mode ? null : { taskId, mode }));
   }
 
   if (loading) return <p>Зареждане…</p>;
 
+  const visibleTasks = tasks.filter((t) => (tab === "completed" ? t.status === "DONE" : t.status !== "DONE"));
+
   return (
     <div>
       <div className="page-header">
         <h1>Задачи</h1>
         {isAdmin && (
-          <button onClick={() => setShowForm((s) => !s)}>{showForm ? "Затвори" : "+ Нова задача"}</button>
+          <button
+            onClick={() => {
+              setShowForm((s) => !s);
+              setExpanded(null);
+            }}
+          >
+            {showForm ? "Затвори" : "+ Нова задача"}
+          </button>
         )}
       </div>
 
       {isAdmin && showForm && (
-        <NewTaskForm
+        <TaskForm
           employees={employees}
-          onCreated={() => {
+          onSaved={() => {
             setShowForm(false);
             refresh();
           }}
         />
       )}
+
+      <div className="tabs">
+        <button className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>
+          Активни
+        </button>
+        <button className={tab === "completed" ? "active" : ""} onClick={() => setTab("completed")}>
+          Завършени
+        </button>
+      </div>
 
       <table className="table">
         <thead>
@@ -81,7 +107,7 @@ export function Tasks() {
           </tr>
         </thead>
         <tbody>
-          {tasks.map((t) => {
+          {visibleTasks.map((t) => {
             const activeFines = (t.fines ?? []).filter((f) => f.status === "ACTIVE");
             const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
             const isAssignee = t.assigneeId === user?.id;
@@ -128,6 +154,16 @@ export function Tasks() {
                         {isExpanded && expanded?.mode === "review" ? "Затвори" : "Прегледай"}
                       </button>
                     )}
+                    {isAdmin && (
+                      <button className="small-btn" onClick={() => toggleExpanded(t.id, "edit")}>
+                        {isExpanded && expanded?.mode === "edit" ? "Затвори" : "Редактирай"}
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button className="small-btn" onClick={() => deleteTask(t)}>
+                        Изтрий
+                      </button>
+                    )}
                   </td>
                 </tr>
                 {isExpanded && expanded?.mode === "submit" && (
@@ -156,13 +192,28 @@ export function Tasks() {
                     </td>
                   </tr>
                 )}
+                {isExpanded && expanded?.mode === "edit" && (
+                  <tr>
+                    <td colSpan={8}>
+                      <TaskForm
+                        task={t}
+                        employees={employees}
+                        onSaved={() => {
+                          setExpanded(null);
+                          refresh();
+                        }}
+                        onCancel={() => setExpanded(null)}
+                      />
+                    </td>
+                  </tr>
+                )}
               </Fragment>
             );
           })}
-          {tasks.length === 0 && (
+          {visibleTasks.length === 0 && (
             <tr>
               <td colSpan={8} className="muted">
-                Няма задачи.
+                {tab === "completed" ? "Няма завършени задачи." : "Няма активни задачи."}
               </td>
             </tr>
           )}
@@ -304,17 +355,34 @@ function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void })
   );
 }
 
-function NewTaskForm({ employees, onCreated }: { employees: User[]; onCreated: () => void }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [assigneeId, setAssigneeId] = useState(employees[0]?.id ?? "");
-  const [ownerId, setOwnerId] = useState("");
-  const [deadline, setDeadline] = useState("");
-  const [priority, setPriority] = useState<Priority>("MEDIUM");
+function toLocalInputValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function TaskForm({
+  task,
+  employees,
+  onSaved,
+  onCancel,
+}: {
+  task?: Task;
+  employees: User[];
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
+  const isEdit = Boolean(task);
+  const [title, setTitle] = useState(task?.title ?? "");
+  const [description, setDescription] = useState(task?.description ?? "");
+  const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? employees[0]?.id ?? "");
+  const [ownerId, setOwnerId] = useState(task?.ownerId ?? "");
+  const [deadline, setDeadline] = useState(task ? toLocalInputValue(task.deadline) : "");
+  const [priority, setPriority] = useState<Priority>(task?.priority ?? "MEDIUM");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const employeeOptions = employees.filter((e) => e.active);
+  const employeeOptions = employees.filter((e) => e.active || e.id === assigneeId || e.id === ownerId);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -325,18 +393,20 @@ function NewTaskForm({ employees, onCreated }: { employees: User[]; onCreated: (
     }
     setSubmitting(true);
     try {
-      await api("/tasks", {
-        method: "POST",
-        body: JSON.stringify({
-          title,
-          description: description || undefined,
-          assigneeId,
-          ownerId: ownerId || undefined,
-          deadline: new Date(deadline).toISOString(),
-          priority,
-        }),
-      });
-      onCreated();
+      const body = {
+        title,
+        description: description || undefined,
+        assigneeId,
+        ownerId: ownerId || null,
+        deadline: new Date(deadline).toISOString(),
+        priority,
+      };
+      if (isEdit) {
+        await api(`/tasks/${task!.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await api("/tasks", { method: "POST", body: JSON.stringify({ ...body, ownerId: ownerId || undefined }) });
+      }
+      onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Грешка");
     } finally {
@@ -395,9 +465,16 @@ function NewTaskForm({ employees, onCreated }: { employees: User[]; onCreated: (
         </label>
       </div>
       {error && <div className="error-text">{error}</div>}
-      <button type="submit" disabled={submitting}>
-        {submitting ? "Създаване…" : "Създай задача"}
-      </button>
+      <div className="form-row">
+        <button type="submit" disabled={submitting}>
+          {submitting ? "Записване…" : isEdit ? "Запази промените" : "Създай задача"}
+        </button>
+        {onCancel && (
+          <button type="button" className="secondary" onClick={onCancel}>
+            Отказ
+          </button>
+        )}
+      </div>
     </form>
   );
 }
