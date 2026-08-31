@@ -143,7 +143,15 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
     try {
       const channels = { phone, telegramChatId, slackMemberId, whatsappPhone, viberUserId };
       if (isEdit && user) {
-        await api(`/users/${user.id}`, { method: "PATCH", body: JSON.stringify({ name, ...channels }) });
+        await api(`/users/${user.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            name,
+            email: email !== user.email ? email : undefined,
+            password: password || undefined,
+            ...channels,
+          }),
+        });
       } else {
         await api("/users", {
           method: "POST",
@@ -165,18 +173,21 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
           Име
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
-        {!isEdit && (
-          <>
-            <label>
-              Имейл
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </label>
-            <label>
-              Парола
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-            </label>
-          </>
-        )}
+        <label>
+          Имейл
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </label>
+        <label>
+          {isEdit ? "Нова парола (остави празно, за да не се сменя)" : "Парола"}
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required={!isEdit}
+            minLength={6}
+            placeholder={isEdit ? "••••••••" : undefined}
+          />
+        </label>
       </div>
 
       <h3>Канали за известия</h3>

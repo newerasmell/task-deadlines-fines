@@ -58,6 +58,7 @@ usersRouter.post("/", requireAdmin, async (req, res) => {
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
+  email: z.string().email().optional(),
   role: z.enum(["ADMIN", "EMPLOYEE"]).optional(),
   active: z.boolean().optional(),
   password: z.string().min(6).optional(),
@@ -78,9 +79,16 @@ usersRouter.patch("/:id", async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  if (parsed.data.email) {
+    const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    if (existing && existing.id !== req.params.id) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+  }
+
   const data: Record<string, unknown> = { ...parsed.data };
   if (req.user!.role !== "ADMIN") {
-    // Employees may only touch their own notification identities, nothing else.
+    // Employees may only touch their own notification identities, plus their own email/password.
     for (const key of ["name", "role", "active"]) delete data[key];
   }
   if (parsed.data.password) {
