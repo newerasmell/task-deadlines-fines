@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite has no native enum support in Prisma, so the enum-shaped fields
+// below are plain Strings; valid values are validated in the app layer
+// (see src/routes/*.ts zod schemas):
+//   Role:                ADMIN | EMPLOYEE
+//   TaskStatus:          PENDING | IN_PROGRESS | DONE | OVERDUE | CANCELLED
+//   Priority:            LOW | MEDIUM | HIGH | CRITICAL
+//   FineStatus:          ACTIVE | WAIVED | PAID
+//   NotificationChannel: TELEGRAM | SLACK | EMAIL | WHATSAPP | VIBER | GOOGLE_CALENDAR
+//   NotificationStatus:  SENT | FAILED | SKIPPED
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  name          String
+  role          String   @default("EMPLOYEE")
+  active        Boolean  @default(true)
+
+  phone         String?
+  telegramChatId String?
+  slackMemberId  String?
+  whatsappPhone  String?
+  viberUserId    String?
+  googleCalendarId String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tasksAssigned Task[]   @relation("AssignedTasks")
+  tasksCreated  Task[]   @relation("CreatedTasks")
+  fines         Fine[]   @relation("UserFines")
+  finesWaived   Fine[]   @relation("WaivedByUser")
+  notificationLogs NotificationLog[]
+}
+
+model Task {
+  id            String     @id @default(cuid())
+  title         String
+  description   String?
+  assigneeId    String
+  assignee      User       @relation("AssignedTasks", fields: [assigneeId], references: [id])
+  createdById   String
+  createdBy     User       @relation("CreatedTasks", fields: [createdById], references: [id])
+
+  deadline      DateTime
+  priority      String     @default("MEDIUM")
+  status        String     @default("PENDING")
+
+  reminderSentAt   DateTime?
+  lastEscalationAt DateTime?
+  completedAt      DateTime?
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  fines         Fine[]
+  notificationLogs NotificationLog[]
+}
+
+model FineRule {
+  id                String   @id @default(cuid())
+  name              String
+  priority          String?
+  baseAmount        Float
+  perDayAmount      Float
+  graceHours        Float    @default(0)
+  maxAmount         Float?
+  currency          String   @default("BGN")
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Fine {
+  id            String     @id @default(cuid())
+  taskId        String?
+  task          Task?      @relation(fields: [taskId], references: [id])
+  userId        String
+  user          User       @relation("UserFines", fields: [userId], references: [id])
+
+  amount        Float
+  currency      String     @default("BGN")
+  reason        String
+  daysLate      Int        @default(0)
+  status        String     @default("ACTIVE")
+
+  waivedById    String?
+  waivedBy      User?      @relation("WaivedByUser", fields: [waivedById], references: [id])
+  waivedReason  String?
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model NotificationChannelConfig {
+  id        String   @id @default(cuid())
+  channel   String   @unique
+  enabled   Boolean  @default(false)
+  config    String   @default("{}")
+  updatedAt DateTime @updatedAt
+}
+
+model NotificationLog {
+  id        String   @id @default(cuid())
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  channel   String
+  status    String
+  message   String
+  error     String?
+  createdAt DateTime @default(now())
+}
