@@ -15,6 +15,7 @@ export const env = {
   schedulerCron: process.env.SCHEDULER_CRON ?? "*/5 * * * *",
   reminderHoursBefore: Number(process.env.REMINDER_HOURS_BEFORE ?? 24),
   reviewDueHours: Number(process.env.REVIEW_DUE_HOURS ?? 24),
+  recurringLookaheadDays: Number(process.env.RECURRING_LOOKAHEAD_DAYS ?? 3),
   uploadsDir: process.env.UPLOADS_DIR ?? "uploads",
 
   adminTelegramChatId: process.env.ADMIN_TELEGRAM_CHAT_ID ?? "",
