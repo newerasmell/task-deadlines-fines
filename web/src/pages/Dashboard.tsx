@@ -48,7 +48,7 @@ export function Dashboard() {
         </div>
         <div className="stat-card">
           <div className="stat-value">
-            {totalFines.toFixed(2)} {activeFines[0]?.currency ?? "BGN"}
+            {totalFines.toFixed(2)} {activeFines[0]?.currency ?? "EUR"}
           </div>
           <div className="stat-label">Активни глоби ({activeFines.length})</div>
         </div>

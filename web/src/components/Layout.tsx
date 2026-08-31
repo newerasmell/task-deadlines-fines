@@ -14,6 +14,7 @@ export function Layout() {
             Табло
           </NavLink>
           <NavLink to="/tasks">Задачи</NavLink>
+          {isAdmin && <NavLink to="/recurring">Повтарящи се</NavLink>}
           <NavLink to="/fines">Глоби</NavLink>
           {isAdmin && <NavLink to="/employees">Служители</NavLink>}
           {isAdmin && <NavLink to="/settings">Настройки</NavLink>}

@@ -14,6 +14,11 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   schedulerCron: process.env.SCHEDULER_CRON ?? "*/5 * * * *",
   reminderHoursBefore: Number(process.env.REMINDER_HOURS_BEFORE ?? 24),
+  reviewDueHours: Number(process.env.REVIEW_DUE_HOURS ?? 24),
+  uploadsDir: process.env.UPLOADS_DIR ?? "uploads",
+
+  adminTelegramChatId: process.env.ADMIN_TELEGRAM_CHAT_ID ?? "",
+  adminSlackWebhookUrl: process.env.ADMIN_SLACK_WEBHOOK_URL ?? "",
 
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
 

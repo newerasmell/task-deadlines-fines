@@ -6,6 +6,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Employees } from "./pages/Employees";
 import { Fines } from "./pages/Fines";
 import { Login } from "./pages/Login";
+import { RecurringTasks } from "./pages/RecurringTasks";
 import { Settings } from "./pages/Settings";
 import { Tasks } from "./pages/Tasks";
 
@@ -35,6 +36,14 @@ function AppRoutes() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/tasks" element={<Tasks />} />
+        <Route
+          path="/recurring"
+          element={
+            <RequireAdmin>
+              <RecurringTasks />
+            </RequireAdmin>
+          }
+        />
         <Route path="/fines" element={<Fines />} />
         <Route
           path="/employees"

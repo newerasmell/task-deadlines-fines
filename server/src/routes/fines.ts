@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAdmin, requireAuth } from "../middleware/auth";
+import { broadcastToAdmins } from "../notifications/adminBroadcast";
 import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
 
 export const finesRouter = Router();
@@ -37,7 +38,7 @@ const manualFineSchema = z.object({
   userId: z.string().min(1),
   taskId: z.string().optional(),
   amount: z.number().positive(),
-  currency: z.string().default("BGN"),
+  currency: z.string().default("EUR"),
   reason: z.string().min(1),
 });
 
@@ -54,6 +55,10 @@ finesRouter.post("/", requireAdmin, async (req, res) => {
   await dispatchToAllChannels(toNotificationTarget(user), {
     subject: `Наложена глоба: ${fine.amount} ${fine.currency}`,
     body: `Причина: ${fine.reason}`,
+  });
+  await broadcastToAdmins({
+    subject: "Ръчна глоба наложена",
+    body: `${user.name}: ${fine.amount} ${fine.currency} — ${fine.reason} (от ${req.user!.email})`,
   });
 
   res.status(201).json(fine);
@@ -82,6 +87,10 @@ finesRouter.post("/:id/waive", requireAdmin, async (req, res) => {
     await dispatchToAllChannels(toNotificationTarget(fine.user), {
       subject: `Глобата е анулирана`,
       body: `Глоба от ${fine.amount} ${fine.currency} беше анулирана. Причина: ${parsed.data.reason}`,
+    });
+    await broadcastToAdmins({
+      subject: "Глоба анулирана",
+      body: `${fine.user.name}: ${fine.amount} ${fine.currency} анулирана от ${req.user!.email}. Причина: ${parsed.data.reason}`,
     });
 
     res.json(fine);

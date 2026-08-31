@@ -1,17 +1,20 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { api } from "../api/client";
+import { api, apiUpload, attachmentUrl } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
-import type { Priority, Task, User } from "../api/types";
+import type { Priority, Task, TaskSubmission, User } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 
 const statusBadgeClass: Record<Task["status"], string> = {
   PENDING: "badge",
   IN_PROGRESS: "badge badge-info",
+  PENDING_REVIEW: "badge badge-info",
   DONE: "badge badge-success",
   OVERDUE: "badge badge-danger",
   CANCELLED: "badge",
 };
+
+type ExpandedMode = "submit" | "review" | null;
 
 export function Tasks() {
   const { user } = useAuth();
@@ -20,6 +23,7 @@ export function Tasks() {
   const [employees, setEmployees] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<{ taskId: string; mode: ExpandedMode } | null>(null);
 
   async function refresh() {
     const t = await api<Task[]>("/tasks");
@@ -33,9 +37,13 @@ export function Tasks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function markDone(id: string) {
-    await api(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ status: "DONE" }) });
+  async function startWork(id: string) {
+    await api(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ status: "IN_PROGRESS" }) });
     refresh();
+  }
+
+  function toggleExpanded(taskId: string, mode: ExpandedMode) {
+    setExpanded((cur) => (cur?.taskId === taskId && cur.mode === mode ? null : { taskId, mode }));
   }
 
   if (loading) return <p>Зареждане…</p>;
@@ -64,6 +72,7 @@ export function Tasks() {
           <tr>
             <th>Задача</th>
             <th>Служител</th>
+            <th>Owner</th>
             <th>Срок</th>
             <th>Приоритет</th>
             <th>Статус</th>
@@ -75,32 +84,84 @@ export function Tasks() {
           {tasks.map((t) => {
             const activeFines = (t.fines ?? []).filter((f) => f.status === "ACTIVE");
             const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
+            const isAssignee = t.assigneeId === user?.id;
+            const isOwner = t.ownerId === user?.id;
+            const canSubmit = isAssignee && (t.status === "PENDING" || t.status === "IN_PROGRESS");
+            const canReview = (isOwner || isAdmin) && t.status === "PENDING_REVIEW";
+            const isExpanded = expanded?.taskId === t.id;
+
             return (
-              <tr key={t.id}>
-                <td>
-                  <div>{t.title}</div>
-                  {t.description && <div className="muted small">{t.description}</div>}
-                </td>
-                <td>{t.assignee.name}</td>
-                <td>{new Date(t.deadline).toLocaleString("bg-BG")}</td>
-                <td>{PRIORITY_LABELS[t.priority]}</td>
-                <td>
-                  <span className={statusBadgeClass[t.status]}>{STATUS_LABELS[t.status]}</span>
-                </td>
-                <td>{fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}</td>
-                <td>
-                  {t.status !== "DONE" && t.status !== "CANCELLED" && (
-                    <button className="small-btn" onClick={() => markDone(t.id)}>
-                      Маркирай завършена
-                    </button>
-                  )}
-                </td>
-              </tr>
+              <Fragment key={t.id}>
+                <tr>
+                  <td>
+                    <div>
+                      {t.title}
+                      {t.templateId && (
+                        <span className="badge" title="Повтаряща се задача">
+                          ↻
+                        </span>
+                      )}
+                    </div>
+                    {t.description && <div className="muted small">{t.description}</div>}
+                  </td>
+                  <td>{t.assignee.name}</td>
+                  <td>{t.owner?.name ?? "—"}</td>
+                  <td>{new Date(t.deadline).toLocaleString("bg-BG")}</td>
+                  <td>{PRIORITY_LABELS[t.priority]}</td>
+                  <td>
+                    <span className={statusBadgeClass[t.status]}>{STATUS_LABELS[t.status]}</span>
+                  </td>
+                  <td>{fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}</td>
+                  <td className="row-actions">
+                    {isAssignee && t.status === "PENDING" && (
+                      <button className="small-btn" onClick={() => startWork(t.id)}>
+                        Започни
+                      </button>
+                    )}
+                    {canSubmit && (
+                      <button className="small-btn" onClick={() => toggleExpanded(t.id, "submit")}>
+                        {isExpanded && expanded?.mode === "submit" ? "Затвори" : "Подай за преглед"}
+                      </button>
+                    )}
+                    {canReview && (
+                      <button className="small-btn" onClick={() => toggleExpanded(t.id, "review")}>
+                        {isExpanded && expanded?.mode === "review" ? "Затвори" : "Прегледай"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {isExpanded && expanded?.mode === "submit" && (
+                  <tr>
+                    <td colSpan={8}>
+                      <SubmitForm
+                        taskId={t.id}
+                        onDone={() => {
+                          setExpanded(null);
+                          refresh();
+                        }}
+                      />
+                    </td>
+                  </tr>
+                )}
+                {isExpanded && expanded?.mode === "review" && (
+                  <tr>
+                    <td colSpan={8}>
+                      <ReviewPanel
+                        taskId={t.id}
+                        onDone={() => {
+                          setExpanded(null);
+                          refresh();
+                        }}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             );
           })}
           {tasks.length === 0 && (
             <tr>
-              <td colSpan={7} className="muted">
+              <td colSpan={8} className="muted">
                 Няма задачи.
               </td>
             </tr>
@@ -111,10 +172,143 @@ export function Tasks() {
   );
 }
 
+function SubmitForm({ taskId, onDone }: { taskId: string; onDone: () => void }) {
+  const [note, setNote] = useState("");
+  const [files, setFiles] = useState<FileList | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const formData = new FormData();
+      if (note) formData.append("note", note);
+      if (files) Array.from(files).forEach((f) => formData.append("attachments", f));
+      await apiUpload(`/tasks/${taskId}/submit`, formData);
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Грешка");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={handleSubmit}>
+      <label>
+        Описание / обяснение на свършеното
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Какво направи, къде е резултатът…" />
+      </label>
+      <label>
+        Прикачи скрийншоти / снимки (по избор, до 5 файла)
+        <input type="file" accept="image/*,application/pdf" multiple onChange={(e) => setFiles(e.target.files)} />
+      </label>
+      {error && <div className="error-text">{error}</div>}
+      <button type="submit" disabled={submitting}>
+        {submitting ? "Изпращане…" : "Подай за преглед"}
+      </button>
+    </form>
+  );
+}
+
+function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void }) {
+  const [task, setTask] = useState<Task | null>(null);
+  const [reviewNote, setReviewNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    api<Task>(`/tasks/${taskId}`).then(setTask);
+  }, [taskId]);
+
+  if (!task) return <p className="muted">Зареждане…</p>;
+
+  const submission: TaskSubmission | undefined = task.submissions?.find((s) => s.reviewStatus === "PENDING");
+  if (!submission) return <p className="muted">Няма чакащо подаване.</p>;
+
+  async function approve() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await api(`/tasks/${taskId}/submissions/${submission!.id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ reviewNote: reviewNote || undefined }),
+      });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Грешка");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function reject() {
+    if (!reviewNote.trim()) {
+      setError("Обясни защо не одобряваш работата.");
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await api(`/tasks/${taskId}/submissions/${submission!.id}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reviewNote }),
+      });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Грешка");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <p>
+        <strong>{submission.submittedBy.name}</strong> подаде на {new Date(submission.createdAt).toLocaleString("bg-BG")}
+      </p>
+      {submission.note && <p>{submission.note}</p>}
+      {submission.attachments.length > 0 && (
+        <div className="attachment-grid">
+          {submission.attachments.map((a) => {
+            const url = attachmentUrl(taskId, submission.id, a.id);
+            const isImage = a.mimeType.startsWith("image/");
+            return isImage ? (
+              <a key={a.id} href={url} target="_blank" rel="noreferrer">
+                <img src={url} alt={a.originalName} className="attachment-thumb" />
+              </a>
+            ) : (
+              <a key={a.id} href={url} target="_blank" rel="noreferrer" className="attachment-file">
+                📄 {a.originalName}
+              </a>
+            );
+          })}
+        </div>
+      )}
+      <label>
+        Бележка при преглед (задължителна при отхвърляне)
+        <textarea value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2} />
+      </label>
+      {error && <div className="error-text">{error}</div>}
+      <div className="form-row">
+        <button type="button" onClick={approve} disabled={submitting}>
+          Одобри
+        </button>
+        <button type="button" className="secondary" onClick={reject} disabled={submitting}>
+          Отхвърли
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NewTaskForm({ employees, onCreated }: { employees: User[]; onCreated: () => void }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeId, setAssigneeId] = useState(employees[0]?.id ?? "");
+  const [ownerId, setOwnerId] = useState("");
   const [deadline, setDeadline] = useState("");
   const [priority, setPriority] = useState<Priority>("MEDIUM");
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +331,7 @@ function NewTaskForm({ employees, onCreated }: { employees: User[]; onCreated: (
           title,
           description: description || undefined,
           assigneeId,
+          ownerId: ownerId || undefined,
           deadline: new Date(deadline).toISOString(),
           priority,
         }),
@@ -166,6 +361,17 @@ function NewTaskForm({ employees, onCreated }: { employees: User[]; onCreated: (
             <option value="" disabled>
               Избери…
             </option>
+            {employeeOptions.map((emp) => (
+              <option key={emp.id} value={emp.id}>
+                {emp.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Owner (проверява изпълнението)
+          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+            <option value="">Без — admin преглежда</option>
             {employeeOptions.map((emp) => (
               <option key={emp.id} value={emp.id}>
                 {emp.name}

@@ -19,7 +19,7 @@ const ruleSchema = z.object({
   perDayAmount: z.number().nonnegative(),
   graceHours: z.number().nonnegative().default(0),
   maxAmount: z.number().positive().nullable().optional(),
-  currency: z.string().default("BGN"),
+  currency: z.string().default("EUR"),
   active: z.boolean().default(true),
 });
 

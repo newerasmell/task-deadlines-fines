@@ -180,7 +180,7 @@ function ManualFineForm({ employees, onCreated }: { employees: User[]; onCreated
           </select>
         </label>
         <label>
-          Сума (BGN)
+          Сума (EUR)
           <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
         </label>
       </div>

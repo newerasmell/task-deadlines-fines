@@ -5,6 +5,7 @@ import { authRouter } from "./routes/auth";
 import { fineRulesRouter } from "./routes/fineRules";
 import { finesRouter } from "./routes/fines";
 import { notificationsRouter } from "./routes/notifications";
+import { taskTemplatesRouter } from "./routes/taskTemplates";
 import { tasksRouter } from "./routes/tasks";
 import { usersRouter } from "./routes/users";
 
@@ -19,6 +20,7 @@ export function createApp() {
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
   app.use("/api/tasks", tasksRouter);
+  app.use("/api/task-templates", taskTemplatesRouter);
   app.use("/api/fines", finesRouter);
   app.use("/api/fine-rules", fineRulesRouter);
   app.use("/api/notifications", notificationsRouter);

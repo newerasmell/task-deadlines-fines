@@ -114,7 +114,7 @@ function RuleForm({ onSaved }: { onSaved: () => void }) {
   const [perDayAmount, setPerDayAmount] = useState("10");
   const [graceHours, setGraceHours] = useState("2");
   const [maxAmount, setMaxAmount] = useState("");
-  const [currency, setCurrency] = useState("BGN");
+  const [currency, setCurrency] = useState("EUR");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 

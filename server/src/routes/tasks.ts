@@ -1,10 +1,63 @@
-import { Router } from "express";
+import { NextFunction, Request, Response, Router } from "express";
+import fs from "fs";
 import { z } from "zod";
+import { verifyToken } from "../lib/auth";
+import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
+import { absoluteUploadPath, uploadAttachments } from "../lib/uploads";
 import { requireAdmin, requireAuth } from "../middleware/auth";
+import { broadcastToAdmins } from "../notifications/adminBroadcast";
 import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
 
 export const tasksRouter = Router();
+
+const taskInclude = {
+  assignee: { select: { id: true, name: true, email: true } },
+  createdBy: { select: { id: true, name: true, email: true } },
+  owner: { select: { id: true, name: true, email: true } },
+  fines: true,
+} as const;
+
+function visibleToUser(task: { assigneeId: string; ownerId: string | null }, userId: string, isAdmin: boolean) {
+  return isAdmin || task.assigneeId === userId || task.ownerId === userId;
+}
+
+// Accepts a Bearer header (normal API calls) OR a `?token=` query param, since
+// an <img src> tag can't set request headers — used only for the attachment
+// download route below, which is registered before the router-wide requireAuth.
+function requireAuthViaHeaderOrQuery(req: Request, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : (req.query.token as string | undefined);
+  if (!token) return res.status(401).json({ error: "Missing token" });
+  try {
+    req.user = verifyToken(token);
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
+tasksRouter.get(
+  "/:id/submissions/:submissionId/attachments/:attachmentId",
+  requireAuthViaHeaderOrQuery,
+  async (req, res) => {
+    const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+    if (!task) return res.status(404).json({ error: "Not found" });
+    if (!visibleToUser(task, req.user!.sub, req.user!.role === "ADMIN")) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+    const attachment = await prisma.attachment.findUnique({ where: { id: req.params.attachmentId } });
+    if (!attachment || attachment.submissionId !== req.params.submissionId) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const filePath = absoluteUploadPath(attachment.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File missing" });
+
+    res.setHeader("Content-Type", attachment.mimeType);
+    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(attachment.originalName)}"`);
+    fs.createReadStream(filePath).pipe(res);
+  }
+);
 
 tasksRouter.use(requireAuth);
 
@@ -13,12 +66,12 @@ tasksRouter.get("/", async (req, res) => {
   const assigneeFilter = typeof req.query.assigneeId === "string" ? req.query.assigneeId : undefined;
 
   const tasks = await prisma.task.findMany({
-    where: isAdmin ? (assigneeFilter ? { assigneeId: assigneeFilter } : {}) : { assigneeId: req.user!.sub },
-    include: {
-      assignee: { select: { id: true, name: true, email: true } },
-      createdBy: { select: { id: true, name: true, email: true } },
-      fines: true,
-    },
+    where: isAdmin
+      ? assigneeFilter
+        ? { assigneeId: assigneeFilter }
+        : {}
+      : { OR: [{ assigneeId: req.user!.sub }, { ownerId: req.user!.sub }] },
+    include: taskInclude,
     orderBy: { deadline: "asc" },
   });
   res.json(tasks);
@@ -28,14 +81,20 @@ tasksRouter.get("/:id", async (req, res) => {
   const task = await prisma.task.findUnique({
     where: { id: req.params.id },
     include: {
-      assignee: { select: { id: true, name: true, email: true } },
-      createdBy: { select: { id: true, name: true, email: true } },
-      fines: true,
+      ...taskInclude,
       notificationLogs: { orderBy: { createdAt: "desc" }, take: 20 },
+      submissions: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          submittedBy: { select: { id: true, name: true } },
+          reviewedBy: { select: { id: true, name: true } },
+          attachments: true,
+        },
+      },
     },
   });
   if (!task) return res.status(404).json({ error: "Not found" });
-  if (req.user!.role !== "ADMIN" && task.assigneeId !== req.user!.sub) {
+  if (!visibleToUser(task, req.user!.sub, req.user!.role === "ADMIN")) {
     return res.status(403).json({ error: "Not allowed" });
   }
   res.json(task);
@@ -45,6 +104,7 @@ const createSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   assigneeId: z.string().min(1),
+  ownerId: z.string().min(1).optional(),
   deadline: z.coerce.date(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
 });
@@ -55,6 +115,10 @@ tasksRouter.post("/", requireAdmin, async (req, res) => {
 
   const assignee = await prisma.user.findUnique({ where: { id: parsed.data.assigneeId } });
   if (!assignee) return res.status(400).json({ error: "Assignee not found" });
+  if (parsed.data.ownerId) {
+    const owner = await prisma.user.findUnique({ where: { id: parsed.data.ownerId } });
+    if (!owner) return res.status(400).json({ error: "Owner not found" });
+  }
 
   const task = await prisma.task.create({
     data: { ...parsed.data, createdById: req.user!.sub },
@@ -71,6 +135,10 @@ tasksRouter.post("/", requireAdmin, async (req, res) => {
     },
     { taskId: task.id }
   );
+  await broadcastToAdmins({
+    subject: "Нова задача създадена",
+    body: `"${task.title}" → ${assignee.name}, срок ${task.deadline.toLocaleString("bg-BG")}.`,
+  });
 
   res.status(201).json(task);
 });
@@ -79,6 +147,7 @@ const updateSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
   assigneeId: z.string().min(1).optional(),
+  ownerId: z.string().nullable().optional(),
   deadline: z.coerce.date().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   status: z.enum(["PENDING", "IN_PROGRESS", "DONE", "OVERDUE", "CANCELLED"]).optional(),
@@ -89,16 +158,19 @@ tasksRouter.patch("/:id", async (req, res) => {
   if (!existing) return res.status(404).json({ error: "Not found" });
 
   const isAdmin = req.user!.role === "ADMIN";
-  const isOwner = existing.assigneeId === req.user!.sub;
-  if (!isAdmin && !isOwner) return res.status(403).json({ error: "Not allowed" });
+  const isAssignee = existing.assigneeId === req.user!.sub;
+  if (!isAdmin && !isAssignee) return res.status(403).json({ error: "Not allowed" });
 
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const data: Record<string, unknown> = { ...parsed.data };
   if (!isAdmin) {
-    // Employees can only move status forward (e.g. to DONE), not reassign or change deadlines.
-    for (const key of ["title", "description", "assigneeId", "deadline", "priority"]) delete data[key];
+    // Employees can only start work; completion goes through /submit for owner review.
+    for (const key of ["title", "description", "assigneeId", "ownerId", "deadline", "priority"]) delete data[key];
+    if (parsed.data.status && parsed.data.status !== "IN_PROGRESS") {
+      return res.status(400).json({ error: "Use POST /tasks/:id/submit to complete a task" });
+    }
   }
   if (parsed.data.status === "DONE" && existing.status !== "DONE") {
     data.completedAt = new Date();
@@ -115,4 +187,130 @@ tasksRouter.delete("/:id", requireAdmin, async (req, res) => {
   } catch {
     res.status(404).json({ error: "Not found" });
   }
+});
+
+// --- Submit for review ---
+
+tasksRouter.post("/:id/submit", uploadAttachments.array("attachments", 5), async (req, res) => {
+  const task = await prisma.task.findUnique({ where: { id: req.params.id }, include: { owner: true, assignee: true } });
+  if (!task) return res.status(404).json({ error: "Not found" });
+  if (task.assigneeId !== req.user!.sub) {
+    return res.status(403).json({ error: "Only the assignee can submit this task" });
+  }
+  if (task.status === "DONE" || task.status === "CANCELLED") {
+    return res.status(400).json({ error: `Task is already ${task.status}` });
+  }
+
+  const note = typeof req.body.note === "string" ? req.body.note : undefined;
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+
+  const reviewDueAt = new Date(Date.now() + env.reviewDueHours * 60 * 60 * 1000);
+
+  const submission = await prisma.taskSubmission.create({
+    data: {
+      taskId: task.id,
+      submittedById: req.user!.sub,
+      note,
+      reviewDueAt: task.ownerId ? reviewDueAt : null,
+      attachments: {
+        create: files.map((f) => ({
+          filename: f.filename,
+          originalName: f.originalname,
+          mimeType: f.mimetype,
+          size: f.size,
+        })),
+      },
+    },
+    include: { attachments: true },
+  });
+
+  await prisma.task.update({ where: { id: task.id }, data: { status: "PENDING_REVIEW" } });
+
+  const noteText = note ? `\n\nБележка: ${note}` : "";
+  const attachmentsText = files.length > 0 ? `\nПриложени файлове: ${files.length}` : "";
+
+  if (task.owner) {
+    await dispatchToAllChannels(toNotificationTarget(task.owner), {
+      subject: `За преглед: ${task.title}`,
+      body: `${task.assignee.name} подаде задачата за твой преглед.${noteText}${attachmentsText}`,
+    });
+  }
+  await broadcastToAdmins({
+    subject: "Задача подадена за преглед",
+    body: `"${task.title}" от ${task.assignee.name}${task.owner ? ` → преглежда ${task.owner.name}` : " (без зададен owner — admin преглежда)"}.${noteText}`,
+  });
+
+  res.status(201).json(submission);
+});
+
+// --- Review: approve / reject ---
+
+function canReview(task: { ownerId: string | null }, userId: string, isAdmin: boolean) {
+  return isAdmin || task.ownerId === userId;
+}
+
+tasksRouter.post("/:id/submissions/:submissionId/approve", async (req, res) => {
+  const task = await prisma.task.findUnique({ where: { id: req.params.id }, include: { assignee: true } });
+  if (!task) return res.status(404).json({ error: "Task not found" });
+  if (!canReview(task, req.user!.sub, req.user!.role === "ADMIN")) {
+    return res.status(403).json({ error: "Only the task owner or an admin can review this submission" });
+  }
+  const submission = await prisma.taskSubmission.findUnique({ where: { id: req.params.submissionId } });
+  if (!submission || submission.taskId !== task.id) return res.status(404).json({ error: "Submission not found" });
+  if (submission.reviewStatus !== "PENDING") return res.status(400).json({ error: "Already reviewed" });
+
+  const reviewNote = typeof req.body?.reviewNote === "string" ? req.body.reviewNote : undefined;
+  const now = new Date();
+
+  await prisma.taskSubmission.update({
+    where: { id: submission.id },
+    data: { reviewStatus: "APPROVED", reviewedById: req.user!.sub, reviewedAt: now, reviewNote },
+  });
+  await prisma.task.update({ where: { id: task.id }, data: { status: "DONE", completedAt: now } });
+
+  await dispatchToAllChannels(toNotificationTarget(task.assignee), {
+    subject: `Одобрена задача: ${task.title}`,
+    body: `Твоята работа по "${task.title}" беше одобрена.${reviewNote ? `\n${reviewNote}` : ""}`,
+  });
+  await broadcastToAdmins({
+    subject: "Задача одобрена",
+    body: `"${task.title}" (${task.assignee.name}) е одобрена от ${req.user!.email}.`,
+  });
+
+  res.json({ ok: true });
+});
+
+const rejectSchema = z.object({ reviewNote: z.string().min(1) });
+
+tasksRouter.post("/:id/submissions/:submissionId/reject", async (req, res) => {
+  const task = await prisma.task.findUnique({ where: { id: req.params.id }, include: { assignee: true } });
+  if (!task) return res.status(404).json({ error: "Task not found" });
+  if (!canReview(task, req.user!.sub, req.user!.role === "ADMIN")) {
+    return res.status(403).json({ error: "Only the task owner or an admin can review this submission" });
+  }
+  const submission = await prisma.taskSubmission.findUnique({ where: { id: req.params.submissionId } });
+  if (!submission || submission.taskId !== task.id) return res.status(404).json({ error: "Submission not found" });
+  if (submission.reviewStatus !== "PENDING") return res.status(400).json({ error: "Already reviewed" });
+
+  const parsed = rejectSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const now = new Date();
+  await prisma.taskSubmission.update({
+    where: { id: submission.id },
+    data: { reviewStatus: "REJECTED", reviewedById: req.user!.sub, reviewedAt: now, reviewNote: parsed.data.reviewNote },
+  });
+  const newStatus = now > task.deadline ? "OVERDUE" : "IN_PROGRESS";
+  await prisma.task.update({ where: { id: task.id }, data: { status: newStatus } });
+
+  await dispatchToAllChannels(toNotificationTarget(task.assignee), {
+    subject: `Върната за доработка: ${task.title}`,
+    body: `Подадената работа по "${task.title}" не беше одобрена.\nПричина: ${parsed.data.reviewNote}`,
+  });
+  await broadcastToAdmins({
+    subject: "Задача отхвърлена при преглед",
+    body: `"${task.title}" (${task.assignee.name}) отхвърлена от ${req.user!.email}: ${parsed.data.reviewNote}`,
+  });
+
+  res.json({ ok: true });
 });
