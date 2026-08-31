@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
-import type { User } from "../api/types";
+import type { Role, User } from "../api/types";
 
 export function Employees() {
   const [users, setUsers] = useState<User[]>([]);
@@ -48,6 +48,11 @@ export function Employees() {
         <h1>Служители</h1>
         <button onClick={() => setShowForm((s) => !s)}>{showForm ? "Затвори" : "+ Нов служител"}</button>
       </div>
+      <p className="muted">
+        „Мениджър“ не е отделна роля тук — всеки служител става мениджър на дадена задача, щом бъде избран за
+        неин „Owner“ при създаване/редакция на задачата (в „Задачи“). Ролята по-долу определя само дали човекът
+        има администраторски достъп (вижда и променя всичко) или е обикновен служител.
+      </p>
 
       {showForm && (
         <EmployeeForm
@@ -127,6 +132,7 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
   const isEdit = Boolean(user);
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
+  const [role, setRole] = useState<Role>(user?.role ?? "EMPLOYEE");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [telegramChatId, setTelegramChatId] = useState(user?.telegramChatId ?? "");
@@ -149,13 +155,14 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
             name,
             email: email !== user.email ? email : undefined,
             password: password || undefined,
+            role,
             ...channels,
           }),
         });
       } else {
         await api("/users", {
           method: "POST",
-          body: JSON.stringify({ name, email, password, role: "EMPLOYEE", ...channels }),
+          body: JSON.stringify({ name, email, password, role, ...channels }),
         });
       }
       onSaved();
@@ -176,6 +183,13 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
         <label>
           Имейл
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </label>
+        <label>
+          Роля
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+            <option value="EMPLOYEE">Служител</option>
+            <option value="ADMIN">Администратор</option>
+          </select>
         </label>
         <label>
           {isEdit ? "Нова парола (остави празно, за да не се сменя)" : "Парола"}

@@ -15,7 +15,11 @@ finesRouter.get("/", async (req, res) => {
   const userFilter = typeof req.query.userId === "string" ? req.query.userId : undefined;
 
   const fines = await prisma.fine.findMany({
-    where: isAdmin ? (userFilter ? { userId: userFilter } : {}) : { userId: req.user!.sub },
+    where: isAdmin
+      ? userFilter
+        ? { userId: userFilter }
+        : {}
+      : { OR: [{ userId: req.user!.sub }, { task: { ownerId: req.user!.sub } }] },
     include: {
       user: { select: { id: true, name: true, email: true } },
       task: { select: { id: true, title: true, deadline: true } },

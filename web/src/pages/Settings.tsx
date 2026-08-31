@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
 import { CHANNEL_LABELS, PRIORITY_LABELS } from "../api/types";
@@ -8,6 +8,7 @@ export function Settings() {
   const [rules, setRules] = useState<FineRule[]>([]);
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function refresh() {
@@ -19,6 +20,17 @@ export function Settings() {
   useEffect(() => {
     refresh().finally(() => setLoading(false));
   }, []);
+
+  async function toggleActive(rule: FineRule) {
+    await api(`/fine-rules/${rule.id}`, { method: "PATCH", body: JSON.stringify({ active: !rule.active }) });
+    refresh();
+  }
+
+  async function deleteRule(rule: FineRule) {
+    if (!window.confirm(`Наистина ли да изтрия правилото "${rule.name}"?`)) return;
+    await api(`/fine-rules/${rule.id}`, { method: "DELETE" });
+    refresh();
+  }
 
   if (loading) return <p>Зареждане…</p>;
 
@@ -54,7 +66,14 @@ export function Settings() {
 
       <div className="page-header">
         <h2>Правила за глоби</h2>
-        <button onClick={() => setShowForm((s) => !s)}>{showForm ? "Затвори" : "+ Ново правило"}</button>
+        <button
+          onClick={() => {
+            setShowForm((s) => !s);
+            setEditingId(null);
+          }}
+        >
+          {showForm ? "Затвори" : "+ Ново правило"}
+        </button>
       </div>
       <p className="muted">
         Всяка задача се проверява спрямо правилото за нейния приоритет (или общото правило, ако няма специфично).
@@ -81,40 +100,82 @@ export function Settings() {
             <th>На ден</th>
             <th>Максимум</th>
             <th>Активно</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           {rules.map((r) => (
-            <tr key={r.id}>
-              <td>{r.name}</td>
-              <td>{r.priority ? PRIORITY_LABELS[r.priority] : "Всички (по подразбиране)"}</td>
-              <td>{r.graceHours}</td>
-              <td>
-                {r.baseAmount} {r.currency}
-              </td>
-              <td>
-                {r.perDayAmount} {r.currency}
-              </td>
-              <td>{r.maxAmount ? `${r.maxAmount} ${r.currency}` : "—"}</td>
-              <td>
-                <span className={r.active ? "badge badge-success" : "badge"}>{r.active ? "Да" : "Не"}</span>
+            <Fragment key={r.id}>
+              <tr>
+                <td>{r.name}</td>
+                <td>{r.priority ? PRIORITY_LABELS[r.priority] : "Всички (по подразбиране)"}</td>
+                <td>{r.graceHours}</td>
+                <td>
+                  {r.baseAmount} {r.currency}
+                </td>
+                <td>
+                  {r.perDayAmount} {r.currency}
+                </td>
+                <td>{r.maxAmount ? `${r.maxAmount} ${r.currency}` : "—"}</td>
+                <td>
+                  <span className={r.active ? "badge badge-success" : "badge"}>{r.active ? "Да" : "Не"}</span>
+                </td>
+                <td className="row-actions">
+                  <button
+                    className="small-btn"
+                    onClick={() => {
+                      setEditingId(editingId === r.id ? null : r.id);
+                      setShowForm(false);
+                    }}
+                  >
+                    {editingId === r.id ? "Затвори" : "Редактирай"}
+                  </button>
+                  <button className="small-btn" onClick={() => toggleActive(r)}>
+                    {r.active ? "Деактивирай" : "Активирай"}
+                  </button>
+                  <button className="small-btn" onClick={() => deleteRule(r)}>
+                    Изтрий
+                  </button>
+                </td>
+              </tr>
+              {editingId === r.id && (
+                <tr>
+                  <td colSpan={8}>
+                    <RuleForm
+                      rule={r}
+                      onSaved={() => {
+                        setEditingId(null);
+                        refresh();
+                      }}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+          {rules.length === 0 && (
+            <tr>
+              <td colSpan={8} className="muted">
+                Няма правила.
               </td>
             </tr>
-          ))}
+          )}
         </tbody>
       </table>
     </div>
   );
 }
 
-function RuleForm({ onSaved }: { onSaved: () => void }) {
-  const [name, setName] = useState("");
-  const [priority, setPriority] = useState<Priority | "">("");
-  const [baseAmount, setBaseAmount] = useState("20");
-  const [perDayAmount, setPerDayAmount] = useState("10");
-  const [graceHours, setGraceHours] = useState("2");
-  const [maxAmount, setMaxAmount] = useState("");
-  const [currency, setCurrency] = useState("EUR");
+function RuleForm({ rule, onSaved, onCancel }: { rule?: FineRule; onSaved: () => void; onCancel?: () => void }) {
+  const isEdit = Boolean(rule);
+  const [name, setName] = useState(rule?.name ?? "");
+  const [priority, setPriority] = useState<Priority | "">(rule?.priority ?? "");
+  const [baseAmount, setBaseAmount] = useState(String(rule?.baseAmount ?? 20));
+  const [perDayAmount, setPerDayAmount] = useState(String(rule?.perDayAmount ?? 10));
+  const [graceHours, setGraceHours] = useState(String(rule?.graceHours ?? 2));
+  const [maxAmount, setMaxAmount] = useState(rule?.maxAmount != null ? String(rule.maxAmount) : "");
+  const [currency, setCurrency] = useState(rule?.currency ?? "EUR");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -123,18 +184,20 @@ function RuleForm({ onSaved }: { onSaved: () => void }) {
     setError(null);
     setSubmitting(true);
     try {
-      await api("/fine-rules", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          priority: priority || null,
-          baseAmount: Number(baseAmount),
-          perDayAmount: Number(perDayAmount),
-          graceHours: Number(graceHours),
-          maxAmount: maxAmount ? Number(maxAmount) : null,
-          currency,
-        }),
-      });
+      const body = {
+        name,
+        priority: priority || null,
+        baseAmount: Number(baseAmount),
+        perDayAmount: Number(perDayAmount),
+        graceHours: Number(graceHours),
+        maxAmount: maxAmount ? Number(maxAmount) : null,
+        currency,
+      };
+      if (isEdit) {
+        await api(`/fine-rules/${rule!.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await api("/fine-rules", { method: "POST", body: JSON.stringify(body) });
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Грешка");
@@ -185,9 +248,16 @@ function RuleForm({ onSaved }: { onSaved: () => void }) {
         </label>
       </div>
       {error && <div className="error-text">{error}</div>}
-      <button type="submit" disabled={submitting}>
-        {submitting ? "Записване…" : "Създай правило"}
-      </button>
+      <div className="form-row">
+        <button type="submit" disabled={submitting}>
+          {submitting ? "Записване…" : isEdit ? "Запази промените" : "Създай правило"}
+        </button>
+        {onCancel && (
+          <button type="button" className="secondary" onClick={onCancel}>
+            Отказ
+          </button>
+        )}
+      </div>
     </form>
   );
 }

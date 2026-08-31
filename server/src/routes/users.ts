@@ -48,9 +48,10 @@ usersRouter.post("/", requireAdmin, async (req, res) => {
   const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
   if (existing) return res.status(409).json({ error: "Email already registered" });
 
-  const passwordHash = await hashPassword(parsed.data.password);
+  const { password, ...rest } = parsed.data;
+  const passwordHash = await hashPassword(password);
   const user = await prisma.user.create({
-    data: { ...parsed.data, passwordHash },
+    data: { ...rest, passwordHash },
     select: publicUser,
   });
   res.status(201).json(user);
