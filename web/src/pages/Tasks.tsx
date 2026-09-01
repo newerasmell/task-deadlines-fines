@@ -228,7 +228,7 @@ export function Tasks() {
                   <Fragment key={tk.id}>
                     <tr>
                       <td data-label={t("Задача")}>
-                        <div>
+                        <div className="cell-title">
                           {tk.title}
                           {tk.templateId && (
                             <span className="badge" title={t("Повтаряща се задача")}>
@@ -241,7 +241,7 @@ export function Tasks() {
                             </span>
                           )}
                         </div>
-                        {tk.description && <div className="muted small cell-description">{tk.description}</div>}
+                        <div className="muted small cell-description">{tk.description}</div>
                       </td>
                       <td className="person-cell" data-label={t("Служител")}>
                         <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />

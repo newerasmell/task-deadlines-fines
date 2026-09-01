@@ -345,11 +345,16 @@ button.secondary:hover {
   overflow: hidden;
 }
 
+/* Reserves space for a full 2 lines even when the description is shorter
+   (or missing) so every row in the list is the same height — otherwise a
+   mix of 0/1/2-line descriptions makes the table look ragged. */
 .cell-description {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  min-height: 2.5em;
+  margin-top: 2px;
 }
 
 .table th,
@@ -945,7 +950,12 @@ button.secondary:hover {
   .cell-title,
   .cell-description {
     -webkit-line-clamp: unset;
+    min-height: unset;
     text-align: left;
+  }
+
+  .cell-description:empty {
+    display: none;
   }
 
   .person-cell {

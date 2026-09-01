@@ -75,7 +75,7 @@ export function MyTasks() {
                 <Fragment key={tk.id}>
                   <tr>
                     <td data-label={t("Задача")}>
-                      <div>
+                      <div className="cell-title">
                         {tk.title}
                         {tk.templateId && (
                           <span className="badge" title={t("Повтаряща се задача")}>
@@ -83,7 +83,7 @@ export function MyTasks() {
                           </span>
                         )}
                       </div>
-                      {tk.description && <div className="muted small cell-description">{tk.description}</div>}
+                      <div className="muted small cell-description">{tk.description}</div>
                     </td>
                     <td data-label="Owner">{tk.owner?.name ?? "—"}</td>
                     <td data-label={t("Срок")}>{new Date(tk.deadline).toLocaleString(locale)}</td>
