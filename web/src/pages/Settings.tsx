@@ -3,8 +3,10 @@ import type { FormEvent } from "react";
 import { api } from "../api/client";
 import { CHANNEL_LABELS, PRIORITY_LABELS } from "../api/types";
 import type { ChannelStatus, FineRule, Priority } from "../api/types";
+import { useI18n } from "../i18n/I18nContext";
 
 export function Settings() {
+  const { t } = useI18n();
   const [rules, setRules] = useState<FineRule[]>([]);
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -27,27 +29,27 @@ export function Settings() {
   }
 
   async function deleteRule(rule: FineRule) {
-    if (!window.confirm(`Наистина ли да изтрия правилото "${rule.name}"?`)) return;
+    if (!window.confirm(t('Наистина ли да изтрия правилото "{name}"?', { name: rule.name }))) return;
     await api(`/fine-rules/${rule.id}`, { method: "DELETE" });
     refresh();
   }
 
-  if (loading) return <p>Зареждане…</p>;
+  if (loading) return <p>{t("Зареждане…")}</p>;
 
   return (
     <div>
-      <h1>Настройки</h1>
+      <h1>{t("Настройки")}</h1>
 
-      <h2>Канали за известия</h2>
+      <h2>{t("Канали за известия")}</h2>
       <p className="muted">
-        Статусът показва дали сървърът има зададени данни за достъп (в <code>server/.env</code>) за всеки канал.
-        Виж README за стъпки как да настроиш всеки от тях.
+        {t("Статусът показва дали сървърът има зададени данни за достъп (в")} <code>server/.env</code>
+        {t(") за всеки канал. Виж README за стъпки как да настроиш всеки от тях.")}
       </p>
       <table className="table">
         <thead>
           <tr>
-            <th>Канал</th>
-            <th>Статус</th>
+            <th>{t("Канал")}</th>
+            <th>{t("Статус")}</th>
           </tr>
         </thead>
         <tbody>
@@ -56,7 +58,7 @@ export function Settings() {
               <td>{CHANNEL_LABELS[c.channel]}</td>
               <td>
                 <span className={c.configured ? "badge badge-success" : "badge"}>
-                  {c.configured ? "Настроен" : "Не е настроен"}
+                  {c.configured ? t("Настроен") : t("Не е настроен")}
                 </span>
               </td>
             </tr>
@@ -65,20 +67,20 @@ export function Settings() {
       </table>
 
       <div className="page-header">
-        <h2>Правила за глоби</h2>
+        <h2>{t("Правила за глоби")}</h2>
         <button
           onClick={() => {
             setShowForm((s) => !s);
             setEditingId(null);
           }}
         >
-          {showForm ? "Затвори" : "+ Ново правило"}
+          {showForm ? t("Затвори") : t("+ Ново правило")}
         </button>
       </div>
       <p className="muted">
-        Всяка задача се проверява спрямо правилото за нейния приоритет (или общото правило, ако няма специфично).
-        При просрочие след периода на толеранс се начислява базова сума, плюс сума за всеки следващ ден закъснение,
-        до максимума.
+        {t(
+          "Всяка задача се проверява спрямо правилото за нейния приоритет (или общото правило, ако няма специфично). При просрочие след периода на толеранс се начислява базова сума, плюс сума за всеки следващ ден закъснение, до максимума."
+        )}
       </p>
 
       {showForm && (
@@ -93,13 +95,13 @@ export function Settings() {
       <table className="table">
         <thead>
           <tr>
-            <th>Име</th>
-            <th>Приоритет</th>
-            <th>Толеранс (ч)</th>
-            <th>Базова сума</th>
-            <th>На ден</th>
-            <th>Максимум</th>
-            <th>Активно</th>
+            <th>{t("Име")}</th>
+            <th>{t("Приоритет")}</th>
+            <th>{t("Толеранс (ч)")}</th>
+            <th>{t("Базова сума")}</th>
+            <th>{t("На ден")}</th>
+            <th>{t("Максимум")}</th>
+            <th>{t("Активно")}</th>
             <th></th>
           </tr>
         </thead>
@@ -108,7 +110,7 @@ export function Settings() {
             <Fragment key={r.id}>
               <tr>
                 <td>{r.name}</td>
-                <td>{r.priority ? PRIORITY_LABELS[r.priority] : "Всички (по подразбиране)"}</td>
+                <td>{r.priority ? t(PRIORITY_LABELS[r.priority]) : t("Всички (по подразбиране)")}</td>
                 <td>{r.graceHours}</td>
                 <td>
                   {r.baseAmount} {r.currency}
@@ -118,7 +120,7 @@ export function Settings() {
                 </td>
                 <td>{r.maxAmount ? `${r.maxAmount} ${r.currency}` : "—"}</td>
                 <td>
-                  <span className={r.active ? "badge badge-success" : "badge"}>{r.active ? "Да" : "Не"}</span>
+                  <span className={r.active ? "badge badge-success" : "badge"}>{r.active ? t("Да") : t("Не")}</span>
                 </td>
                 <td className="row-actions">
                   <button
@@ -128,13 +130,13 @@ export function Settings() {
                       setShowForm(false);
                     }}
                   >
-                    {editingId === r.id ? "Затвори" : "Редактирай"}
+                    {editingId === r.id ? t("Затвори") : t("Редактирай")}
                   </button>
                   <button className="small-btn" onClick={() => toggleActive(r)}>
-                    {r.active ? "Деактивирай" : "Активирай"}
+                    {r.active ? t("Деактивирай") : t("Активирай")}
                   </button>
                   <button className="small-btn" onClick={() => deleteRule(r)}>
-                    Изтрий
+                    {t("Изтрий")}
                   </button>
                 </td>
               </tr>
@@ -157,7 +159,7 @@ export function Settings() {
           {rules.length === 0 && (
             <tr>
               <td colSpan={8} className="muted">
-                Няма правила.
+                {t("Няма правила.")}
               </td>
             </tr>
           )}
@@ -168,6 +170,7 @@ export function Settings() {
 }
 
 function RuleForm({ rule, onSaved, onCancel }: { rule?: FineRule; onSaved: () => void; onCancel?: () => void }) {
+  const { t } = useI18n();
   const isEdit = Boolean(rule);
   const [name, setName] = useState(rule?.name ?? "");
   const [priority, setPriority] = useState<Priority | "">(rule?.priority ?? "");
@@ -200,7 +203,7 @@ function RuleForm({ rule, onSaved, onCancel }: { rule?: FineRule; onSaved: () =>
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Грешка");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -210,16 +213,16 @@ function RuleForm({ rule, onSaved, onCancel }: { rule?: FineRule; onSaved: () =>
     <form className="card form" onSubmit={handleSubmit}>
       <div className="form-row">
         <label>
-          Име
+          {t("Име")}
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
         <label>
-          Приоритет
+          {t("Приоритет")}
           <select value={priority} onChange={(e) => setPriority(e.target.value as Priority | "")}>
-            <option value="">Всички (по подразбиране)</option>
+            <option value="">{t("Всички (по подразбиране)")}</option>
             {(["LOW", "MEDIUM", "HIGH", "CRITICAL"] as Priority[]).map((p) => (
               <option key={p} value={p}>
-                {PRIORITY_LABELS[p]}
+                {t(PRIORITY_LABELS[p])}
               </option>
             ))}
           </select>
@@ -227,34 +230,34 @@ function RuleForm({ rule, onSaved, onCancel }: { rule?: FineRule; onSaved: () =>
       </div>
       <div className="form-row">
         <label>
-          Толеранс (часове)
+          {t("Толеранс (часове)")}
           <input type="number" min="0" value={graceHours} onChange={(e) => setGraceHours(e.target.value)} />
         </label>
         <label>
-          Базова сума
+          {t("Базова сума")}
           <input type="number" min="0" step="0.01" value={baseAmount} onChange={(e) => setBaseAmount(e.target.value)} />
         </label>
         <label>
-          Сума на ден
+          {t("Сума на ден")}
           <input type="number" min="0" step="0.01" value={perDayAmount} onChange={(e) => setPerDayAmount(e.target.value)} />
         </label>
         <label>
-          Максимум (по избор)
+          {t("Максимум (по избор)")}
           <input type="number" min="0" step="0.01" value={maxAmount} onChange={(e) => setMaxAmount(e.target.value)} />
         </label>
         <label>
-          Валута
+          {t("Валута")}
           <input value={currency} onChange={(e) => setCurrency(e.target.value)} />
         </label>
       </div>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>
-          {submitting ? "Записване…" : isEdit ? "Запази промените" : "Създай правило"}
+          {submitting ? t("Записване…") : isEdit ? t("Запази промените") : t("Създай правило")}
         </button>
         {onCancel && (
           <button type="button" className="secondary" onClick={onCancel}>
-            Отказ
+            {t("Отказ")}
           </button>
         )}
       </div>

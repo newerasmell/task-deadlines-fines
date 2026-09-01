@@ -2,9 +2,11 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useI18n } from "../i18n/I18nContext";
 
 export function Login() {
   const { login } = useAuth();
+  const { lang, setLang, t } = useI18n();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,7 +21,7 @@ export function Login() {
       await login(email, password);
       navigate("/");
     } catch {
-      setError("Грешен имейл или парола.");
+      setError(t("Грешен имейл или парола."));
     } finally {
       setSubmitting(false);
     }
@@ -27,20 +29,28 @@ export function Login() {
 
   return (
     <div className="auth-page">
+      <div className="lang-toggle auth-lang-toggle">
+        <button className={lang === "bg" ? "active" : ""} onClick={() => setLang("bg")}>
+          БГ
+        </button>
+        <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>
+          EN
+        </button>
+      </div>
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Задачи, срокове и глоби</h1>
-        <p className="muted">Влез в системата, за да управляваш задачи и глоби за екипа.</p>
+        <h1>{t("Задачи, срокове и глоби")}</h1>
+        <p className="muted">{t("Влез в системата, за да управляваш задачи и глоби за екипа.")}</p>
         <label>
-          Имейл
+          {t("Имейл")}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
         </label>
         <label>
-          Парола
+          {t("Парола")}
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </label>
         {error && <div className="error-text">{error}</div>}
         <button type="submit" disabled={submitting}>
-          {submitting ? "Влизане…" : "Вход"}
+          {submitting ? t("Влизане…") : t("Вход")}
         </button>
       </form>
     </div>

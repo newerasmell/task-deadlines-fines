@@ -2,6 +2,8 @@ import { Fragment, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { ADMIN_ACTION_LABELS } from "../api/types";
 import type { AuditLogEntry } from "../api/types";
+import { Avatar } from "../components/Avatar";
+import { useI18n } from "../i18n/I18nContext";
 
 const actionBadgeClass: Record<AuditLogEntry["action"], string> = {
   TASK_CREATED: "badge badge-success",
@@ -12,6 +14,8 @@ const actionBadgeClass: Record<AuditLogEntry["action"], string> = {
 };
 
 export function AuditLog() {
+  const { t, lang } = useI18n();
+  const locale = lang === "en" ? "en-GB" : "bg-BG";
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -20,23 +24,24 @@ export function AuditLog() {
     api<AuditLogEntry[]>("/audit-log").then(setLogs).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p>Зареждане…</p>;
+  if (loading) return <p>{t("Зареждане…")}</p>;
 
   return (
     <div>
-      <h1>Дневник на действията</h1>
+      <h1>{t("Дневник на действията")}</h1>
       <p className="muted">
-        Всяко създаване, редактиране или изтриване на задача, и всяка наложена/анулирана глоба от администратор,
-        се записва тук — за да няма нещо, което просто изчезва без следа.
+        {t(
+          "Всяко създаване, редактиране или изтриване на задача, и всяка наложена/анулирана глоба от администратор, се записва тук — за да няма нещо, което просто изчезва без следа."
+        )}
       </p>
 
       <table className="table">
         <thead>
           <tr>
-            <th>Кога</th>
-            <th>Кой</th>
-            <th>Действие</th>
-            <th>Какво</th>
+            <th>{t("Кога")}</th>
+            <th>{t("Кой")}</th>
+            <th>{t("Действие")}</th>
+            <th>{t("Какво")}</th>
             <th></th>
           </tr>
         </thead>
@@ -44,16 +49,19 @@ export function AuditLog() {
           {logs.map((l) => (
             <Fragment key={l.id}>
               <tr>
-                <td>{new Date(l.createdAt).toLocaleString("bg-BG")}</td>
-                <td>{l.actor.name}</td>
+                <td>{new Date(l.createdAt).toLocaleString(locale)}</td>
+                <td className="person-cell">
+                  <Avatar id={l.actor.id} name={l.actor.name} size={22} />
+                  {l.actor.name}
+                </td>
                 <td>
-                  <span className={actionBadgeClass[l.action]}>{ADMIN_ACTION_LABELS[l.action]}</span>
+                  <span className={actionBadgeClass[l.action]}>{t(ADMIN_ACTION_LABELS[l.action])}</span>
                 </td>
                 <td>{l.summary}</td>
                 <td>
                   {l.details && (
                     <button className="small-btn" onClick={() => setExpandedId(expandedId === l.id ? null : l.id)}>
-                      {expandedId === l.id ? "Скрий" : "Детайли"}
+                      {expandedId === l.id ? t("Скрий") : t("Детайли")}
                     </button>
                   )}
                 </td>
@@ -70,7 +78,7 @@ export function AuditLog() {
           {logs.length === 0 && (
             <tr>
               <td colSpan={5} className="muted">
-                Няма записи.
+                {t("Няма записи.")}
               </td>
             </tr>
           )}

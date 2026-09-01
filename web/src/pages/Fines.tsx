@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
 import type { Fine, FineStatus, User } from "../api/types";
+import { Avatar } from "../components/Avatar";
 import { useAuth } from "../context/AuthContext";
+import { useI18n } from "../i18n/I18nContext";
 
 const statusLabels: Record<FineStatus, string> = {
   ACTIVE: "Активна",
@@ -18,6 +20,8 @@ const statusClass: Record<FineStatus, string> = {
 
 export function Fines() {
   const { user } = useAuth();
+  const { t, lang } = useI18n();
+  const locale = lang === "en" ? "en-GB" : "bg-BG";
   const isAdmin = user?.role === "ADMIN";
   const [fines, setFines] = useState<Fine[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
@@ -42,19 +46,18 @@ export function Fines() {
     refresh();
   }
 
-  if (loading) return <p>Зареждане…</p>;
+  if (loading) return <p>{t("Зареждане…")}</p>;
 
   return (
     <div>
       <div className="page-header">
-        <h1>Глоби</h1>
+        <h1>{t("Глоби")}</h1>
         {isAdmin && (
-          <button onClick={() => setShowForm((s) => !s)}>{showForm ? "Затвори" : "+ Ръчна глоба"}</button>
+          <button onClick={() => setShowForm((s) => !s)}>{showForm ? t("Затвори") : t("+ Ръчна глоба")}</button>
         )}
       </div>
       <p className="muted">
-        Глобите се начисляват автоматично при просрочени задачи според зададените правила в „Настройки“.
-        Ако закъснението е основателно, анулирай глобата с обяснение.
+        {t("Глобите се начисляват автоматично при просрочени задачи според зададените правила в „Настройки“. Ако закъснението е основателно, анулирай глобата с обяснение.")}
       </p>
 
       {isAdmin && showForm && (
@@ -81,38 +84,41 @@ export function Fines() {
       <table className="table">
         <thead>
           <tr>
-            <th>Служител</th>
-            <th>Причина</th>
-            <th>Сума</th>
-            <th>Дата</th>
-            <th>Статус</th>
+            <th>{t("Служител")}</th>
+            <th>{t("Причина")}</th>
+            <th>{t("Сума")}</th>
+            <th>{t("Дата")}</th>
+            <th>{t("Статус")}</th>
             {isAdmin && <th></th>}
           </tr>
         </thead>
         <tbody>
           {fines.map((f) => (
             <tr key={f.id}>
-              <td>{f.user?.name}</td>
+              <td className="person-cell">
+                {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
+                {f.user?.name}
+              </td>
               <td>
                 {f.reason}
-                {f.waivedReason && <div className="muted small">Анулирана: {f.waivedReason}</div>}
+                {f.waivedReason && <div className="muted small">{t("Анулирана:")} {f.waivedReason}</div>}
               </td>
               <td>
                 {f.amount.toFixed(2)} {f.currency}
               </td>
-              <td>{new Date(f.createdAt).toLocaleString("bg-BG")}</td>
+              <td>{new Date(f.createdAt).toLocaleString(locale)}</td>
               <td>
-                <span className={statusClass[f.status]}>{statusLabels[f.status]}</span>
+                <span className={statusClass[f.status]}>{t(statusLabels[f.status])}</span>
               </td>
               {isAdmin && (
                 <td className="row-actions">
                   {f.status === "ACTIVE" && (
                     <>
                       <button className="small-btn" onClick={() => setWaiving(f)}>
-                        Анулирай
+                        {t("Анулирай")}
                       </button>
                       <button className="small-btn" onClick={() => markPaid(f.id)}>
-                        Платена
+                        {t("Платена")}
                       </button>
                     </>
                   )}
@@ -123,7 +129,7 @@ export function Fines() {
           {fines.length === 0 && (
             <tr>
               <td colSpan={isAdmin ? 6 : 5} className="muted">
-                Няма глоби.
+                {t("Няма глоби.")}
               </td>
             </tr>
           )}
@@ -134,6 +140,7 @@ export function Fines() {
 }
 
 function ManualFineForm({ employees, onCreated }: { employees: User[]; onCreated: () => void }) {
+  const { t } = useI18n();
   const [userId, setUserId] = useState(employees[0]?.id ?? "");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
@@ -144,7 +151,7 @@ function ManualFineForm({ employees, onCreated }: { employees: User[]; onCreated
     e.preventDefault();
     setError(null);
     if (!userId) {
-      setError("Избери служител.");
+      setError(t("Избери служител."));
       return;
     }
     setSubmitting(true);
@@ -155,7 +162,7 @@ function ManualFineForm({ employees, onCreated }: { employees: User[]; onCreated
       });
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Грешка");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -165,10 +172,10 @@ function ManualFineForm({ employees, onCreated }: { employees: User[]; onCreated
     <form className="card form" onSubmit={handleSubmit}>
       <div className="form-row">
         <label>
-          Служител
+          {t("Служител")}
           <select value={userId} onChange={(e) => setUserId(e.target.value)} required>
             <option value="" disabled>
-              Избери…
+              {t("Избери…")}
             </option>
             {employees
               .filter((e) => e.active)
@@ -180,23 +187,24 @@ function ManualFineForm({ employees, onCreated }: { employees: User[]; onCreated
           </select>
         </label>
         <label>
-          Сума (EUR)
+          {t("Сума (EUR)")}
           <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
         </label>
       </div>
       <label>
-        Причина
-        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Напр. неоснователно закъснение без уведомление" required />
+        {t("Причина")}
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Напр. неоснователно закъснение без уведомление")} required />
       </label>
       {error && <div className="error-text">{error}</div>}
       <button type="submit" disabled={submitting}>
-        {submitting ? "Записване…" : "Наложи глоба"}
+        {submitting ? t("Записване…") : t("Наложи глоба")}
       </button>
     </form>
   );
 }
 
 function WaiveForm({ fine, onDone, onCancel }: { fine: Fine; onDone: () => void; onCancel: () => void }) {
+  const { t } = useI18n();
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -209,7 +217,7 @@ function WaiveForm({ fine, onDone, onCancel }: { fine: Fine; onDone: () => void;
       await api(`/fines/${fine.id}/waive`, { method: "POST", body: JSON.stringify({ reason }) });
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Грешка");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -218,19 +226,19 @@ function WaiveForm({ fine, onDone, onCancel }: { fine: Fine; onDone: () => void;
   return (
     <form className="card form" onSubmit={handleSubmit}>
       <p>
-        Анулиране на глоба за <strong>{fine.user?.name}</strong> ({fine.amount.toFixed(2)} {fine.currency})
+        {t("Анулиране на глоба за")} <strong>{fine.user?.name}</strong> ({fine.amount.toFixed(2)} {fine.currency})
       </p>
       <label>
-        Обосновка (защо закъснението е основателно)
+        {t("Обосновка (защо закъснението е основателно)")}
         <input value={reason} onChange={(e) => setReason(e.target.value)} required autoFocus />
       </label>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>
-          {submitting ? "Записване…" : "Потвърди анулиране"}
+          {submitting ? t("Записване…") : t("Потвърди анулиране")}
         </button>
         <button type="button" className="secondary" onClick={onCancel}>
-          Отказ
+          {t("Отказ")}
         </button>
       </div>
     </form>

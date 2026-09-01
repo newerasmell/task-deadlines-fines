@@ -1,20 +1,21 @@
 :root {
-  --bg: #f5f6f8;
+  --bg: #f6f7fb;
   --card: #ffffff;
-  --border: #e2e5ea;
-  --text: #1c2128;
-  --muted: #6b7280;
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
-  --danger: #dc2626;
-  --danger-bg: #fee2e2;
-  --success: #16a34a;
-  --success-bg: #dcfce7;
-  --info-bg: #dbeafe;
-  --warning-bg: #fef3c7;
-  --warning-border: #f59e0b;
-  --sidebar-bg: #111827;
-  --sidebar-text: #d1d5db;
+  --border: #e6e9ef;
+  --text: #292f4c;
+  --muted: #676879;
+  --primary: #0073ea;
+  --primary-dark: #0060c2;
+  --danger: #e2445c;
+  --danger-bg: #ffe6eb;
+  --success: #00854d;
+  --success-bg: #d3f4e6;
+  --info-bg: #e6f1ff;
+  --warning-bg: #fff2d9;
+  --warning-border: #fdab3d;
+  --sidebar-bg: #16193f;
+  --sidebar-text: #b6b8d4;
+  --radius: 10px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color-scheme: light;
 }
@@ -45,33 +46,55 @@ body {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   color: #fff;
-  margin-bottom: 24px;
+  margin-bottom: 26px;
+}
+
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #0073ea, #a25ddc 60%, #ff642e);
+  flex-shrink: 0;
 }
 
 .sidebar nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
 }
 
 .sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: var(--sidebar-text);
   text-decoration: none;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 0.92rem;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  border-left: 3px solid transparent;
+}
+
+.sidebar nav a svg {
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .sidebar nav a:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
 }
 
 .sidebar nav a.active {
-  background: var(--primary);
+  background: rgba(0, 115, 234, 0.22);
+  border-left-color: #4b9eff;
   color: #fff;
 }
 
@@ -79,20 +102,53 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding-top: 14px;
   margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lang-toggle {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.lang-toggle button {
+  flex: 1;
+  background: transparent;
+  color: var(--sidebar-text);
+  padding: 5px 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-radius: 6px;
+}
+
+.lang-toggle button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lang-toggle button.active {
+  background: var(--primary);
+  color: #fff;
 }
 
 .user-chip {
-  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .user-name {
   font-weight: 600;
   color: #fff;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .user-role {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--muted);
 }
 
@@ -102,8 +158,19 @@ body {
   color: var(--sidebar-text);
   cursor: pointer;
   padding: 0;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   text-decoration: underline;
+  text-align: left;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .content {
@@ -141,9 +208,10 @@ button {
   background: var(--primary);
   color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 9px 16px;
   font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -178,9 +246,10 @@ button.secondary:hover {
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   margin: 12px 0 20px;
+  box-shadow: 0 1px 3px rgba(41, 47, 76, 0.05);
 }
 
 .form label {
@@ -234,9 +303,10 @@ button.secondary:hover {
   border-collapse: collapse;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   overflow: hidden;
   font-size: 0.9rem;
+  box-shadow: 0 1px 3px rgba(41, 47, 76, 0.05);
 }
 
 .table th,
@@ -248,11 +318,16 @@ button.secondary:hover {
 }
 
 .table th {
-  background: #f9fafb;
-  font-size: 0.78rem;
+  background: #f9fafc;
+  font-size: 0.76rem;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   color: var(--muted);
+  font-weight: 700;
+}
+
+.table tbody tr:hover {
+  background: #fafbfd;
 }
 
 .table tr:last-child td {
@@ -325,6 +400,14 @@ button.secondary:hover {
   align-items: center;
   justify-content: center;
   background: var(--sidebar-bg);
+  position: relative;
+}
+
+.auth-lang-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 100px;
 }
 
 .auth-card {
@@ -384,6 +467,43 @@ button.secondary:hover {
 .tabs button.active {
   background: var(--primary);
   color: #fff;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-bar select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  background: var(--card);
+  color: var(--text);
+}
+
+.search-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  min-width: 220px;
+  color: var(--muted);
+}
+
+.search-input input {
+  border: none;
+  outline: none;
+  padding: 8px 0;
+  font-size: 0.85rem;
+  flex: 1;
+  color: var(--text);
 }
 
 .attachment-grid {
@@ -544,6 +664,43 @@ button.secondary:hover {
 
 .board-card-fine {
   margin-top: 2px;
+}
+
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+.activity-panel {
+  margin-top: 12px;
+}
+
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.activity-list li {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 0.85rem;
+}
+
+.activity-summary {
+  margin: 4px 0 2px;
+}
+
+.person-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .center-loading {

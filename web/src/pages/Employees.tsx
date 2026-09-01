@@ -2,13 +2,18 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
 import type { Role, User } from "../api/types";
+import { Avatar } from "../components/Avatar";
+import { IconSearch } from "../components/icons";
+import { useI18n } from "../i18n/I18nContext";
 
 export function Employees() {
+  const { t } = useI18n();
   const [users, setUsers] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
 
   async function refresh() {
     setUsers(await api<User[]>("/users"));
@@ -19,19 +24,19 @@ export function Employees() {
   }, []);
 
   async function testSend(userId: string) {
-    setTestResult("Изпращане…");
+    setTestResult(t("Изпращане…"));
     try {
       const res = await api<{ results: { channel: string; status: string; error?: string }[] }>(
         "/notifications/test-send",
         { method: "POST", body: JSON.stringify({ userId }) }
       );
       if (res.results.length === 0) {
-        setTestResult("Няма настроени канали с данни за този служител.");
+        setTestResult(t("Няма настроени канали с данни за този служител."));
       } else {
         setTestResult(res.results.map((r) => `${r.channel}: ${r.status}${r.error ? ` (${r.error})` : ""}`).join(" · "));
       }
     } catch (err) {
-      setTestResult(err instanceof Error ? err.message : "Грешка");
+      setTestResult(err instanceof Error ? err.message : t("Грешка"));
     }
   }
 
@@ -40,18 +45,22 @@ export function Employees() {
     refresh();
   }
 
-  if (loading) return <p>Зареждане…</p>;
+  if (loading) return <p>{t("Зареждане…")}</p>;
+
+  const visibleUsers = users.filter(
+    (u) => !search || u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div>
       <div className="page-header">
-        <h1>Служители</h1>
-        <button onClick={() => setShowForm((s) => !s)}>{showForm ? "Затвори" : "+ Нов служител"}</button>
+        <h1>{t("Служители")}</h1>
+        <button onClick={() => setShowForm((s) => !s)}>{showForm ? t("Затвори") : t("+ Нов служител")}</button>
       </div>
       <p className="muted">
-        „Мениджър“ не е отделна роля тук — всеки служител става мениджър на дадена задача, щом бъде избран за
-        неин „Owner“ при създаване/редакция на задачата (в „Задачи“). Ролята по-долу определя само дали човекът
-        има администраторски достъп (вижда и променя всичко) или е обикновен служител.
+        {t(
+          "„Мениджър“ не е отделна роля тук — всеки служител става мениджър на дадена задача, щом бъде избран за неин „Owner“ при създаване/редакция на задачата (в „Задачи“). Ролята по-долу определя само дали човекът има администраторски достъп (вижда и променя всичко) или е обикновен служител."
+        )}
       </p>
 
       {showForm && (
@@ -76,23 +85,33 @@ export function Employees() {
 
       {testResult && <div className="card notice">{testResult}</div>}
 
+      <div className="filter-bar">
+        <div className="search-input">
+          <IconSearch size={16} />
+          <input placeholder={t("Търсене по име или имейл…")} value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+      </div>
+
       <table className="table">
         <thead>
           <tr>
-            <th>Име</th>
-            <th>Имейл</th>
-            <th>Роля</th>
-            <th>Канали</th>
-            <th>Статус</th>
+            <th>{t("Име")}</th>
+            <th>{t("Имейл")}</th>
+            <th>{t("Роля")}</th>
+            <th>{t("Канали")}</th>
+            <th>{t("Статус")}</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {users.map((u) => (
+          {visibleUsers.map((u) => (
             <tr key={u.id}>
-              <td>{u.name}</td>
+              <td className="person-cell">
+                <Avatar id={u.id} name={u.name} />
+                {u.name}
+              </td>
               <td>{u.email}</td>
-              <td>{u.role === "ADMIN" ? "Администратор" : "Служител"}</td>
+              <td>{u.role === "ADMIN" ? t("Администратор") : t("Служител")}</td>
               <td className="small">
                 {[
                   u.telegramChatId && "Telegram",
@@ -105,23 +124,30 @@ export function Employees() {
                   .join(", ")}
               </td>
               <td>
-                <span className={u.active ? "badge badge-success" : "badge"}>{u.active ? "Активен" : "Деактивиран"}</span>
+                <span className={u.active ? "badge badge-success" : "badge"}>{u.active ? t("Активен") : t("Деактивиран")}</span>
               </td>
               <td className="row-actions">
                 <button className="small-btn" onClick={() => setEditing(u)}>
-                  Редактирай
+                  {t("Редактирай")}
                 </button>
                 <button className="small-btn" onClick={() => testSend(u.id)}>
-                  Тест известие
+                  {t("Тест известие")}
                 </button>
                 {u.active && (
                   <button className="small-btn" onClick={() => deactivate(u.id)}>
-                    Деактивирай
+                    {t("Деактивирай")}
                   </button>
                 )}
               </td>
             </tr>
           ))}
+          {visibleUsers.length === 0 && (
+            <tr>
+              <td colSpan={6} className="muted">
+                {t("Няма служители.")}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
@@ -129,6 +155,7 @@ export function Employees() {
 }
 
 function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () => void; onCancel?: () => void }) {
+  const { t } = useI18n();
   const isEdit = Boolean(user);
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -167,7 +194,7 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Грешка");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -177,22 +204,22 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
     <form className="card form" onSubmit={handleSubmit}>
       <div className="form-row">
         <label>
-          Име
+          {t("Име")}
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
         <label>
-          Имейл
+          {t("Имейл")}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
         <label>
-          Роля
+          {t("Роля")}
           <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            <option value="EMPLOYEE">Служител</option>
-            <option value="ADMIN">Администратор</option>
+            <option value="EMPLOYEE">{t("Служител")}</option>
+            <option value="ADMIN">{t("Администратор")}</option>
           </select>
         </label>
         <label>
-          {isEdit ? "Нова парола (остави празно, за да не се сменя)" : "Парола"}
+          {isEdit ? t("Нова парола (остави празно, за да не се сменя)") : t("Парола")}
           <input
             type="password"
             value={password}
@@ -204,13 +231,13 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
         </label>
       </div>
 
-      <h3>Канали за известия</h3>
+      <h3>{t("Канали за известия")}</h3>
       <p className="muted small">
-        Попълни идентификаторите, за да получава служителят известия и на тези канали. Виж „Настройки“ за инструкции как да ги вземеш.
+        {t("Попълни идентификаторите, за да получава служителят известия и на тези канали. Виж „Настройки“ за инструкции как да ги вземеш.")}
       </p>
       <div className="form-row">
         <label>
-          Телефон
+          {t("Телефон")}
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+359..." />
         </label>
         <label>
@@ -224,7 +251,7 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
       </div>
       <div className="form-row">
         <label>
-          WhatsApp номер
+          {t("WhatsApp номер")}
           <input value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} placeholder="359888123456" />
         </label>
         <label>
@@ -236,11 +263,11 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>
-          {submitting ? "Записване…" : isEdit ? "Запази промените" : "Създай служител"}
+          {submitting ? t("Записване…") : isEdit ? t("Запази промените") : t("Създай служител")}
         </button>
         {onCancel && (
           <button type="button" className="secondary" onClick={onCancel}>
-            Отказ
+            {t("Отказ")}
           </button>
         )}
       </div>

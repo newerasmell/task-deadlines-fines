@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { I18nProvider, useT } from "./i18n/I18nContext";
 import { AuditLog } from "./pages/AuditLog";
 import { Dashboard } from "./pages/Dashboard";
 import { Employees } from "./pages/Employees";
@@ -13,7 +14,8 @@ import { Tasks } from "./pages/Tasks";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
-  if (loading) return <p className="center-loading">Зареждане…</p>;
+  const t = useT();
+  if (loading) return <p className="center-loading">{t("Зареждане…")}</p>;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
@@ -78,8 +80,10 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <I18nProvider>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </I18nProvider>
   );
 }
