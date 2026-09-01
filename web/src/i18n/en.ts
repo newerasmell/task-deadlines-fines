@@ -76,6 +76,8 @@ export const en: Record<string, string> = {
   "Няма активни задачи.": "No active tasks.",
   "Няма задачи.": "No tasks.",
   "Кликни за редакция": "Click to edit",
+  "Разгъни": "Expand",
+  "Свий": "Collapse",
   "В процес": "In progress",
   "Описание / обяснение на свършеното": "Description / explanation of what was done",
   "Какво направи, къде е резултатът…": "What you did, where the result is…",

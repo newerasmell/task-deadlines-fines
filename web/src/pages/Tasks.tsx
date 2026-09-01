@@ -346,6 +346,16 @@ function TaskBoard({
   const locale = lang === "en" ? "en-GB" : "bg-BG";
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  function toggleCollapsed(empId: string) {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(empId)) next.delete(empId);
+      else next.add(empId);
+      return next;
+    });
+  }
 
   const grouped = new Map<string, Task[]>();
   for (const tk of tasks) {
@@ -365,13 +375,20 @@ function TaskBoard({
       {employeeIds.map((empId) => {
         const empTasks = grouped.get(empId)!;
         const color = colorForId(empId);
+        const isCollapsed = collapsed.has(empId);
         return (
           <div className="board-group" key={empId} style={{ borderLeftColor: color }}>
-            <div className="board-group-header">
+            <div
+              className="board-group-header board-group-header-clickable"
+              onClick={() => toggleCollapsed(empId)}
+              title={isCollapsed ? t("Разгъни") : t("Свий")}
+            >
+              <span className={`board-group-chevron${isCollapsed ? " board-group-chevron-collapsed" : ""}`}>▾</span>
               <span className="board-group-dot" style={{ background: color }} />
               <span style={{ color }}>{empTasks[0].assignee.name}</span>
               <span className="board-group-count">{empTasks.length}</span>
             </div>
+            {!isCollapsed && (
             <div className="board-columns">
               {BOARD_COLUMNS.map((col) => {
                 const colTasks = empTasks.filter((tk) => tk.status === col.status);
@@ -438,6 +455,7 @@ function TaskBoard({
                 );
               })}
             </div>
+            )}
           </div>
         );
       })}

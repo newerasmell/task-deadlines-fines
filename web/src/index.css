@@ -600,6 +600,30 @@ button.secondary:hover {
   margin-bottom: 10px;
 }
 
+.board-group-header-clickable {
+  cursor: pointer;
+  user-select: none;
+  margin: -4px -4px 6px;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.board-group-header-clickable:hover {
+  background: #f5f6fa;
+}
+
+.board-group-chevron {
+  display: inline-flex;
+  color: var(--muted);
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.board-group-chevron-collapsed {
+  transform: rotate(-90deg);
+}
+
 .board-group-dot {
   width: 10px;
   height: 10px;
