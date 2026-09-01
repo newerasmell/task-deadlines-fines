@@ -106,8 +106,10 @@ export function Dashboard() {
                   <tr key={tk.id}>
                     <td data-label={t("Задача")}>{tk.title}</td>
                     <td className="person-cell" data-label={t("Служител")}>
-                      <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
-                      {tk.assignee.name}
+                      <div className="person-cell-group">
+                        <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
+                        {tk.assignee.name}
+                      </div>
                     </td>
                     <td data-label={t("Срок")}>{new Date(tk.deadline).toLocaleString(locale)}</td>
                     <td data-label={t("Статус")}>
@@ -137,8 +139,10 @@ export function Dashboard() {
                     <tr key={tk.id}>
                       <td data-label={t("Задача")}>{tk.title}</td>
                       <td className="person-cell" data-label={t("Служител")}>
-                        <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
-                        {tk.assignee.name}
+                        <div className="person-cell-group">
+                          <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
+                          {tk.assignee.name}
+                        </div>
                       </td>
                       <td data-label={t("Срок")}>{new Date(tk.deadline).toLocaleString(locale)}</td>
                     </tr>

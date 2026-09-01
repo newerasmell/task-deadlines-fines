@@ -122,8 +122,10 @@ export function Employees() {
           {visibleUsers.map((u) => (
             <tr key={u.id}>
               <td className="person-cell" data-label={t("Име")}>
-                <Avatar id={u.id} name={u.name} />
-                {u.name}
+                <div className="person-cell-group">
+                  <Avatar id={u.id} name={u.name} />
+                  {u.name}
+                </div>
               </td>
               <td data-label={t("Имейл")}>{u.email}</td>
               <td data-label={t("Роля")}>

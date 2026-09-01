@@ -89,8 +89,10 @@ export function RecurringTasks() {
               <tr>
                 <td data-label={t("Заглавие")}>{tpl.title}</td>
                 <td className="person-cell" data-label={t("Служител")}>
-                  <Avatar id={tpl.assignee.id} name={tpl.assignee.name} size={22} />
-                  {tpl.assignee.name}
+                  <div className="person-cell-group">
+                    <Avatar id={tpl.assignee.id} name={tpl.assignee.name} size={22} />
+                    {tpl.assignee.name}
+                  </div>
                 </td>
                 <td data-label="Owner">{tpl.owner?.name ?? "—"}</td>
                 <td data-label={t("Дни")}>{tpl.daysOfWeek.split(",").map((d) => t(WEEKDAY_LABELS[d as Weekday])).join(", ")}</td>

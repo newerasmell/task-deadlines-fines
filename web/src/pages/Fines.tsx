@@ -97,8 +97,10 @@ export function Fines() {
           {fines.map((f) => (
             <tr key={f.id}>
               <td className="person-cell" data-label={t("Служител")}>
-                {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
-                {f.user?.name}
+                <div className="person-cell-group">
+                  {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
+                  {f.user?.name}
+                </div>
               </td>
               <td data-label={t("Причина")}>
                 {f.reason}

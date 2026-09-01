@@ -201,34 +201,34 @@ export function Tasks() {
           </div>
 
           <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t("Задача")}</th>
-                <th>{t("Служител")}</th>
-                <th>Owner</th>
-                <th>{t("Срок")}</th>
-                <th>{t("Приоритет")}</th>
-                <th>{t("Статус")}</th>
-                <th>{t("Глоби")}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleTasks.map((tk) => {
-                const activeFines = (tk.fines ?? []).filter((f) => f.status === "ACTIVE");
-                const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
-                const isAssignee = tk.assigneeId === user?.id;
-                const isOwner = tk.ownerId === user?.id;
-                const canSubmit = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS");
-                const canReview = (isOwner || isAdmin) && tk.status === "PENDING_REVIEW";
-                const isExpanded = expanded?.taskId === tk.id;
-                const locked = isLockedTask(tk);
+          <div
+            className="grid-table"
+            style={{ gridTemplateColumns: "minmax(220px, 2fr) 150px 120px 160px 100px 110px 90px 56px" }}
+          >
+            <div className="grid-table-header">{t("Задача")}</div>
+            <div className="grid-table-header">{t("Служител")}</div>
+            <div className="grid-table-header">Owner</div>
+            <div className="grid-table-header">{t("Срок")}</div>
+            <div className="grid-table-header">{t("Приоритет")}</div>
+            <div className="grid-table-header">{t("Статус")}</div>
+            <div className="grid-table-header">{t("Глоби")}</div>
+            <div className="grid-table-header"></div>
 
-                return (
-                  <Fragment key={tk.id}>
-                    <tr>
-                      <td data-label={t("Задача")}>
+            {visibleTasks.map((tk) => {
+              const activeFines = (tk.fines ?? []).filter((f) => f.status === "ACTIVE");
+              const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
+              const isAssignee = tk.assigneeId === user?.id;
+              const isOwner = tk.ownerId === user?.id;
+              const canSubmit = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS");
+              const canReview = (isOwner || isAdmin) && tk.status === "PENDING_REVIEW";
+              const isExpanded = expanded?.taskId === tk.id;
+              const locked = isLockedTask(tk);
+
+              return (
+                <Fragment key={tk.id}>
+                  <div className="grid-row">
+                    <div className="grid-cell" data-label={t("Задача")}>
+                      <div>
                         <div className="cell-title">
                           {tk.title}
                           {tk.templateId && (
@@ -243,95 +243,95 @@ export function Tasks() {
                           )}
                         </div>
                         <div className="muted small cell-description">{tk.description}</div>
-                      </td>
-                      <td className="person-cell" data-label={t("Служител")}>
-                        <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
-                        {tk.assignee.name}
-                      </td>
-                      <td data-label="Owner">{tk.owner?.name ?? "—"}</td>
-                      <td data-label={t("Срок")}>{new Date(tk.deadline).toLocaleString(locale)}</td>
-                      <td data-label={t("Приоритет")}>{t(PRIORITY_LABELS[tk.priority])}</td>
-                      <td data-label={t("Статус")}>
-                        <span className={statusBadgeClass[tk.status]}>{t(STATUS_LABELS[tk.status])}</span>
-                      </td>
-                      <td data-label={t("Глоби")}>{fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}</td>
-                      <td className="row-actions">
-                        <RowMenu label={t("Действия")}>
-                          {isAssignee && tk.status === "PENDING" && (
-                            <RowMenuItem onClick={() => startWork(tk.id)}>{t("Започни")}</RowMenuItem>
-                          )}
-                          {canSubmit && (
-                            <RowMenuItem onClick={() => toggleExpanded(tk.id, "submit")}>
-                              {isExpanded && expanded?.mode === "submit" ? t("Затвори") : t("Подай за преглед")}
-                            </RowMenuItem>
-                          )}
-                          {canReview && (
-                            <RowMenuItem onClick={() => toggleExpanded(tk.id, "review")}>
-                              {isExpanded && expanded?.mode === "review" ? t("Затвори") : t("Прегледай")}
-                            </RowMenuItem>
-                          )}
-                          {isAdmin && !locked && (
-                            <RowMenuItem onClick={() => toggleExpanded(tk.id, "edit")}>
-                              {isExpanded && expanded?.mode === "edit" ? t("Затвори") : t("Редактирай")}
-                            </RowMenuItem>
-                          )}
-                          {isAdmin && !locked && <RowMenuItem onClick={() => deleteTask(tk)}>{t("Изтрий")}</RowMenuItem>}
-                        </RowMenu>
-                      </td>
-                    </tr>
-                    {isExpanded && expanded?.mode === "submit" && (
-                      <tr>
-                        <td colSpan={8}>
-                          <SubmitForm
-                            taskId={tk.id}
-                            onDone={() => {
-                              setExpanded(null);
-                              refresh();
-                            }}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                    {isExpanded && expanded?.mode === "review" && (
-                      <tr>
-                        <td colSpan={8}>
-                          <ReviewPanel
-                            taskId={tk.id}
-                            onDone={() => {
-                              setExpanded(null);
-                              refresh();
-                            }}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                    {isExpanded && expanded?.mode === "edit" && (
-                      <tr>
-                        <td colSpan={8}>
-                          <TaskForm
-                            task={tk}
-                            employees={employees}
-                            onSaved={() => {
-                              setExpanded(null);
-                              refresh();
-                            }}
-                            onCancel={() => setExpanded(null)}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-              {visibleTasks.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="muted">
-                    {tab === "completed" ? t("Няма завършени задачи.") : t("Няма активни задачи.")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                      </div>
+                    </div>
+                    <div className="grid-cell" data-label={t("Служител")}>
+                      <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
+                      {tk.assignee.name}
+                    </div>
+                    <div className="grid-cell" data-label="Owner">
+                      {tk.owner?.name ?? "—"}
+                    </div>
+                    <div className="grid-cell" data-label={t("Срок")}>
+                      {new Date(tk.deadline).toLocaleString(locale)}
+                    </div>
+                    <div className="grid-cell" data-label={t("Приоритет")}>
+                      {t(PRIORITY_LABELS[tk.priority])}
+                    </div>
+                    <div className="grid-cell" data-label={t("Статус")}>
+                      <span className={statusBadgeClass[tk.status]}>{t(STATUS_LABELS[tk.status])}</span>
+                    </div>
+                    <div className="grid-cell" data-label={t("Глоби")}>
+                      {fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}
+                    </div>
+                    <div className="grid-cell grid-cell-actions">
+                      <RowMenu label={t("Действия")}>
+                        {isAssignee && tk.status === "PENDING" && (
+                          <RowMenuItem onClick={() => startWork(tk.id)}>{t("Започни")}</RowMenuItem>
+                        )}
+                        {canSubmit && (
+                          <RowMenuItem onClick={() => toggleExpanded(tk.id, "submit")}>
+                            {isExpanded && expanded?.mode === "submit" ? t("Затвори") : t("Подай за преглед")}
+                          </RowMenuItem>
+                        )}
+                        {canReview && (
+                          <RowMenuItem onClick={() => toggleExpanded(tk.id, "review")}>
+                            {isExpanded && expanded?.mode === "review" ? t("Затвори") : t("Прегледай")}
+                          </RowMenuItem>
+                        )}
+                        {isAdmin && !locked && (
+                          <RowMenuItem onClick={() => toggleExpanded(tk.id, "edit")}>
+                            {isExpanded && expanded?.mode === "edit" ? t("Затвори") : t("Редактирай")}
+                          </RowMenuItem>
+                        )}
+                        {isAdmin && !locked && <RowMenuItem onClick={() => deleteTask(tk)}>{t("Изтрий")}</RowMenuItem>}
+                      </RowMenu>
+                    </div>
+                  </div>
+                  {isExpanded && expanded?.mode === "submit" && (
+                    <div className="grid-cell-full">
+                      <SubmitForm
+                        taskId={tk.id}
+                        onDone={() => {
+                          setExpanded(null);
+                          refresh();
+                        }}
+                      />
+                    </div>
+                  )}
+                  {isExpanded && expanded?.mode === "review" && (
+                    <div className="grid-cell-full">
+                      <ReviewPanel
+                        taskId={tk.id}
+                        onDone={() => {
+                          setExpanded(null);
+                          refresh();
+                        }}
+                      />
+                    </div>
+                  )}
+                  {isExpanded && expanded?.mode === "edit" && (
+                    <div className="grid-cell-full">
+                      <TaskForm
+                        task={tk}
+                        employees={employees}
+                        onSaved={() => {
+                          setExpanded(null);
+                          refresh();
+                        }}
+                        onCancel={() => setExpanded(null)}
+                      />
+                    </div>
+                  )}
+                </Fragment>
+              );
+            })}
+            {visibleTasks.length === 0 && (
+              <div className="grid-cell-full muted">
+                {tab === "completed" ? t("Няма завършени задачи.") : t("Няма активни задачи.")}
+              </div>
+            )}
+          </div>
           </div>
         </>
       )}

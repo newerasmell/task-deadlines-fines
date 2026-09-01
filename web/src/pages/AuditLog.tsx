@@ -52,8 +52,10 @@ export function AuditLog() {
               <tr>
                 <td data-label={t("Кога")}>{new Date(l.createdAt).toLocaleString(locale)}</td>
                 <td className="person-cell" data-label={t("Кой")}>
-                  <Avatar id={l.actor.id} name={l.actor.name} size={22} />
-                  {l.actor.name}
+                  <div className="person-cell-group">
+                    <Avatar id={l.actor.id} name={l.actor.name} size={22} />
+                    {l.actor.name}
+                  </div>
                 </td>
                 <td data-label={t("Действие")}>
                   <span className={actionBadgeClass[l.action]}>{t(ADMIN_ACTION_LABELS[l.action])}</span>

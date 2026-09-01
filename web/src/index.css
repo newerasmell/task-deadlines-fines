@@ -407,6 +407,60 @@ button.secondary:hover {
   background: #f3f4f6;
 }
 
+/* A CSS Grid "table": every item sharing a grid row gets the same row
+   height by construction and paints its own border-bottom independently —
+   there's no border-collapse resolution to go wrong, so separator lines
+   are always perfectly aligned no matter what a row's cells contain.
+   Unlike the plain <table> above (which needed .row-actions-group and
+   .person-cell-group precisely because a <td> with display:flex/grid
+   broke border-collapse), a grid cell can safely be display:flex itself. */
+.grid-table {
+  display: grid;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 0.9rem;
+  box-shadow: 0 1px 3px rgba(41, 47, 76, 0.05);
+}
+
+.grid-row {
+  display: contents;
+}
+
+.grid-table-header,
+.grid-cell {
+  min-width: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.grid-table-header {
+  background: #f9fafc;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.grid-row:hover > .grid-cell {
+  background: #fafbfd;
+}
+
+.grid-cell-actions {
+  justify-content: flex-end;
+}
+
+.grid-cell-full {
+  grid-column: 1 / -1;
+  display: block;
+}
+
 .cell-title {
   display: -webkit-box;
   -webkit-line-clamp: 1;
@@ -866,13 +920,17 @@ button.secondary:hover {
   margin: 4px 0 2px;
 }
 
-.person-cell {
+/* Same reasoning as .row-actions/.row-actions-group above: the <td> itself
+   must stay a plain table cell for border-collapse to line its border up
+   with the rest of the row, so the avatar+name flex layout lives on this
+   inner wrapper instead of directly on .person-cell. */
+.person-cell-group {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
 
-.person-cell .avatar {
+.person-cell-group .avatar {
   margin-top: 1px;
 }
 
@@ -1029,6 +1087,56 @@ button.secondary:hover {
   }
 
   .person-cell {
+    justify-content: flex-end;
+  }
+
+  .person-cell-group {
+    justify-content: flex-end;
+  }
+
+  /* Same card-view treatment as the plain <table> above, for the grid
+     version: each row becomes a stacked card, each cell a labeled line. */
+  .grid-table {
+    display: block;
+    grid-template-columns: none;
+  }
+
+  .grid-table-header {
+    display: none;
+  }
+
+  .grid-row {
+    display: block;
+    border-bottom: 8px solid var(--bg);
+    padding: 10px 0;
+  }
+
+  .grid-cell {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    text-align: right;
+    padding: 6px 14px;
+    border-bottom: none;
+  }
+
+  .grid-cell[data-label]::before {
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    text-align: left;
+    flex-shrink: 0;
+  }
+
+  .grid-cell:empty {
+    display: none;
+  }
+
+  .grid-cell-actions {
     justify-content: flex-end;
   }
 }
