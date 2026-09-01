@@ -38,7 +38,8 @@ export function Login() {
         </button>
       </div>
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>{t("Задачи, срокове и глоби")}</h1>
+        <h1>TODF</h1>
+        <p className="brand-subtitle-login">{t("Задачи · Owners · Срокове · Глоби")}</p>
         <p className="muted">{t("Влез в системата, за да управляваш задачи и глоби за екипа.")}</p>
         <label>
           {t("Имейл")}

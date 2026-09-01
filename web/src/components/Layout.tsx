@@ -14,7 +14,10 @@ export function Layout() {
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark" />
-          {t("Срокове & Глоби")}
+          <span className="brand-text">
+            TODF
+            <span className="brand-subtitle">{t("Задачи · Owners · Срокове · Глоби")}</span>
+          </span>
         </div>
         <nav>
           <NavLink to="/" end>

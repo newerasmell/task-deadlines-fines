@@ -4,7 +4,7 @@ export const en: Record<string, string> = {
   "Зареждане…": "Loading…",
 
   // Layout / navigation
-  "Срокове & Глоби": "Deadlines & Fines",
+  "Задачи · Owners · Срокове · Глоби": "Tasks · Owners · Deadlines · Fines",
   "Табло": "Board",
   "Задачи": "Tasks",
   "Повтарящи се": "Recurring",
@@ -18,7 +18,6 @@ export const en: Record<string, string> = {
 
   // Login
   "Грешен имейл или парола.": "Wrong email or password.",
-  "Задачи, срокове и глоби": "Tasks, Deadlines & Fines",
   "Влез в системата, за да управляваш задачи и глоби за екипа.": "Sign in to manage your team's tasks and fines.",
   "Имейл": "Email",
   "Парола": "Password",

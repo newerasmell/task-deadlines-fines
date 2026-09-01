@@ -1,4 +1,4 @@
-# Срокове и глоби (Task Deadlines & Fines)
+# TODF (Tasks · Owners · Deadlines · Fines)
 
 Система за управление на задачи, срокове и автоматични глоби при неоснователно
 закъснение, с известия по Telegram, Slack, Email/Gmail, WhatsApp, Viber и

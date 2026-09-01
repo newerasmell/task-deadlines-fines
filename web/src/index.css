@@ -56,11 +56,26 @@ body {
 }
 
 .brand-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
   background: linear-gradient(135deg, #0073ea, #a25ddc 60%, #ff642e);
   flex-shrink: 0;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+}
+
+.brand-subtitle {
+  font-size: 0.62rem;
+  font-weight: 500;
+  color: var(--sidebar-text);
+  text-transform: none;
+  letter-spacing: 0.01em;
 }
 
 .sidebar nav {
@@ -421,8 +436,15 @@ button.secondary:hover {
 }
 
 .auth-card h1 {
-  font-size: 1.25rem;
+  font-size: 1.6rem;
   margin-bottom: 0;
+  letter-spacing: 0.03em;
+}
+
+.brand-subtitle-login {
+  margin: -6px 0 4px;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .auth-card label {
