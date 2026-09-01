@@ -88,6 +88,7 @@ export const en: Record<string, string> = {
   "Обясни защо не одобряваш работата.": "Explain why you're not approving the work.",
   "подаде на": "submitted on",
   "Бележка при преглед (задължителна при отхвърляне)": "Review note (required when rejecting)",
+  "Прикачи файлове / снимки към прегледа (по избор, до 5 файла)": "Attach files / photos to the review (optional, up to 5 files)",
   "Одобри": "Approve",
   "Отхвърли": "Reject",
   "Заглавие": "Title",

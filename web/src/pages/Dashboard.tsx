@@ -91,6 +91,7 @@ export function Dashboard() {
           {overdue.length === 0 ? (
             <p className="muted">{t("Няма просрочени задачи в момента.")}</p>
           ) : (
+            <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -116,11 +117,13 @@ export function Dashboard() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
 
           {dueToday.length > 0 && (
             <>
               <h2>{t("С днешен срок")}</h2>
+              <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
@@ -142,6 +145,7 @@ export function Dashboard() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </>
           )}
         </div>

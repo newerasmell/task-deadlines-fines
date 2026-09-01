@@ -35,6 +35,7 @@ export function AuditLog() {
         )}
       </p>
 
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -84,6 +85,7 @@ export function AuditLog() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

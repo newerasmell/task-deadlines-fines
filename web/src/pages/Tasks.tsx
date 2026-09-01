@@ -198,6 +198,7 @@ export function Tasks() {
             </select>
           </div>
 
+          <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -327,6 +328,7 @@ export function Tasks() {
               )}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </div>
@@ -510,6 +512,7 @@ function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void })
   const locale = lang === "en" ? "en-GB" : "bg-BG";
   const [task, setTask] = useState<Task | null>(null);
   const [reviewNote, setReviewNote] = useState("");
+  const [files, setFiles] = useState<FileList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -522,14 +525,18 @@ function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void })
   const submission: TaskSubmission | undefined = task.submissions?.find((s) => s.reviewStatus === "PENDING");
   if (!submission) return <p className="muted">{t("Няма чакащо подаване.")}</p>;
 
+  function buildFormData(extra: Record<string, string>) {
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(extra)) formData.append(key, value);
+    if (files) Array.from(files).forEach((f) => formData.append("attachments", f));
+    return formData;
+  }
+
   async function approve() {
     setError(null);
     setSubmitting(true);
     try {
-      await api(`/tasks/${taskId}/submissions/${submission!.id}/approve`, {
-        method: "POST",
-        body: JSON.stringify({ reviewNote: reviewNote || undefined }),
-      });
+      await apiUpload(`/tasks/${taskId}/submissions/${submission!.id}/approve`, buildFormData(reviewNote ? { reviewNote } : {}));
       onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("Грешка"));
@@ -546,10 +553,7 @@ function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void })
     setError(null);
     setSubmitting(true);
     try {
-      await api(`/tasks/${taskId}/submissions/${submission!.id}/reject`, {
-        method: "POST",
-        body: JSON.stringify({ reviewNote }),
-      });
+      await apiUpload(`/tasks/${taskId}/submissions/${submission!.id}/reject`, buildFormData({ reviewNote }));
       onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("Грешка"));
@@ -559,7 +563,7 @@ function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void })
   }
 
   return (
-    <div className="card">
+    <div className="card form">
       <p>
         <strong>{submission.submittedBy.name}</strong> {t("подаде на")} {new Date(submission.createdAt).toLocaleString(locale)}
       </p>
@@ -584,6 +588,10 @@ function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void })
       <label>
         {t("Бележка при преглед (задължителна при отхвърляне)")}
         <textarea value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2} />
+      </label>
+      <label>
+        {t("Прикачи файлове / снимки към прегледа (по избор, до 5 файла)")}
+        <input type="file" accept="image/*,application/pdf" multiple onChange={(e) => setFiles(e.target.files)} />
       </label>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">

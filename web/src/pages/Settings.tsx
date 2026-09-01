@@ -45,6 +45,7 @@ export function Settings() {
         {t("Статусът показва дали сървърът има зададени данни за достъп (в")} <code>server/.env</code>
         {t(") за всеки канал. Виж README за стъпки как да настроиш всеки от тях.")}
       </p>
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -65,6 +66,7 @@ export function Settings() {
           ))}
         </tbody>
       </table>
+      </div>
 
       <div className="page-header">
         <h2>{t("Правила за глоби")}</h2>
@@ -92,6 +94,7 @@ export function Settings() {
         />
       )}
 
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -165,6 +168,7 @@ export function Settings() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

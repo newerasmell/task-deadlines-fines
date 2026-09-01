@@ -254,10 +254,6 @@ button.secondary:hover {
   margin-right: 6px;
 }
 
-.row-actions {
-  white-space: nowrap;
-}
-
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -313,6 +309,11 @@ button.secondary:hover {
   margin: -4px 0 8px;
 }
 
+.table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius);
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -322,6 +323,17 @@ button.secondary:hover {
   overflow: hidden;
   font-size: 0.9rem;
   box-shadow: 0 1px 3px rgba(41, 47, 76, 0.05);
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.row-actions .small-btn {
+  margin-right: 0;
+  flex-shrink: 0;
 }
 
 .table th,

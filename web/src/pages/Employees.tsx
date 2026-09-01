@@ -92,6 +92,7 @@ export function Employees() {
         </div>
       </div>
 
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -150,6 +151,7 @@ export function Employees() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

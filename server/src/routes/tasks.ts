@@ -303,7 +303,7 @@ function canReview(task: { ownerId: string | null }, userId: string, isAdmin: bo
   return isAdmin || task.ownerId === userId;
 }
 
-tasksRouter.post("/:id/submissions/:submissionId/approve", async (req, res) => {
+tasksRouter.post("/:id/submissions/:submissionId/approve", uploadAttachments.array("attachments", 5), async (req, res) => {
   const task = await prisma.task.findUnique({ where: { id: req.params.id }, include: { assignee: true } });
   if (!task) return res.status(404).json({ error: "Task not found" });
   if (!canReview(task, req.user!.sub, req.user!.role === "ADMIN")) {
@@ -313,12 +313,19 @@ tasksRouter.post("/:id/submissions/:submissionId/approve", async (req, res) => {
   if (!submission || submission.taskId !== task.id) return res.status(404).json({ error: "Submission not found" });
   if (submission.reviewStatus !== "PENDING") return res.status(400).json({ error: "Already reviewed" });
 
-  const reviewNote = typeof req.body?.reviewNote === "string" ? req.body.reviewNote : undefined;
+  const reviewNote = typeof req.body?.reviewNote === "string" && req.body.reviewNote ? req.body.reviewNote : undefined;
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
   const now = new Date();
 
   await prisma.taskSubmission.update({
     where: { id: submission.id },
-    data: { reviewStatus: "APPROVED", reviewedById: req.user!.sub, reviewedAt: now, reviewNote },
+    data: {
+      reviewStatus: "APPROVED",
+      reviewedById: req.user!.sub,
+      reviewedAt: now,
+      reviewNote,
+      attachments: { create: files.map((f) => ({ kind: "REVIEW", filename: f.filename, originalName: f.originalname, mimeType: f.mimetype, size: f.size })) },
+    },
   });
   await prisma.task.update({ where: { id: task.id }, data: { status: "DONE", completedAt: now } });
 
@@ -336,7 +343,7 @@ tasksRouter.post("/:id/submissions/:submissionId/approve", async (req, res) => {
 
 const rejectSchema = z.object({ reviewNote: z.string().min(1) });
 
-tasksRouter.post("/:id/submissions/:submissionId/reject", async (req, res) => {
+tasksRouter.post("/:id/submissions/:submissionId/reject", uploadAttachments.array("attachments", 5), async (req, res) => {
   const task = await prisma.task.findUnique({ where: { id: req.params.id }, include: { assignee: true } });
   if (!task) return res.status(404).json({ error: "Task not found" });
   if (!canReview(task, req.user!.sub, req.user!.role === "ADMIN")) {
@@ -348,11 +355,18 @@ tasksRouter.post("/:id/submissions/:submissionId/reject", async (req, res) => {
 
   const parsed = rejectSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
 
   const now = new Date();
   await prisma.taskSubmission.update({
     where: { id: submission.id },
-    data: { reviewStatus: "REJECTED", reviewedById: req.user!.sub, reviewedAt: now, reviewNote: parsed.data.reviewNote },
+    data: {
+      reviewStatus: "REJECTED",
+      reviewedById: req.user!.sub,
+      reviewedAt: now,
+      reviewNote: parsed.data.reviewNote,
+      attachments: { create: files.map((f) => ({ kind: "REVIEW", filename: f.filename, originalName: f.originalname, mimeType: f.mimetype, size: f.size })) },
+    },
   });
   const newStatus = now > task.deadline ? "OVERDUE" : "IN_PROGRESS";
   await prisma.task.update({ where: { id: task.id }, data: { status: newStatus } });

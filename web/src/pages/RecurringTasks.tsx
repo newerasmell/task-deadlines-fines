@@ -50,6 +50,7 @@ export function RecurringTasks() {
         />
       )}
 
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -94,6 +95,7 @@ export function RecurringTasks() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

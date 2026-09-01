@@ -81,6 +81,7 @@ export function Fines() {
         />
       )}
 
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -135,6 +136,7 @@ export function Fines() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
