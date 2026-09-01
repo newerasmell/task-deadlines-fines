@@ -12,6 +12,10 @@ export const env = {
   port: Number(process.env.PORT ?? 4000),
   jwtSecret: req("JWT_SECRET", "dev-secret-change-me"),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
+  // Timezone used to format dates/times in notification text — the server
+  // itself typically runs in UTC (e.g. on Render), so without this every
+  // notification would show times hours off from the team's actual clock.
+  timezone: process.env.TZ_NAME ?? "Europe/Sofia",
   schedulerCron: process.env.SCHEDULER_CRON ?? "*/5 * * * *",
   reminderHoursBefore: Number(process.env.REMINDER_HOURS_BEFORE ?? 24),
   reminderFinalHoursBefore: Number(process.env.REMINDER_FINAL_HOURS_BEFORE ?? 4),

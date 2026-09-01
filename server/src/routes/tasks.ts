@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response, Router } from "express";
 import fs from "fs";
 import { z } from "zod";
+import { formatDateTime } from "../lib/dateFormat";
 import { logAction } from "../lib/auditLog";
 import { verifyToken } from "../lib/auth";
 import { env } from "../lib/env";
@@ -194,7 +195,7 @@ tasksRouter.post("/", async (req, res) => {
     target,
     {
       subject: `Нова задача: ${task.title}`,
-      body: `Получи нова задача със срок ${task.deadline.toLocaleString("bg-BG")}.\n\n${task.description ?? ""}\n\nЗакъснението без основателна причина води до автоматична глоба.`,
+      body: `Получи нова задача със срок ${formatDateTime(task.deadline)}.\n\n${task.description ?? ""}\n\nЗакъснението без основателна причина води до автоматична глоба.`,
       deadline: task.deadline,
     },
     { taskId: task.id }
@@ -204,7 +205,7 @@ tasksRouter.post("/", async (req, res) => {
       toNotificationTarget(task.owner),
       {
         subject: `Назначен си като преглеждащ: ${task.title}`,
-        body: `Ти си Owner (преглеждащ) на задача "${task.title}" (изпълнител: ${assignee.name}, срок ${task.deadline.toLocaleString("bg-BG")}). Ще трябва да прегледаш работата, след като бъде подадена.`,
+        body: `Ти си Owner (преглеждащ) на задача "${task.title}" (изпълнител: ${assignee.name}, срок ${formatDateTime(task.deadline)}). Ще трябва да прегледаш работата, след като бъде подадена.`,
         deadline: task.deadline,
       },
       { taskId: task.id }
@@ -212,7 +213,7 @@ tasksRouter.post("/", async (req, res) => {
   }
   await broadcastToAdmins({
     subject: "Нова задача създадена",
-    body: `"${task.title}" → ${assignee.name}, срок ${task.deadline.toLocaleString("bg-BG")}.`,
+    body: `"${task.title}" → ${assignee.name}, срок ${formatDateTime(task.deadline)}.`,
   });
   await logAction(req.user!.sub, "TASK_CREATED", "Task", task.id, `Създадена задача "${task.title}" → ${assignee.name}`);
 
@@ -274,7 +275,7 @@ tasksRouter.patch("/:id", async (req, res) => {
         toNotificationTarget(newOwner),
         {
           subject: `Назначен си като преглеждащ: ${task.title}`,
-          body: `Ти си Owner (преглеждащ) на задача "${task.title}" (изпълнител: ${assignee.name}, срок ${task.deadline.toLocaleString("bg-BG")}). Ще трябва да прегледаш работата, след като бъде подадена.`,
+          body: `Ти си Owner (преглеждащ) на задача "${task.title}" (изпълнител: ${assignee.name}, срок ${formatDateTime(task.deadline)}). Ще трябва да прегледаш работата, след като бъде подадена.`,
           deadline: task.deadline,
         },
         { taskId: task.id }

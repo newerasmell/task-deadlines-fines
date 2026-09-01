@@ -1,3 +1,4 @@
+import { formatDateTime } from "../lib/dateFormat";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
@@ -57,7 +58,7 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
         toNotificationTarget(template.assignee),
         {
           subject: `Нова задача: ${task.title}`,
-          body: `Повтаряща се задача — срок ${deadline.toLocaleString("bg-BG")}.\n\n${task.description ?? ""}`,
+          body: `Повтаряща се задача — срок ${formatDateTime(deadline)}.\n\n${task.description ?? ""}`,
           deadline,
         },
         { taskId: task.id }
@@ -67,7 +68,7 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
           toNotificationTarget(template.owner),
           {
             subject: `Назначен си като преглеждащ: ${task.title}`,
-            body: `Ти си Owner (преглеждащ) на повтаряща се задача "${task.title}" (изпълнител: ${template.assignee.name}, срок ${deadline.toLocaleString("bg-BG")}).`,
+            body: `Ти си Owner (преглеждащ) на повтаряща се задача "${task.title}" (изпълнител: ${template.assignee.name}, срок ${formatDateTime(deadline)}).`,
             deadline,
           },
           { taskId: task.id }
@@ -75,7 +76,7 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
       }
       await broadcastToAdmins({
         subject: "Нова повтаряща се задача",
-        body: `"${task.title}" → ${template.assignee.name}, срок ${deadline.toLocaleString("bg-BG")}.`,
+        body: `"${task.title}" → ${template.assignee.name}, срок ${formatDateTime(deadline)}.`,
       });
     }
   }

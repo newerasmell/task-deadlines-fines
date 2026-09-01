@@ -60,11 +60,13 @@ export function AuditLog() {
                 </td>
                 <td data-label={t("Какво")}>{l.summary}</td>
                 <td className="row-actions">
-                  {l.details && (
-                    <button className="small-btn" onClick={() => setExpandedId(expandedId === l.id ? null : l.id)}>
-                      {expandedId === l.id ? t("Скрий") : t("Детайли")}
-                    </button>
-                  )}
+                  <div className="row-actions-group">
+                    {l.details && (
+                      <button className="small-btn" onClick={() => setExpandedId(expandedId === l.id ? null : l.id)}>
+                        {expandedId === l.id ? t("Скрий") : t("Детайли")}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
               {expandedId === l.id && l.details && (

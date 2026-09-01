@@ -1,3 +1,4 @@
+import { formatDateTime } from "../lib/dateFormat";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
@@ -68,7 +69,7 @@ async function sendUpcomingReminders(now: Date): Promise<void> {
         target,
         {
           subject: `Последно напомняне: ${task.title}`,
-          body: `Остават под ${env.reminderFinalHoursBefore} часа до срока (${task.deadline.toLocaleString("bg-BG")}). Завърши задачата навреме, за да избегнеш глоба.`,
+          body: `Остават под ${env.reminderFinalHoursBefore} часа до срока (${formatDateTime(task.deadline)}). Завърши задачата навреме, за да избегнеш глоба.`,
           deadline: task.deadline,
         },
         { taskId: task.id }
@@ -82,7 +83,7 @@ async function sendUpcomingReminders(now: Date): Promise<void> {
         target,
         {
           subject: `Наближава срок: ${task.title}`,
-          body: `Срокът е ${task.deadline.toLocaleString("bg-BG")}. Завърши задачата навреме, за да избегнеш глоба.`,
+          body: `Срокът е ${formatDateTime(task.deadline)}. Завърши задачата навреме, за да избегнеш глоба.`,
           deadline: task.deadline,
         },
         { taskId: task.id }
@@ -98,7 +99,7 @@ async function sendUpcomingReminders(now: Date): Promise<void> {
           target,
           {
             subject: `Все още незавършена: ${task.title}`,
-            body: `Напомняне за задача с по-дълъг срок — краен срок ${task.deadline.toLocaleString("bg-BG")}.`,
+            body: `Напомняне за задача с по-дълъг срок — краен срок ${formatDateTime(task.deadline)}.`,
             deadline: task.deadline,
           },
           { taskId: task.id }

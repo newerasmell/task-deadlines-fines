@@ -100,21 +100,23 @@ export function RecurringTasks() {
                   <span className={tpl.active ? "badge badge-success" : "badge"}>{tpl.active ? t("Да") : t("Не")}</span>
                 </td>
                 <td className="row-actions">
-                  <button
-                    className="small-btn"
-                    onClick={() => {
-                      setEditingId(editingId === tpl.id ? null : tpl.id);
-                      setShowForm(false);
-                    }}
-                  >
-                    {editingId === tpl.id ? t("Затвори") : t("Редактирай")}
-                  </button>
-                  <button className="small-btn" onClick={() => toggleActive(tpl)}>
-                    {tpl.active ? t("Спри") : t("Активирай")}
-                  </button>
-                  <button className="small-btn" onClick={() => deleteTemplate(tpl)}>
-                    {t("Изтрий")}
-                  </button>
+                  <div className="row-actions-group">
+                    <button
+                      className="small-btn"
+                      onClick={() => {
+                        setEditingId(editingId === tpl.id ? null : tpl.id);
+                        setShowForm(false);
+                      }}
+                    >
+                      {editingId === tpl.id ? t("Затвори") : t("Редактирай")}
+                    </button>
+                    <button className="small-btn" onClick={() => toggleActive(tpl)}>
+                      {tpl.active ? t("Спри") : t("Активирай")}
+                    </button>
+                    <button className="small-btn" onClick={() => deleteTemplate(tpl)}>
+                      {t("Изтрий")}
+                    </button>
+                  </div>
                 </td>
               </tr>
               {editingId === tpl.id && (

@@ -145,21 +145,23 @@ export function Settings() {
                 </td>
                 {isSuperAdmin && (
                   <td className="row-actions">
-                    <button
-                      className="small-btn"
-                      onClick={() => {
-                        setEditingId(editingId === r.id ? null : r.id);
-                        setShowForm(false);
-                      }}
-                    >
-                      {editingId === r.id ? t("Затвори") : t("Редактирай")}
-                    </button>
-                    <button className="small-btn" onClick={() => toggleActive(r)}>
-                      {r.active ? t("Деактивирай") : t("Активирай")}
-                    </button>
-                    <button className="small-btn" onClick={() => deleteRule(r)}>
-                      {t("Изтрий")}
-                    </button>
+                    <div className="row-actions-group">
+                      <button
+                        className="small-btn"
+                        onClick={() => {
+                          setEditingId(editingId === r.id ? null : r.id);
+                          setShowForm(false);
+                        }}
+                      >
+                        {editingId === r.id ? t("Затвори") : t("Редактирай")}
+                      </button>
+                      <button className="small-btn" onClick={() => toggleActive(r)}>
+                        {r.active ? t("Деактивирай") : t("Активирай")}
+                      </button>
+                      <button className="small-btn" onClick={() => deleteRule(r)}>
+                        {t("Изтрий")}
+                      </button>
+                    </div>
                   </td>
                 )}
               </tr>

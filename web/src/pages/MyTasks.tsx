@@ -93,16 +93,18 @@ export function MyTasks() {
                     </td>
                     <td data-label={t("Глоби")}>{fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}</td>
                     <td className="row-actions">
-                      {tk.status === "PENDING" && (
-                        <button className="small-btn" onClick={() => startWork(tk.id)}>
-                          {t("Започни")}
-                        </button>
-                      )}
-                      {canSubmit && (
-                        <button className="small-btn" onClick={() => setSubmittingId(isSubmitting ? null : tk.id)}>
-                          {isSubmitting ? t("Затвори") : t("Подай за преглед")}
-                        </button>
-                      )}
+                      <div className="row-actions-group">
+                        {tk.status === "PENDING" && (
+                          <button className="small-btn" onClick={() => startWork(tk.id)}>
+                            {t("Започни")}
+                          </button>
+                        )}
+                        {canSubmit && (
+                          <button className="small-btn" onClick={() => setSubmittingId(isSubmitting ? null : tk.id)}>
+                            {isSubmitting ? t("Затвори") : t("Подай за преглед")}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {isSubmitting && (

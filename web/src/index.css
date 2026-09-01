@@ -325,6 +325,16 @@ button.secondary:hover {
   box-shadow: 0 1px 3px rgba(41, 47, 76, 0.05);
 }
 
+/* The <td> itself must stay a plain table-cell (its default display) so
+   border-collapse can merge its border with the rest of the row — giving
+   it display:flex/grid directly used to leave a stray, misaligned border
+   fragment on that cell since Chrome can't collapse a non-table-cell box
+   into the shared row border. The layout (grid, 2 columns — see below)
+   lives on this inner wrapper instead, one level down. */
+.row-actions {
+  min-width: 160px;
+}
+
 /* A grid, not flex-wrap: with flex-wrap, a wide label like "Подай за
    преглед" can't fit next to a neighbor and gets forced onto its own line,
    so a task with 3-4 available actions could stack 3 lines tall while one
@@ -332,17 +342,69 @@ button.secondary:hover {
    each other. A fixed 2-column grid always wraps at exactly 2 buttons per
    line regardless of label width, capping every row at the same 2 lines
    the description column already reserves. */
-.row-actions {
+.row-actions-group {
   display: grid;
   grid-template-columns: repeat(2, auto);
   gap: 6px 8px;
   justify-content: end;
   align-content: start;
-  min-width: 160px;
 }
 
-.row-actions .small-btn {
+.row-actions-group .small-btn {
   margin-right: 0;
+}
+
+.row-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.row-menu-trigger {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.row-menu-trigger:hover {
+  background: #f3f4f6;
+}
+
+.row-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  padding: 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 20px rgba(41, 47, 76, 0.14);
+}
+
+.row-menu-item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.row-menu-item:hover {
+  background: #f3f4f6;
 }
 
 .cell-title {
@@ -945,7 +1007,8 @@ button.secondary:hover {
   }
 
   .table td:empty,
-  .table td.row-actions:empty {
+  .table td.row-actions:empty,
+  .table td.row-actions:has(.row-actions-group:empty) {
     display: none;
   }
 

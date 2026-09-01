@@ -113,16 +113,18 @@ export function Fines() {
               </td>
               {isAdmin && (
                 <td className="row-actions">
-                  {f.status === "ACTIVE" && (
-                    <>
-                      <button className="small-btn" onClick={() => setWaiving(f)}>
-                        {t("Анулирай")}
-                      </button>
-                      <button className="small-btn" onClick={() => markPaid(f.id)}>
-                        {t("Платена")}
-                      </button>
-                    </>
-                  )}
+                  <div className="row-actions-group">
+                    {f.status === "ACTIVE" && (
+                      <>
+                        <button className="small-btn" onClick={() => setWaiving(f)}>
+                          {t("Анулирай")}
+                        </button>
+                        <button className="small-btn" onClick={() => markPaid(f.id)}>
+                          {t("Платена")}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </td>
               )}
             </tr>

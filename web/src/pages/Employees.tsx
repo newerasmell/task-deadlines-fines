@@ -150,17 +150,19 @@ export function Employees() {
                 <span className={u.active ? "badge badge-success" : "badge"}>{u.active ? t("Активен") : t("Деактивиран")}</span>
               </td>
               <td className="row-actions">
-                <button className="small-btn" onClick={() => setEditing(u)}>
-                  {t("Редактирай")}
-                </button>
-                <button className="small-btn" onClick={() => testSend(u.id)}>
-                  {t("Тест известие")}
-                </button>
-                {u.active && (
-                  <button className="small-btn" onClick={() => deactivate(u.id)}>
-                    {t("Деактивирай")}
+                <div className="row-actions-group">
+                  <button className="small-btn" onClick={() => setEditing(u)}>
+                    {t("Редактирай")}
                   </button>
-                )}
+                  <button className="small-btn" onClick={() => testSend(u.id)}>
+                    {t("Тест известие")}
+                  </button>
+                  {u.active && (
+                    <button className="small-btn" onClick={() => deactivate(u.id)}>
+                      {t("Деактивирай")}
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

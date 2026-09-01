@@ -5,6 +5,7 @@ import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
 import type { Priority, Task, TaskSubmission, User } from "../api/types";
 import { Avatar } from "../components/Avatar";
 import { IconSearch } from "../components/icons";
+import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { colorForId } from "../lib/colors";
@@ -255,31 +256,27 @@ export function Tasks() {
                       </td>
                       <td data-label={t("Глоби")}>{fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}</td>
                       <td className="row-actions">
-                        {isAssignee && tk.status === "PENDING" && (
-                          <button className="small-btn" onClick={() => startWork(tk.id)}>
-                            {t("Започни")}
-                          </button>
-                        )}
-                        {canSubmit && (
-                          <button className="small-btn" onClick={() => toggleExpanded(tk.id, "submit")}>
-                            {isExpanded && expanded?.mode === "submit" ? t("Затвори") : t("Подай за преглед")}
-                          </button>
-                        )}
-                        {canReview && (
-                          <button className="small-btn" onClick={() => toggleExpanded(tk.id, "review")}>
-                            {isExpanded && expanded?.mode === "review" ? t("Затвори") : t("Прегледай")}
-                          </button>
-                        )}
-                        {isAdmin && !locked && (
-                          <button className="small-btn" onClick={() => toggleExpanded(tk.id, "edit")}>
-                            {isExpanded && expanded?.mode === "edit" ? t("Затвори") : t("Редактирай")}
-                          </button>
-                        )}
-                        {isAdmin && !locked && (
-                          <button className="small-btn" onClick={() => deleteTask(tk)}>
-                            {t("Изтрий")}
-                          </button>
-                        )}
+                        <RowMenu label={t("Действия")}>
+                          {isAssignee && tk.status === "PENDING" && (
+                            <RowMenuItem onClick={() => startWork(tk.id)}>{t("Започни")}</RowMenuItem>
+                          )}
+                          {canSubmit && (
+                            <RowMenuItem onClick={() => toggleExpanded(tk.id, "submit")}>
+                              {isExpanded && expanded?.mode === "submit" ? t("Затвори") : t("Подай за преглед")}
+                            </RowMenuItem>
+                          )}
+                          {canReview && (
+                            <RowMenuItem onClick={() => toggleExpanded(tk.id, "review")}>
+                              {isExpanded && expanded?.mode === "review" ? t("Затвори") : t("Прегледай")}
+                            </RowMenuItem>
+                          )}
+                          {isAdmin && !locked && (
+                            <RowMenuItem onClick={() => toggleExpanded(tk.id, "edit")}>
+                              {isExpanded && expanded?.mode === "edit" ? t("Затвори") : t("Редактирай")}
+                            </RowMenuItem>
+                          )}
+                          {isAdmin && !locked && <RowMenuItem onClick={() => deleteTask(tk)}>{t("Изтрий")}</RowMenuItem>}
+                        </RowMenu>
                       </td>
                     </tr>
                     {isExpanded && expanded?.mode === "submit" && (

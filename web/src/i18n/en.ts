@@ -73,6 +73,7 @@ export const en: Record<string, string> = {
   "Прегледай": "Review",
   "Редактирай": "Edit",
   "Изтрий": "Delete",
+  "Действия": "Actions",
   'Наистина ли да изтрия "{title}"? Действието се записва в дневника.':
     'Delete "{title}"? This action is recorded in the audit log.',
   "Няма завършени задачи.": "No completed tasks.",
