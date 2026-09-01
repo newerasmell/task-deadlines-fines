@@ -794,8 +794,12 @@ button.secondary:hover {
 
 .person-cell {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+}
+
+.person-cell .avatar {
+  margin-top: 1px;
 }
 
 .hamburger {
