@@ -76,9 +76,13 @@ taskTemplatesRouter.patch("/:id", requireAdmin, async (req, res) => {
   }
 });
 
+// A hard delete, unlike the active toggle above (which just pauses future
+// occurrences) — already-spawned Task rows keep their own copied data and
+// simply lose their back-reference (templateId set null), so nothing about
+// past occurrences is lost.
 taskTemplatesRouter.delete("/:id", requireAdmin, async (req, res) => {
   try {
-    await prisma.recurringTaskTemplate.update({ where: { id: req.params.id }, data: { active: false } });
+    await prisma.recurringTaskTemplate.delete({ where: { id: req.params.id } });
     res.status(204).send();
   } catch {
     res.status(404).json({ error: "Not found" });

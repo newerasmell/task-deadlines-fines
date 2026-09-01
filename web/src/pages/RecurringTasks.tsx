@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
 import { PRIORITY_LABELS, WEEKDAY_LABELS, WEEKDAYS } from "../api/types";
@@ -11,6 +11,7 @@ export function RecurringTasks() {
   const [templates, setTemplates] = useState<RecurringTaskTemplate[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function refresh() {
@@ -26,13 +27,31 @@ export function RecurringTasks() {
     refresh();
   }
 
+  async function deleteTemplate(tpl: RecurringTaskTemplate) {
+    if (
+      !window.confirm(
+        t('Наистина ли да изтрия шаблона "{title}"? Вече създадените задачи от него остават непроменени.', { title: tpl.title })
+      )
+    )
+      return;
+    await api(`/task-templates/${tpl.id}`, { method: "DELETE" });
+    refresh();
+  }
+
   if (loading) return <p>{t("Зареждане…")}</p>;
 
   return (
     <div>
       <div className="page-header">
         <h1>{t("Повтарящи се задачи")}</h1>
-        <button onClick={() => setShowForm((s) => !s)}>{showForm ? t("Затвори") : t("+ Нов шаблон")}</button>
+        <button
+          onClick={() => {
+            setShowForm((s) => !s);
+            setEditingId(null);
+          }}
+        >
+          {showForm ? t("Затвори") : t("+ Нов шаблон")}
+        </button>
       </div>
       <p className="muted">
         {t(
@@ -66,25 +85,54 @@ export function RecurringTasks() {
         </thead>
         <tbody>
           {templates.map((tpl) => (
-            <tr key={tpl.id}>
-              <td data-label={t("Заглавие")}>{tpl.title}</td>
-              <td className="person-cell" data-label={t("Служител")}>
-                <Avatar id={tpl.assignee.id} name={tpl.assignee.name} size={22} />
-                {tpl.assignee.name}
-              </td>
-              <td data-label="Owner">{tpl.owner?.name ?? "—"}</td>
-              <td data-label={t("Дни")}>{tpl.daysOfWeek.split(",").map((d) => t(WEEKDAY_LABELS[d as Weekday])).join(", ")}</td>
-              <td data-label={t("Час")}>{tpl.timeOfDay}</td>
-              <td data-label={t("Приоритет")}>{t(PRIORITY_LABELS[tpl.priority])}</td>
-              <td data-label={t("Активен")}>
-                <span className={tpl.active ? "badge badge-success" : "badge"}>{tpl.active ? t("Да") : t("Не")}</span>
-              </td>
-              <td className="row-actions">
-                <button className="small-btn" onClick={() => toggleActive(tpl)}>
-                  {tpl.active ? t("Спри") : t("Активирай")}
-                </button>
-              </td>
-            </tr>
+            <Fragment key={tpl.id}>
+              <tr>
+                <td data-label={t("Заглавие")}>{tpl.title}</td>
+                <td className="person-cell" data-label={t("Служител")}>
+                  <Avatar id={tpl.assignee.id} name={tpl.assignee.name} size={22} />
+                  {tpl.assignee.name}
+                </td>
+                <td data-label="Owner">{tpl.owner?.name ?? "—"}</td>
+                <td data-label={t("Дни")}>{tpl.daysOfWeek.split(",").map((d) => t(WEEKDAY_LABELS[d as Weekday])).join(", ")}</td>
+                <td data-label={t("Час")}>{tpl.timeOfDay}</td>
+                <td data-label={t("Приоритет")}>{t(PRIORITY_LABELS[tpl.priority])}</td>
+                <td data-label={t("Активен")}>
+                  <span className={tpl.active ? "badge badge-success" : "badge"}>{tpl.active ? t("Да") : t("Не")}</span>
+                </td>
+                <td className="row-actions">
+                  <button
+                    className="small-btn"
+                    onClick={() => {
+                      setEditingId(editingId === tpl.id ? null : tpl.id);
+                      setShowForm(false);
+                    }}
+                  >
+                    {editingId === tpl.id ? t("Затвори") : t("Редактирай")}
+                  </button>
+                  <button className="small-btn" onClick={() => toggleActive(tpl)}>
+                    {tpl.active ? t("Спри") : t("Активирай")}
+                  </button>
+                  <button className="small-btn" onClick={() => deleteTemplate(tpl)}>
+                    {t("Изтрий")}
+                  </button>
+                </td>
+              </tr>
+              {editingId === tpl.id && (
+                <tr>
+                  <td colSpan={8}>
+                    <TemplateForm
+                      template={tpl}
+                      employees={employees}
+                      onSaved={() => {
+                        setEditingId(null);
+                        refresh();
+                      }}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
           {templates.length === 0 && (
             <tr>
@@ -100,19 +148,30 @@ export function RecurringTasks() {
   );
 }
 
-function TemplateForm({ employees, onSaved }: { employees: User[]; onSaved: () => void }) {
+function TemplateForm({
+  template,
+  employees,
+  onSaved,
+  onCancel,
+}: {
+  template?: RecurringTaskTemplate;
+  employees: User[];
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
   const { t } = useI18n();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [assigneeId, setAssigneeId] = useState(employees[0]?.id ?? "");
-  const [ownerId, setOwnerId] = useState("");
-  const [priority, setPriority] = useState<Priority>("MEDIUM");
-  const [days, setDays] = useState<Weekday[]>([]);
-  const [timeOfDay, setTimeOfDay] = useState("17:00");
+  const isEdit = Boolean(template);
+  const [title, setTitle] = useState(template?.title ?? "");
+  const [description, setDescription] = useState(template?.description ?? "");
+  const [assigneeId, setAssigneeId] = useState(template?.assigneeId ?? employees[0]?.id ?? "");
+  const [ownerId, setOwnerId] = useState(template?.ownerId ?? "");
+  const [priority, setPriority] = useState<Priority>(template?.priority ?? "MEDIUM");
+  const [days, setDays] = useState<Weekday[]>((template?.daysOfWeek.split(",").filter(Boolean) as Weekday[]) ?? []);
+  const [timeOfDay, setTimeOfDay] = useState(template?.timeOfDay ?? "17:00");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const employeeOptions = employees.filter((e) => e.active);
+  const employeeOptions = employees.filter((e) => e.active || e.id === assigneeId || e.id === ownerId);
 
   function toggleDay(day: Weekday) {
     setDays((cur) => (cur.includes(day) ? cur.filter((d) => d !== day) : [...cur, day]));
@@ -131,18 +190,20 @@ function TemplateForm({ employees, onSaved }: { employees: User[]; onSaved: () =
     }
     setSubmitting(true);
     try {
-      await api("/task-templates", {
-        method: "POST",
-        body: JSON.stringify({
-          title,
-          description: description || undefined,
-          assigneeId,
-          ownerId: ownerId || undefined,
-          priority,
-          daysOfWeek: days,
-          timeOfDay,
-        }),
-      });
+      const body = {
+        title,
+        description: description || undefined,
+        assigneeId,
+        ownerId: ownerId || undefined,
+        priority,
+        daysOfWeek: days,
+        timeOfDay,
+      };
+      if (isEdit) {
+        await api(`/task-templates/${template!.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await api("/task-templates", { method: "POST", body: JSON.stringify(body) });
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("Грешка"));
@@ -213,9 +274,16 @@ function TemplateForm({ employees, onSaved }: { employees: User[]; onSaved: () =
         </div>
       </label>
       {error && <div className="error-text">{error}</div>}
-      <button type="submit" disabled={submitting}>
-        {submitting ? t("Създаване…") : t("Създай шаблон")}
-      </button>
+      <div className="form-row">
+        <button type="submit" disabled={submitting}>
+          {submitting ? t("Записване…") : isEdit ? t("Запази промените") : t("Създай шаблон")}
+        </button>
+        {onCancel && (
+          <button type="button" className="secondary" onClick={onCancel}>
+            {t("Отказ")}
+          </button>
+        )}
+      </div>
     </form>
   );
 }

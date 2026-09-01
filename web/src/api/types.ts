@@ -102,7 +102,9 @@ export interface RecurringTaskTemplate {
   id: string;
   title: string;
   description: string | null;
+  assigneeId: string;
   assignee: UserRef;
+  ownerId: string | null;
   owner: UserRef | null;
   priority: Priority;
   daysOfWeek: string;

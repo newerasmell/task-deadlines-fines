@@ -197,6 +197,8 @@ export const en: Record<string, string> = {
   "Дни от седмицата": "Days of the week",
   "Създаване…": "Creating…",
   "Създай шаблон": "Create template",
+  'Наистина ли да изтрия шаблона "{title}"? Вече създадените задачи от него остават непроменени.':
+    'Delete the template "{title}"? Tasks it already created stay unchanged.',
 
   // Weekday labels
   "Пон": "Mon",

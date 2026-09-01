@@ -94,7 +94,7 @@ model Task {
   owner         User?      @relation("OwnedTasks", fields: [ownerId], references: [id])
 
   templateId    String?
-  template      RecurringTaskTemplate? @relation(fields: [templateId], references: [id])
+  template      RecurringTaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   deadline      DateTime
   priority      String     @default("MEDIUM")
