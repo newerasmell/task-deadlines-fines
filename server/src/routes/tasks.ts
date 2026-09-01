@@ -126,7 +126,7 @@ tasksRouter.post("/", requireAdmin, async (req, res) => {
 
   const task = await prisma.task.create({
     data: { ...parsed.data, createdById: req.user!.sub },
-    include: { assignee: true },
+    include: { assignee: true, owner: true },
   });
 
   const target = toNotificationTarget(assignee);
@@ -139,6 +139,17 @@ tasksRouter.post("/", requireAdmin, async (req, res) => {
     },
     { taskId: task.id }
   );
+  if (task.owner) {
+    await dispatchToAllChannels(
+      toNotificationTarget(task.owner),
+      {
+        subject: `Назначен си като преглеждащ: ${task.title}`,
+        body: `Ти си Owner (преглеждащ) на задача "${task.title}" (изпълнител: ${assignee.name}, срок ${task.deadline.toLocaleString("bg-BG")}). Ще трябва да прегледаш работата, след като бъде подадена.`,
+        deadline: task.deadline,
+      },
+      { taskId: task.id }
+    );
+  }
   await broadcastToAdmins({
     subject: "Нова задача създадена",
     body: `"${task.title}" → ${assignee.name}, срок ${task.deadline.toLocaleString("bg-BG")}.`,
@@ -182,6 +193,22 @@ tasksRouter.patch("/:id", async (req, res) => {
   }
 
   const task = await prisma.task.update({ where: { id: req.params.id }, data });
+
+  if (isAdmin && data.ownerId && data.ownerId !== existing.ownerId) {
+    const newOwner = await prisma.user.findUnique({ where: { id: data.ownerId as string } });
+    const assignee = await prisma.user.findUnique({ where: { id: task.assigneeId } });
+    if (newOwner && assignee) {
+      await dispatchToAllChannels(
+        toNotificationTarget(newOwner),
+        {
+          subject: `Назначен си като преглеждащ: ${task.title}`,
+          body: `Ти си Owner (преглеждащ) на задача "${task.title}" (изпълнител: ${assignee.name}, срок ${task.deadline.toLocaleString("bg-BG")}). Ще трябва да прегледаш работата, след като бъде подадена.`,
+          deadline: task.deadline,
+        },
+        { taskId: task.id }
+      );
+    }
+  }
 
   if (isAdmin) {
     const changed = Object.fromEntries(

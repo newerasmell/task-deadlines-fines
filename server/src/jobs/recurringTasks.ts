@@ -18,7 +18,7 @@ const WEEKDAY_CODES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const
 export async function spawnRecurringOccurrences(now: Date): Promise<void> {
   const templates = await prisma.recurringTaskTemplate.findMany({
     where: { active: true },
-    include: { assignee: true },
+    include: { assignee: true, owner: true },
   });
 
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
@@ -62,6 +62,17 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
         },
         { taskId: task.id }
       );
+      if (template.owner) {
+        await dispatchToAllChannels(
+          toNotificationTarget(template.owner),
+          {
+            subject: `Назначен си като преглеждащ: ${task.title}`,
+            body: `Ти си Owner (преглеждащ) на повтаряща се задача "${task.title}" (изпълнител: ${template.assignee.name}, срок ${deadline.toLocaleString("bg-BG")}).`,
+            deadline,
+          },
+          { taskId: task.id }
+        );
+      }
       await broadcastToAdmins({
         subject: "Нова повтаряща се задача",
         body: `"${task.title}" → ${template.assignee.name}, срок ${deadline.toLocaleString("bg-BG")}.`,

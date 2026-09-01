@@ -27,30 +27,79 @@ export async function runDeadlineScan(now: Date = new Date()): Promise<void> {
   await handleOverdueReviews(now);
 }
 
+/**
+ * Three independent reminder tiers for an open task's assignee:
+ *  - a repeating "still open" nudge every REMINDER_PERIODIC_HOURS (default
+ *    48h), only for tasks whose total deadline-createdAt span is longer than
+ *    that period, and only while more than REMINDER_HOURS_BEFORE remains;
+ *  - a one-off reminder once REMINDER_HOURS_BEFORE (default 24h) remain;
+ *  - a one-off final reminder once REMINDER_FINAL_HOURS_BEFORE (default 4h)
+ *    remain.
+ * The 24h and 4h reminders each fire exactly once per task (tracked via
+ * their own *SentAt column); the periodic one keeps firing on its cadence
+ * until the task enters the 24h window, where the one-off reminder takes over.
+ */
 async function sendUpcomingReminders(now: Date): Promise<void> {
-  const reminderThreshold = new Date(now.getTime() + env.reminderHoursBefore * 60 * 60 * 1000);
+  const standardMs = env.reminderHoursBefore * 60 * 60 * 1000;
+  const finalMs = env.reminderFinalHoursBefore * 60 * 60 * 1000;
+  const periodicMs = env.reminderPeriodicHours * 60 * 60 * 1000;
 
-  const dueSoon = await prisma.task.findMany({
+  const openTasks = await prisma.task.findMany({
     where: {
       status: { in: ["PENDING", "IN_PROGRESS"] },
-      reminderSentAt: null,
-      deadline: { lte: reminderThreshold, gt: now },
+      deadline: { gt: now },
     },
     include: { assignee: true },
   });
 
-  for (const task of dueSoon) {
+  for (const task of openTasks) {
+    const timeToDeadlineMs = task.deadline.getTime() - now.getTime();
+    const totalDurationMs = task.deadline.getTime() - task.createdAt.getTime();
     const target = toNotificationTarget(task.assignee);
-    await dispatchToAllChannels(
-      target,
-      {
-        subject: `Наближава срок: ${task.title}`,
-        body: `Срокът е ${task.deadline.toLocaleString("bg-BG")}. Завърши задачата навреме, за да избегнеш глоба.`,
-        deadline: task.deadline,
-      },
-      { taskId: task.id }
-    );
-    await prisma.task.update({ where: { id: task.id }, data: { reminderSentAt: now } });
+
+    if (!task.reminder4hSentAt && timeToDeadlineMs <= finalMs) {
+      await dispatchToAllChannels(
+        target,
+        {
+          subject: `Последно напомняне: ${task.title}`,
+          body: `Остават под ${env.reminderFinalHoursBefore} часа до срока (${task.deadline.toLocaleString("bg-BG")}). Завърши задачата навреме, за да избегнеш глоба.`,
+          deadline: task.deadline,
+        },
+        { taskId: task.id }
+      );
+      await prisma.task.update({ where: { id: task.id }, data: { reminder4hSentAt: now } });
+      continue;
+    }
+
+    if (!task.reminder24hSentAt && timeToDeadlineMs <= standardMs) {
+      await dispatchToAllChannels(
+        target,
+        {
+          subject: `Наближава срок: ${task.title}`,
+          body: `Срокът е ${task.deadline.toLocaleString("bg-BG")}. Завърши задачата навреме, за да избегнеш глоба.`,
+          deadline: task.deadline,
+        },
+        { taskId: task.id }
+      );
+      await prisma.task.update({ where: { id: task.id }, data: { reminder24hSentAt: now } });
+      continue;
+    }
+
+    if (totalDurationMs > periodicMs && timeToDeadlineMs > standardMs) {
+      const lastPeriodic = (task.lastPeriodicReminderAt ?? task.createdAt).getTime();
+      if (now.getTime() - lastPeriodic >= periodicMs) {
+        await dispatchToAllChannels(
+          target,
+          {
+            subject: `Все още незавършена: ${task.title}`,
+            body: `Напомняне за задача с по-дълъг срок — краен срок ${task.deadline.toLocaleString("bg-BG")}.`,
+            deadline: task.deadline,
+          },
+          { taskId: task.id }
+        );
+        await prisma.task.update({ where: { id: task.id }, data: { lastPeriodicReminderAt: now } });
+      }
+    }
   }
 }
 

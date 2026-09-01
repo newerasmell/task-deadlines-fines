@@ -68,7 +68,9 @@ model Task {
   priority      String     @default("MEDIUM")
   status        String     @default("PENDING")
 
-  reminderSentAt   DateTime?
+  reminder24hSentAt DateTime?
+  reminder4hSentAt  DateTime?
+  lastPeriodicReminderAt DateTime?
   lastEscalationAt DateTime?
   completedAt      DateTime?
   deletedAt        DateTime?
