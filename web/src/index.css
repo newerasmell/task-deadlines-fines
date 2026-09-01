@@ -325,17 +325,24 @@ button.secondary:hover {
   box-shadow: 0 1px 3px rgba(41, 47, 76, 0.05);
 }
 
+/* A grid, not flex-wrap: with flex-wrap, a wide label like "Подай за
+   преглед" can't fit next to a neighbor and gets forced onto its own line,
+   so a task with 3-4 available actions could stack 3 lines tall while one
+   with 2 actions stayed at 1 line — visibly taller/shorter rows next to
+   each other. A fixed 2-column grid always wraps at exactly 2 buttons per
+   line regardless of label width, capping every row at the same 2 lines
+   the description column already reserves. */
 .row-actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 6px 8px;
+  justify-content: end;
+  align-content: start;
   min-width: 160px;
 }
 
 .row-actions .small-btn {
   margin-right: 0;
-  flex-shrink: 0;
 }
 
 .cell-title {
