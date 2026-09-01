@@ -19,8 +19,12 @@ const taskInclude = {
   fines: true,
 } as const;
 
-function visibleToUser(task: { assigneeId: string; ownerId: string | null }, userId: string, isAdmin: boolean) {
-  return isAdmin || task.assigneeId === userId || task.ownerId === userId;
+function visibleToUser(
+  task: { assigneeId: string; ownerId: string | null; createdById: string },
+  userId: string,
+  isAdmin: boolean
+) {
+  return isAdmin || task.assigneeId === userId || task.ownerId === userId || task.createdById === userId;
 }
 
 // Accepts a Bearer header (normal API calls) OR a `?token=` query param, since
@@ -73,7 +77,7 @@ tasksRouter.get("/", async (req, res) => {
         ? assigneeFilter
           ? { assigneeId: assigneeFilter }
           : {}
-        : { OR: [{ assigneeId: req.user!.sub }, { ownerId: req.user!.sub }] }),
+        : { OR: [{ assigneeId: req.user!.sub }, { ownerId: req.user!.sub }, { createdById: req.user!.sub }] }),
     },
     include: taskInclude,
     orderBy: { deadline: "asc" },
@@ -113,9 +117,39 @@ const createSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
 });
 
-tasksRouter.post("/", requireAdmin, async (req, res) => {
+tasksRouter.post("/", async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const isAdmin = req.user!.role === "ADMIN";
+  const isSelfAssign = parsed.data.assigneeId === req.user!.sub;
+
+  if (!isAdmin && !isSelfAssign) {
+    const actor = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!actor?.canAssignTasks) {
+      return res.status(403).json({ error: "Нямаш право да задаваш задачи на други служители" });
+    }
+    const inScope = await prisma.assignmentScope.findUnique({
+      where: { leadId_employeeId: { leadId: req.user!.sub, employeeId: parsed.data.assigneeId } },
+    });
+    if (!inScope) {
+      return res.status(403).json({ error: "Нямаш право да задаваш задачи на този служител" });
+    }
+  }
+
+  if (parsed.data.ownerId && parsed.data.ownerId === parsed.data.assigneeId) {
+    return res.status(400).json({ error: "Owner-ът не може да е самият изпълнител" });
+  }
+  if (isSelfAssign && !isAdmin) {
+    // Nobody reviews their own work: a self-assigned task must be watched by an Admin.
+    if (!parsed.data.ownerId) {
+      return res.status(400).json({ error: "Самозададена задача трябва да има Owner — администратор, който да следи изпълнението" });
+    }
+    const owner = await prisma.user.findUnique({ where: { id: parsed.data.ownerId } });
+    if (!owner || owner.role !== "ADMIN") {
+      return res.status(400).json({ error: "Owner-ът на самозададена задача трябва да е администратор" });
+    }
+  }
 
   const assignee = await prisma.user.findUnique({ where: { id: parsed.data.assigneeId } });
   if (!assignee) return res.status(400).json({ error: "Assignee not found" });

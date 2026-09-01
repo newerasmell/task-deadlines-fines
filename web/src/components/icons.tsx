@@ -38,6 +38,15 @@ export function IconFines({ size = 18 }: IconProps) {
   );
 }
 
+export function IconMe({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4.5 20c1-4 4-6 7.5-6s6.5 2 7.5 6" />
+    </svg>
+  );
+}
+
 export function IconPeople({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

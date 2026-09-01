@@ -9,7 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { colorForId } from "../lib/colors";
 
-const statusBadgeClass: Record<Task["status"], string> = {
+export const statusBadgeClass: Record<Task["status"], string> = {
   PENDING: "badge",
   IN_PROGRESS: "badge badge-info",
   PENDING_REVIEW: "badge badge-info",
@@ -60,9 +60,7 @@ export function Tasks() {
   }
 
   useEffect(() => {
-    const promises: Promise<unknown>[] = [refresh()];
-    if (isAdmin) promises.push(api<User[]>("/users").then(setEmployees));
-    Promise.all(promises).finally(() => setLoading(false));
+    Promise.all([refresh(), api<User[]>("/users").then(setEmployees)]).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -100,19 +98,17 @@ export function Tasks() {
     <div>
       <div className="page-header">
         <h1>{t("Задачи")}</h1>
-        {isAdmin && (
-          <button
-            onClick={() => {
-              setShowForm((s) => !s);
-              setExpanded(null);
-            }}
-          >
-            {showForm ? t("Затвори") : t("+ Нова задача")}
-          </button>
-        )}
+        <button
+          onClick={() => {
+            setShowForm((s) => !s);
+            setExpanded(null);
+          }}
+        >
+          {showForm ? t("Затвори") : t("+ Нова задача")}
+        </button>
       </div>
 
-      {isAdmin && showForm && (
+      {showForm && (
         <TaskForm
           employees={employees}
           onSaved={() => {
@@ -465,7 +461,7 @@ function TaskBoard({
   );
 }
 
-function SubmitForm({ taskId, onDone }: { taskId: string; onDone: () => void }) {
+export function SubmitForm({ taskId, onDone }: { taskId: string; onDone: () => void }) {
   const { t } = useI18n();
   const [note, setNote] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
@@ -483,7 +479,7 @@ function SubmitForm({ taskId, onDone }: { taskId: string; onDone: () => void }) 
       await apiUpload(`/tasks/${taskId}/submit`, formData);
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("Грешка"));
+      setError(err instanceof Error ? t(err.message) : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -539,7 +535,7 @@ function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void })
       await apiUpload(`/tasks/${taskId}/submissions/${submission!.id}/approve`, buildFormData(reviewNote ? { reviewNote } : {}));
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("Грешка"));
+      setError(err instanceof Error ? t(err.message) : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -556,7 +552,7 @@ function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void })
       await apiUpload(`/tasks/${taskId}/submissions/${submission!.id}/reject`, buildFormData({ reviewNote }));
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("Грешка"));
+      setError(err instanceof Error ? t(err.message) : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -623,27 +619,50 @@ function TaskForm({
   onSaved: () => void;
   onCancel?: () => void;
 }) {
+  const { user } = useAuth();
   const { t } = useI18n();
+  const isAdmin = user?.role === "ADMIN";
+  const isLead = Boolean(user?.canAssignTasks);
   const isEdit = Boolean(task);
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
-  const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? employees[0]?.id ?? "");
+  const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? (isAdmin ? employees[0]?.id ?? "" : user?.id ?? ""));
   const [ownerId, setOwnerId] = useState(task?.ownerId ?? "");
   const [deadline, setDeadline] = useState(task ? toLocalInputValue(task.deadline) : "");
   const [priority, setPriority] = useState<Priority>(task?.priority ?? "MEDIUM");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const employeeOptions = useMemo(
-    () => employees.filter((e) => e.active || e.id === assigneeId || e.id === ownerId),
-    [employees, assigneeId, ownerId]
+  const isSelfAssign = !isEdit && assigneeId === user?.id;
+
+  // A non-admin's `employees` list is already scoped by the server to just
+  // {self, every Admin, their own Lead scope} — assignee options exclude the
+  // Admins in that list (they're only there for the Owner picker below).
+  const assigneeOptions = useMemo(
+    () =>
+      isAdmin
+        ? employees.filter((e) => e.active || e.id === assigneeId || e.id === ownerId)
+        : employees.filter((e) => e.id === user?.id || e.role !== "ADMIN"),
+    [employees, assigneeId, ownerId, isAdmin, user?.id]
   );
+  const ownerOptions = useMemo(() => {
+    const base = isAdmin
+      ? employees.filter((e) => e.active || e.id === ownerId)
+      : isSelfAssign
+        ? employees.filter((e) => e.role === "ADMIN")
+        : employees;
+    return base.filter((e) => e.id !== assigneeId);
+  }, [employees, assigneeId, ownerId, isAdmin, isSelfAssign]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (!assigneeId) {
       setError(t("Избери служител."));
+      return;
+    }
+    if (isSelfAssign && !ownerId) {
+      setError(t("Самозададена задача трябва да има Owner — администратор, който да следи изпълнението."));
       return;
     }
     setSubmitting(true);
@@ -663,7 +682,7 @@ function TaskForm({
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("Грешка"));
+      setError(err instanceof Error ? t(err.message) : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -682,27 +701,37 @@ function TaskForm({
       <div className="form-row">
         <label>
           {t("Служител")}
-          <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} required>
-            <option value="" disabled>
-              {t("Избери…")}
-            </option>
-            {employeeOptions.map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {emp.name}
+          {!isEdit && !isAdmin && !isLead ? (
+            <input value={user?.name ?? ""} disabled />
+          ) : (
+            <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} required disabled={isEdit && !isAdmin}>
+              <option value="" disabled>
+                {t("Избери…")}
               </option>
-            ))}
-          </select>
+              {assigneeOptions.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.id === user?.id ? t("Ти") : emp.name}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
         <label>
           {t("Owner (проверява изпълнението)")}
-          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-            <option value="">{t("Без — admin преглежда")}</option>
-            {employeeOptions.map((emp) => (
+          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} required={isSelfAssign}>
+            {!isSelfAssign && <option value="">{t("Без — admin преглежда")}</option>}
+            {isSelfAssign && (
+              <option value="" disabled>
+                {t("Избери администратор…")}
+              </option>
+            )}
+            {ownerOptions.map((emp) => (
               <option key={emp.id} value={emp.id}>
                 {emp.name}
               </option>
             ))}
           </select>
+          {isSelfAssign && <span className="muted small">{t("Самозададена задача изисква администратор, който да следи изпълнението.")}</span>}
         </label>
         <label>
           {t("Срок")}

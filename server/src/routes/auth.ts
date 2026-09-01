@@ -27,17 +27,31 @@ authRouter.post("/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
-  const token = signToken({ sub: user.id, role: user.role, email: user.email });
+  const token = signToken({ sub: user.id, role: user.role, email: user.email, isSuperAdmin: user.isSuperAdmin });
   res.json({
     token,
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isSuperAdmin: user.isSuperAdmin,
+      canAssignTasks: user.canAssignTasks,
+    },
   });
 });
 
 authRouter.get("/me", requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
   if (!user) return res.status(404).json({ error: "Not found" });
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  res.json({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isSuperAdmin: user.isSuperAdmin,
+    canAssignTasks: user.canAssignTasks,
+  });
 });
 
 const registerSchema = z.object({

@@ -566,6 +566,27 @@ button.secondary:hover {
   color: var(--text);
 }
 
+.checkbox-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px !important;
+  font-weight: 400 !important;
+}
+
+.checkbox-label input {
+  width: auto;
+}
+
+.scope-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 4px;
+}
+
 .weekday-picker {
   display: flex;
   gap: 6px;

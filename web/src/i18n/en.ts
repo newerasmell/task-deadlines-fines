@@ -5,6 +5,7 @@ export const en: Record<string, string> = {
 
   // Layout / navigation
   "Задачи · Owners · Срокове · Глоби": "Tasks · Owners · Deadlines · Fines",
+  "Моите задачи": "My Tasks",
   "Табло": "Board",
   "Задачи": "Tasks",
   "Повтарящи се": "Recurring",
@@ -101,6 +102,15 @@ export const en: Record<string, string> = {
   "Запази промените": "Save changes",
   "Създай задача": "Create task",
   "Отказ": "Cancel",
+  "Ти": "You",
+  "Избери администратор…": "Select an admin…",
+  "Самозададена задача изисква администратор, който да следи изпълнението.": "A self-assigned task requires an admin to keep track of it.",
+  "Самозададена задача трябва да има Owner — администратор, който да следи изпълнението.": "A self-assigned task needs an Owner — an admin to keep track of it.",
+  "Нямаш право да задаваш задачи на други служители": "You're not allowed to assign tasks to other employees",
+  "Нямаш право да задаваш задачи на този служител": "You're not allowed to assign tasks to this employee",
+  "Owner-ът не може да е самият изпълнител": "The Owner can't be the assignee themselves",
+  "Owner-ът на самозададена задача трябва да е администратор": "The Owner of a self-assigned task must be an admin",
+  "Само задачите, за които си изпълнител — независимо от ролята ти в системата.": "Only the tasks you're the assignee on — regardless of your role in the system.",
 
   // Audit log
   "Дневник на действията": "Audit log",
@@ -135,6 +145,14 @@ export const en: Record<string, string> = {
   "Телефон": "Phone",
   "WhatsApp номер": "WhatsApp number",
   "Създай служител": "Create employee",
+  "„Отговорник“ може да раздава задачи на служителите в неговия обхват (виж „Обхват“ при редакция). „Ultimate Admin“ е единственото ниво, което може да дава администраторски/отговорнически права на други.":
+    "A “Lead” can assign tasks to the employees in their scope (see “Scope” when editing). “Ultimate Admin” is the only level that can grant admin/Lead rights to others.",
+  "Отговорник": "Lead",
+  "Права за раздаване на задачи": "Task-assignment permissions",
+  "Отговорник — може да раздава задачи на служители в неговия обхват": "Lead — can assign tasks to employees in their scope",
+  "Ultimate Admin — може да дава администраторски/отговорнически права на други": "Ultimate Admin — can grant admin/Lead rights to others",
+  "Обхват — на кои служители може да раздава задачи": "Scope — which employees they may assign tasks to",
+  "Няма налични служители.": "No available employees.",
 
   // Fines
   "+ Ръчна глоба": "+ Manual fine",

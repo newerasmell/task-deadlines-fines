@@ -30,3 +30,13 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
   next();
 }
+
+// Gates the small set of sensitive controls a regular Admin must not touch:
+// granting/revoking ADMIN role or the canAssignTasks (Lead) permission, and
+// configuring a Lead's assignment scope.
+export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.user?.isSuperAdmin) {
+    return res.status(403).json({ error: "Super admin access required" });
+  }
+  next();
+}

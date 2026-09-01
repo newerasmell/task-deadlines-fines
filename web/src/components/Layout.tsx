@@ -2,7 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { Avatar } from "./Avatar";
-import { IconBoard, IconFines, IconLog, IconPeople, IconRepeat, IconSettings, IconTasks } from "./icons";
+import { IconBoard, IconFines, IconLog, IconMe, IconPeople, IconRepeat, IconSettings, IconTasks } from "./icons";
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -20,6 +20,9 @@ export function Layout() {
           </span>
         </div>
         <nav>
+          <NavLink to="/my-tasks">
+            <IconMe /> {t("Моите задачи")}
+          </NavLink>
           <NavLink to="/" end>
             <IconBoard /> {t("Табло")}
           </NavLink>

@@ -18,6 +18,8 @@ export interface User {
   email: string;
   role: Role;
   active: boolean;
+  isSuperAdmin: boolean;
+  canAssignTasks: boolean;
   phone: string | null;
   telegramChatId: string | null;
   slackMemberId: string | null;

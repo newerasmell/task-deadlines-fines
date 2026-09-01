@@ -4,9 +4,12 @@ import { api } from "../api/client";
 import type { Role, User } from "../api/types";
 import { Avatar } from "../components/Avatar";
 import { IconSearch } from "../components/icons";
+import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 
 export function Employees() {
+  const { user: currentUser } = useAuth();
+  const isSuperAdmin = Boolean(currentUser?.isSuperAdmin);
   const { t } = useI18n();
   const [users, setUsers] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -36,7 +39,7 @@ export function Employees() {
         setTestResult(res.results.map((r) => `${r.channel}: ${r.status}${r.error ? ` (${r.error})` : ""}`).join(" · "));
       }
     } catch (err) {
-      setTestResult(err instanceof Error ? err.message : t("Грешка"));
+      setTestResult(err instanceof Error ? t(err.message) : t("Грешка"));
     }
   }
 
@@ -62,9 +65,18 @@ export function Employees() {
           "„Мениджър“ не е отделна роля тук — всеки служител става мениджър на дадена задача, щом бъде избран за неин „Owner“ при създаване/редакция на задачата (в „Задачи“). Ролята по-долу определя само дали човекът има администраторски достъп (вижда и променя всичко) или е обикновен служител."
         )}
       </p>
+      {isSuperAdmin && (
+        <p className="muted">
+          {t(
+            "„Отговорник“ може да раздава задачи на служителите в неговия обхват (виж „Обхват“ при редакция). „Ultimate Admin“ е единственото ниво, което може да дава администраторски/отговорнически права на други."
+          )}
+        </p>
+      )}
 
       {showForm && (
         <EmployeeForm
+          allEmployees={users}
+          isSuperAdmin={isSuperAdmin}
           onSaved={() => {
             setShowForm(false);
             refresh();
@@ -75,6 +87,8 @@ export function Employees() {
       {editing && (
         <EmployeeForm
           user={editing}
+          allEmployees={users}
+          isSuperAdmin={isSuperAdmin}
           onSaved={() => {
             setEditing(null);
             refresh();
@@ -112,7 +126,15 @@ export function Employees() {
                 {u.name}
               </td>
               <td>{u.email}</td>
-              <td>{u.role === "ADMIN" ? t("Администратор") : t("Служител")}</td>
+              <td>
+                {u.role === "ADMIN" ? t("Администратор") : t("Служител")}
+                {u.isSuperAdmin && <span className="badge badge-info" style={{ marginLeft: 6 }}>Ultimate</span>}
+                {u.canAssignTasks && (
+                  <span className="badge" style={{ marginLeft: 6 }}>
+                    {t("Отговорник")}
+                  </span>
+                )}
+              </td>
               <td className="small">
                 {[
                   u.telegramChatId && "Telegram",
@@ -156,12 +178,27 @@ export function Employees() {
   );
 }
 
-function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () => void; onCancel?: () => void }) {
+function EmployeeForm({
+  user,
+  allEmployees,
+  isSuperAdmin,
+  onSaved,
+  onCancel,
+}: {
+  user?: User;
+  allEmployees: User[];
+  isSuperAdmin: boolean;
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
   const { t } = useI18n();
   const isEdit = Boolean(user);
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [role, setRole] = useState<Role>(user?.role ?? "EMPLOYEE");
+  const [canAssignTasks, setCanAssignTasks] = useState(user?.canAssignTasks ?? false);
+  const [isSuperAdminFlag, setIsSuperAdminFlag] = useState(user?.isSuperAdmin ?? false);
+  const [scopeIds, setScopeIds] = useState<string[]>([]);
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [telegramChatId, setTelegramChatId] = useState(user?.telegramChatId ?? "");
@@ -171,12 +208,24 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (isSuperAdmin && user) {
+      api<string[]>(`/users/${user.id}/scope`).then(setScopeIds);
+    }
+  }, [isSuperAdmin, user]);
+
+  function toggleScope(id: string) {
+    setScopeIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
       const channels = { phone, telegramChatId, slackMemberId, whatsappPhone, viberUserId };
+      const permissions = isSuperAdmin ? { role, canAssignTasks, isSuperAdmin: isSuperAdminFlag } : {};
+      let savedId = user?.id;
       if (isEdit && user) {
         await api(`/users/${user.id}`, {
           method: "PATCH",
@@ -184,23 +233,29 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
             name,
             email: email !== user.email ? email : undefined,
             password: password || undefined,
-            role,
+            ...permissions,
             ...channels,
           }),
         });
       } else {
-        await api("/users", {
+        const created = await api<User>("/users", {
           method: "POST",
-          body: JSON.stringify({ name, email, password, role, ...channels }),
+          body: JSON.stringify({ name, email, password, role: isSuperAdmin ? role : "EMPLOYEE", ...permissions, ...channels }),
         });
+        savedId = created.id;
+      }
+      if (isSuperAdmin && savedId && canAssignTasks) {
+        await api(`/users/${savedId}/scope`, { method: "PUT", body: JSON.stringify({ employeeIds: scopeIds }) });
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("Грешка"));
+      setError(err instanceof Error ? t(err.message) : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
   }
+
+  const scopeCandidates = allEmployees.filter((e) => e.id !== user?.id && e.role !== "ADMIN" && e.active);
 
   return (
     <form className="card form" onSubmit={handleSubmit}>
@@ -213,13 +268,15 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
           {t("Имейл")}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
-        <label>
-          {t("Роля")}
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            <option value="EMPLOYEE">{t("Служител")}</option>
-            <option value="ADMIN">{t("Администратор")}</option>
-          </select>
-        </label>
+        {isSuperAdmin && (
+          <label>
+            {t("Роля")}
+            <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+              <option value="EMPLOYEE">{t("Служител")}</option>
+              <option value="ADMIN">{t("Администратор")}</option>
+            </select>
+          </label>
+        )}
         <label>
           {isEdit ? t("Нова парола (остави празно, за да не се сменя)") : t("Парола")}
           <input
@@ -232,6 +289,36 @@ function EmployeeForm({ user, onSaved, onCancel }: { user?: User; onSaved: () =>
           />
         </label>
       </div>
+
+      {isSuperAdmin && (
+        <>
+          <h3>{t("Права за раздаване на задачи")}</h3>
+          <div className="form-row">
+            <label className="checkbox-label">
+              <input type="checkbox" checked={canAssignTasks} onChange={(e) => setCanAssignTasks(e.target.checked)} />
+              {t("Отговорник — може да раздава задачи на служители в неговия обхват")}
+            </label>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={isSuperAdminFlag} onChange={(e) => setIsSuperAdminFlag(e.target.checked)} />
+              {t("Ultimate Admin — може да дава администраторски/отговорнически права на други")}
+            </label>
+          </div>
+          {canAssignTasks && (
+            <label>
+              {t("Обхват — на кои служители може да раздава задачи")}
+              <div className="scope-picker">
+                {scopeCandidates.length === 0 && <span className="muted small">{t("Няма налични служители.")}</span>}
+                {scopeCandidates.map((e) => (
+                  <label key={e.id} className="checkbox-label">
+                    <input type="checkbox" checked={scopeIds.includes(e.id)} onChange={() => toggleScope(e.id)} />
+                    {e.name}
+                  </label>
+                ))}
+              </div>
+            </label>
+          )}
+        </>
+      )}
 
       <h3>{t("Канали за известия")}</h3>
       <p className="muted small">

@@ -6,6 +6,7 @@ export interface JwtPayload {
   sub: string;
   role: string;
   email: string;
+  isSuperAdmin: boolean;
 }
 
 export function hashPassword(password: string): Promise<string> {

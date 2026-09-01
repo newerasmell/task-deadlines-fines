@@ -8,6 +8,8 @@ interface AuthUser {
   name: string;
   email: string;
   role: Role;
+  isSuperAdmin: boolean;
+  canAssignTasks: boolean;
 }
 
 interface AuthContextValue {

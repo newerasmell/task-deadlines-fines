@@ -26,6 +26,16 @@ model User {
   name          String
   role          String   @default("EMPLOYEE")
   active        Boolean  @default(true)
+  // The one (or few) accounts allowed to grant/revoke ADMIN role, the
+  // canAssignTasks ("Отговорник"/Lead) permission, and other Leads'
+  // assignment scopes. Regular Admins cannot touch these.
+  isSuperAdmin  Boolean  @default(false)
+  // "Отговорник"/Lead: allowed to create tasks for other employees (within
+  // their assignmentScope below), not just for themselves. Everyone —
+  // Leads and regular employees alike — can always create a task for
+  // themselves; see AssignmentScope and the self-assignment rule in
+  // POST /tasks (a self-assigned task's Owner must be an Admin).
+  canAssignTasks Boolean @default(false)
 
   phone         String?
   telegramChatId String?
@@ -49,6 +59,25 @@ model User {
   templatesOwned    RecurringTaskTemplate[] @relation("TemplateOwner")
   templatesCreated  RecurringTaskTemplate[] @relation("TemplateCreatedBy")
   auditLogs     AuditLog[]
+  // Employees this user (as a Lead) is allowed to create/assign tasks for.
+  assignableEmployees AssignmentScope[] @relation("LeadScope")
+  // Leads who are allowed to assign tasks to this user.
+  assignableByLeads   AssignmentScope[] @relation("EmployeeScope")
+}
+
+// Restricts which employees a given Lead (User.canAssignTasks) may create
+// tasks for — configured only by a super admin, per "кой на кого може да
+// раздава задачи". A Lead with no rows here can still create tasks for
+// themselves (always allowed) but not for anyone else yet.
+model AssignmentScope {
+  id         String   @id @default(cuid())
+  leadId     String
+  lead       User     @relation("LeadScope", fields: [leadId], references: [id])
+  employeeId String
+  employee   User     @relation("EmployeeScope", fields: [employeeId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([leadId, employeeId])
 }
 
 model Task {
