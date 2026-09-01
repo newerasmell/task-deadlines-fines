@@ -67,19 +67,19 @@ export function RecurringTasks() {
         <tbody>
           {templates.map((tpl) => (
             <tr key={tpl.id}>
-              <td>{tpl.title}</td>
-              <td className="person-cell">
+              <td data-label={t("Заглавие")}>{tpl.title}</td>
+              <td className="person-cell" data-label={t("Служител")}>
                 <Avatar id={tpl.assignee.id} name={tpl.assignee.name} size={22} />
                 {tpl.assignee.name}
               </td>
-              <td>{tpl.owner?.name ?? "—"}</td>
-              <td>{tpl.daysOfWeek.split(",").map((d) => t(WEEKDAY_LABELS[d as Weekday])).join(", ")}</td>
-              <td>{tpl.timeOfDay}</td>
-              <td>{t(PRIORITY_LABELS[tpl.priority])}</td>
-              <td>
+              <td data-label="Owner">{tpl.owner?.name ?? "—"}</td>
+              <td data-label={t("Дни")}>{tpl.daysOfWeek.split(",").map((d) => t(WEEKDAY_LABELS[d as Weekday])).join(", ")}</td>
+              <td data-label={t("Час")}>{tpl.timeOfDay}</td>
+              <td data-label={t("Приоритет")}>{t(PRIORITY_LABELS[tpl.priority])}</td>
+              <td data-label={t("Активен")}>
                 <span className={tpl.active ? "badge badge-success" : "badge"}>{tpl.active ? t("Да") : t("Не")}</span>
               </td>
-              <td>
+              <td className="row-actions">
                 <button className="small-btn" onClick={() => toggleActive(tpl)}>
                   {tpl.active ? t("Спри") : t("Активирай")}
                 </button>

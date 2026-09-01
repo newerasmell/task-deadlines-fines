@@ -56,8 +56,8 @@ export function Settings() {
         <tbody>
           {channels.map((c) => (
             <tr key={c.channel}>
-              <td>{CHANNEL_LABELS[c.channel]}</td>
-              <td>
+              <td data-label={t("Канал")}>{CHANNEL_LABELS[c.channel]}</td>
+              <td data-label={t("Статус")}>
                 <span className={c.configured ? "badge badge-success" : "badge"}>
                   {c.configured ? t("Настроен") : t("Не е настроен")}
                 </span>
@@ -112,17 +112,17 @@ export function Settings() {
           {rules.map((r) => (
             <Fragment key={r.id}>
               <tr>
-                <td>{r.name}</td>
-                <td>{r.priority ? t(PRIORITY_LABELS[r.priority]) : t("Всички (по подразбиране)")}</td>
-                <td>{r.graceHours}</td>
-                <td>
+                <td data-label={t("Име")}>{r.name}</td>
+                <td data-label={t("Приоритет")}>{r.priority ? t(PRIORITY_LABELS[r.priority]) : t("Всички (по подразбиране)")}</td>
+                <td data-label={t("Толеранс (ч)")}>{r.graceHours}</td>
+                <td data-label={t("Базова сума")}>
                   {r.baseAmount} {r.currency}
                 </td>
-                <td>
+                <td data-label={t("На ден")}>
                   {r.perDayAmount} {r.currency}
                 </td>
-                <td>{r.maxAmount ? `${r.maxAmount} ${r.currency}` : "—"}</td>
-                <td>
+                <td data-label={t("Максимум")}>{r.maxAmount ? `${r.maxAmount} ${r.currency}` : "—"}</td>
+                <td data-label={t("Активно")}>
                   <span className={r.active ? "badge badge-success" : "badge"}>{r.active ? t("Да") : t("Не")}</span>
                 </td>
                 <td className="row-actions">

@@ -6,6 +6,8 @@ export const en: Record<string, string> = {
   // Layout / navigation
   "Задачи · Owners · Срокове · Глоби": "Tasks · Owners · Deadlines · Fines",
   "Моите задачи": "My Tasks",
+  "Затвори менюто": "Close menu",
+  "Отвори менюто": "Open menu",
   "Табло": "Board",
   "Задачи": "Tasks",
   "Повтарящи се": "Recurring",

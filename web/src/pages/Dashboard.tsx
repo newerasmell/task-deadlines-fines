@@ -104,13 +104,13 @@ export function Dashboard() {
               <tbody>
                 {overdue.map((tk) => (
                   <tr key={tk.id}>
-                    <td>{tk.title}</td>
-                    <td className="person-cell">
+                    <td data-label={t("Задача")}>{tk.title}</td>
+                    <td className="person-cell" data-label={t("Служител")}>
                       <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
                       {tk.assignee.name}
                     </td>
-                    <td>{new Date(tk.deadline).toLocaleString(locale)}</td>
-                    <td>
+                    <td data-label={t("Срок")}>{new Date(tk.deadline).toLocaleString(locale)}</td>
+                    <td data-label={t("Статус")}>
                       <span className="badge badge-danger">{t(STATUS_LABELS[tk.status])}</span>
                     </td>
                   </tr>
@@ -135,12 +135,12 @@ export function Dashboard() {
                 <tbody>
                   {dueToday.map((tk) => (
                     <tr key={tk.id}>
-                      <td>{tk.title}</td>
-                      <td className="person-cell">
+                      <td data-label={t("Задача")}>{tk.title}</td>
+                      <td className="person-cell" data-label={t("Служител")}>
                         <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
                         {tk.assignee.name}
                       </td>
-                      <td>{new Date(tk.deadline).toLocaleString(locale)}</td>
+                      <td data-label={t("Срок")}>{new Date(tk.deadline).toLocaleString(locale)}</td>
                     </tr>
                   ))}
                 </tbody>

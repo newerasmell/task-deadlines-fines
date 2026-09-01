@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { Avatar } from "./Avatar";
@@ -8,16 +9,29 @@ export function Layout() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useI18n();
   const isAdmin = user?.role === "ADMIN";
+  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className={`sidebar${menuOpen ? " sidebar-open" : ""}`}>
         <div className="brand">
           <span className="brand-mark" />
           <span className="brand-text">
             TODF
             <span className="brand-subtitle">{t("Задачи · Owners · Срокове · Глоби")}</span>
           </span>
+          <button
+            className="hamburger"
+            aria-label={menuOpen ? t("Затвори менюто") : t("Отвори менюто")}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            {menuOpen ? "✕" : "☰"}
+          </button>
         </div>
         <nav>
           <NavLink to="/my-tasks">
@@ -76,6 +90,7 @@ export function Layout() {
           </button>
         </div>
       </aside>
+      {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
       <main className="content">
         <Outlet />
       </main>

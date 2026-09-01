@@ -96,19 +96,19 @@ export function Fines() {
         <tbody>
           {fines.map((f) => (
             <tr key={f.id}>
-              <td className="person-cell">
+              <td className="person-cell" data-label={t("Служител")}>
                 {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
                 {f.user?.name}
               </td>
-              <td>
+              <td data-label={t("Причина")}>
                 {f.reason}
                 {f.waivedReason && <div className="muted small">{t("Анулирана:")} {f.waivedReason}</div>}
               </td>
-              <td>
+              <td data-label={t("Сума")}>
                 {f.amount.toFixed(2)} {f.currency}
               </td>
-              <td>{new Date(f.createdAt).toLocaleString(locale)}</td>
-              <td>
+              <td data-label={t("Дата")}>{new Date(f.createdAt).toLocaleString(locale)}</td>
+              <td data-label={t("Статус")}>
                 <span className={statusClass[f.status]}>{t(statusLabels[f.status])}</span>
               </td>
               {isAdmin && (

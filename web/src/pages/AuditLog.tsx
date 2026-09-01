@@ -50,16 +50,16 @@ export function AuditLog() {
           {logs.map((l) => (
             <Fragment key={l.id}>
               <tr>
-                <td>{new Date(l.createdAt).toLocaleString(locale)}</td>
-                <td className="person-cell">
+                <td data-label={t("Кога")}>{new Date(l.createdAt).toLocaleString(locale)}</td>
+                <td className="person-cell" data-label={t("Кой")}>
                   <Avatar id={l.actor.id} name={l.actor.name} size={22} />
                   {l.actor.name}
                 </td>
-                <td>
+                <td data-label={t("Действие")}>
                   <span className={actionBadgeClass[l.action]}>{t(ADMIN_ACTION_LABELS[l.action])}</span>
                 </td>
-                <td>{l.summary}</td>
-                <td>
+                <td data-label={t("Какво")}>{l.summary}</td>
+                <td className="row-actions">
                   {l.details && (
                     <button className="small-btn" onClick={() => setExpandedId(expandedId === l.id ? null : l.id)}>
                       {expandedId === l.id ? t("Скрий") : t("Детайли")}

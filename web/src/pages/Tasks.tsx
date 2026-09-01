@@ -221,7 +221,7 @@ export function Tasks() {
                 return (
                   <Fragment key={tk.id}>
                     <tr>
-                      <td>
+                      <td data-label={t("Задача")}>
                         <div>
                           {tk.title}
                           {tk.templateId && (
@@ -230,19 +230,19 @@ export function Tasks() {
                             </span>
                           )}
                         </div>
-                        {tk.description && <div className="muted small">{tk.description}</div>}
+                        {tk.description && <div className="muted small cell-description">{tk.description}</div>}
                       </td>
-                      <td className="person-cell">
+                      <td className="person-cell" data-label={t("Служител")}>
                         <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
                         {tk.assignee.name}
                       </td>
-                      <td>{tk.owner?.name ?? "—"}</td>
-                      <td>{new Date(tk.deadline).toLocaleString(locale)}</td>
-                      <td>{t(PRIORITY_LABELS[tk.priority])}</td>
-                      <td>
+                      <td data-label="Owner">{tk.owner?.name ?? "—"}</td>
+                      <td data-label={t("Срок")}>{new Date(tk.deadline).toLocaleString(locale)}</td>
+                      <td data-label={t("Приоритет")}>{t(PRIORITY_LABELS[tk.priority])}</td>
+                      <td data-label={t("Статус")}>
                         <span className={statusBadgeClass[tk.status]}>{t(STATUS_LABELS[tk.status])}</span>
                       </td>
-                      <td>{fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}</td>
+                      <td data-label={t("Глоби")}>{fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}</td>
                       <td className="row-actions">
                         {isAssignee && tk.status === "PENDING" && (
                           <button className="small-btn" onClick={() => startWork(tk.id)}>

@@ -121,12 +121,12 @@ export function Employees() {
         <tbody>
           {visibleUsers.map((u) => (
             <tr key={u.id}>
-              <td className="person-cell">
+              <td className="person-cell" data-label={t("Име")}>
                 <Avatar id={u.id} name={u.name} />
                 {u.name}
               </td>
-              <td>{u.email}</td>
-              <td>
+              <td data-label={t("Имейл")}>{u.email}</td>
+              <td data-label={t("Роля")}>
                 {u.role === "ADMIN" ? t("Администратор") : t("Служител")}
                 {u.isSuperAdmin && <span className="badge badge-info" style={{ marginLeft: 6 }}>Ultimate</span>}
                 {u.canAssignTasks && (
@@ -135,7 +135,7 @@ export function Employees() {
                   </span>
                 )}
               </td>
-              <td className="small">
+              <td className="small" data-label={t("Канали")}>
                 {[
                   u.telegramChatId && "Telegram",
                   u.slackMemberId && "Slack",
@@ -146,7 +146,7 @@ export function Employees() {
                   .filter(Boolean)
                   .join(", ")}
               </td>
-              <td>
+              <td data-label={t("Статус")}>
                 <span className={u.active ? "badge badge-success" : "badge"}>{u.active ? t("Активен") : t("Деактивиран")}</span>
               </td>
               <td className="row-actions">
