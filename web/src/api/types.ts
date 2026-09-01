@@ -57,7 +57,7 @@ export interface Task {
   description: string | null;
   assigneeId: string;
   assignee: UserRef;
-  createdBy: UserRef;
+  createdBy: UserRef & { isSuperAdmin: boolean };
   ownerId: string | null;
   owner: UserRef | null;
   templateId: string | null;

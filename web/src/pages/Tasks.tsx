@@ -75,6 +75,10 @@ export function Tasks() {
     refresh();
   }
 
+  function isLockedTask(tk: Task) {
+    return tk.createdBy.isSuperAdmin && !user?.isSuperAdmin;
+  }
+
   function toggleExpanded(taskId: string, mode: ExpandedMode) {
     setExpanded((cur) => (cur?.taskId === taskId && cur.mode === mode ? null : { taskId, mode }));
   }
@@ -135,6 +139,7 @@ export function Tasks() {
             tasks={tasks}
             onEdit={(taskId) => toggleExpanded(taskId, "edit")}
             onStatusChange={handleBoardStatusChange}
+            isLockedTask={isLockedTask}
           />
           {expanded && expandedTask && expanded.mode === "edit" && (
             <TaskForm
@@ -217,6 +222,7 @@ export function Tasks() {
                 const canSubmit = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS");
                 const canReview = (isOwner || isAdmin) && tk.status === "PENDING_REVIEW";
                 const isExpanded = expanded?.taskId === tk.id;
+                const locked = isLockedTask(tk);
 
                 return (
                   <Fragment key={tk.id}>
@@ -227,6 +233,11 @@ export function Tasks() {
                           {tk.templateId && (
                             <span className="badge" title={t("Повтаряща се задача")}>
                               ↻
+                            </span>
+                          )}
+                          {isAdmin && locked && (
+                            <span className="badge" title={t("Зададена от Ultimate Admin — само той може да я редактира/изтрие")}>
+                              🔒
                             </span>
                           )}
                         </div>
@@ -259,12 +270,12 @@ export function Tasks() {
                             {isExpanded && expanded?.mode === "review" ? t("Затвори") : t("Прегледай")}
                           </button>
                         )}
-                        {isAdmin && (
+                        {isAdmin && !locked && (
                           <button className="small-btn" onClick={() => toggleExpanded(tk.id, "edit")}>
                             {isExpanded && expanded?.mode === "edit" ? t("Затвори") : t("Редактирай")}
                           </button>
                         )}
-                        {isAdmin && (
+                        {isAdmin && !locked && (
                           <button className="small-btn" onClick={() => deleteTask(tk)}>
                             {t("Изтрий")}
                           </button>
@@ -335,10 +346,12 @@ function TaskBoard({
   tasks,
   onEdit,
   onStatusChange,
+  isLockedTask,
 }: {
   tasks: Task[];
   onEdit: (taskId: string) => void;
   onStatusChange: (taskId: string, status: Task["status"]) => void;
+  isLockedTask: (tk: Task) => boolean;
 }) {
   const { t, lang } = useI18n();
   const locale = lang === "en" ? "en-GB" : "bg-BG";
@@ -406,6 +419,8 @@ function TaskBoard({
                       e.preventDefault();
                       setDragOverKey(null);
                       if (!col.droppable || !dragTaskId) return;
+                      const draggedTask = empTasks.find((tk) => tk.id === dragTaskId) ?? tasks.find((tk) => tk.id === dragTaskId);
+                      if (draggedTask && isLockedTask(draggedTask)) return;
                       onStatusChange(dragTaskId, col.status);
                       setDragTaskId(null);
                     }}
@@ -417,23 +432,25 @@ function TaskBoard({
                       {colTasks.map((tk) => {
                         const activeFines = (tk.fines ?? []).filter((f) => f.status === "ACTIVE");
                         const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
+                        const locked = isLockedTask(tk);
                         return (
                           <div
                             key={tk.id}
                             className="board-card"
                             style={{ borderLeftColor: PRIORITY_COLORS[tk.priority] }}
-                            draggable
-                            onDragStart={() => setDragTaskId(tk.id)}
+                            draggable={!locked}
+                            onDragStart={() => !locked && setDragTaskId(tk.id)}
                             onDragEnd={() => {
                               setDragTaskId(null);
                               setDragOverKey(null);
                             }}
-                            onClick={() => onEdit(tk.id)}
-                            title={t("Кликни за редакция")}
+                            onClick={() => !locked && onEdit(tk.id)}
+                            title={locked ? t("Зададена от Ultimate Admin — само той може да я редактира/изтрие") : t("Кликни за редакция")}
                           >
                             <div className="board-card-title">
                               {tk.title}
                               {tk.templateId && <span title={t("Повтаряща се задача")}> ↻</span>}
+                              {locked && <span> 🔒</span>}
                             </div>
                             <div className="board-card-meta muted small">
                               {new Date(tk.deadline).toLocaleDateString(locale)}

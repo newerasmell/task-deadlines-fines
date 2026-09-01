@@ -14,9 +14,31 @@ export const tasksRouter = Router();
 
 const taskInclude = {
   assignee: { select: { id: true, name: true, email: true } },
-  createdBy: { select: { id: true, name: true, email: true } },
+  createdBy: { select: { id: true, name: true, email: true, isSuperAdmin: true } },
   owner: { select: { id: true, name: true, email: true } },
   fines: true,
+} as const;
+
+// A regular Admin may assign, review and see every task, but may not edit or
+// delete one that a super admin (Ultimate Admin) set up — only the super
+// admin, or the person actually doing the work, can touch it.
+function isLockedFromAdmin(task: { createdBy: { isSuperAdmin: boolean } }, actorIsSuperAdmin: boolean) {
+  return task.createdBy.isSuperAdmin && !actorIsSuperAdmin;
+}
+
+// What a task's assignee/owner relation is allowed to carry back to the
+// client — enough for the UI and for toNotificationTarget(), never the
+// password hash.
+const notifiableUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  phone: true,
+  telegramChatId: true,
+  slackMemberId: true,
+  whatsappPhone: true,
+  viberUserId: true,
+  googleCalendarId: true,
 } as const;
 
 function visibleToUser(
@@ -124,16 +146,22 @@ tasksRouter.post("/", async (req, res) => {
   const isAdmin = req.user!.role === "ADMIN";
   const isSelfAssign = parsed.data.assigneeId === req.user!.sub;
 
+  const assignee = await prisma.user.findUnique({ where: { id: parsed.data.assigneeId } });
+  if (!assignee) return res.status(400).json({ error: "Assignee not found" });
+
   if (!isAdmin && !isSelfAssign) {
     const actor = await prisma.user.findUnique({ where: { id: req.user!.sub } });
     if (!actor?.canAssignTasks) {
       return res.status(403).json({ error: "Нямаш право да задаваш задачи на други служители" });
     }
-    const inScope = await prisma.assignmentScope.findUnique({
-      where: { leadId_employeeId: { leadId: req.user!.sub, employeeId: parsed.data.assigneeId } },
-    });
-    if (!inScope) {
-      return res.status(403).json({ error: "Нямаш право да задаваш задачи на този служител" });
+    // Leads can hand tasks to one another freely; scope only gates regular employees.
+    if (!assignee.canAssignTasks) {
+      const inScope = await prisma.assignmentScope.findUnique({
+        where: { leadId_employeeId: { leadId: req.user!.sub, employeeId: parsed.data.assigneeId } },
+      });
+      if (!inScope) {
+        return res.status(403).json({ error: "Нямаш право да задаваш задачи на този служител" });
+      }
     }
   }
 
@@ -151,8 +179,6 @@ tasksRouter.post("/", async (req, res) => {
     }
   }
 
-  const assignee = await prisma.user.findUnique({ where: { id: parsed.data.assigneeId } });
-  if (!assignee) return res.status(400).json({ error: "Assignee not found" });
   if (parsed.data.ownerId) {
     const owner = await prisma.user.findUnique({ where: { id: parsed.data.ownerId } });
     if (!owner) return res.status(400).json({ error: "Owner not found" });
@@ -160,7 +186,7 @@ tasksRouter.post("/", async (req, res) => {
 
   const task = await prisma.task.create({
     data: { ...parsed.data, createdById: req.user!.sub },
-    include: { assignee: true, owner: true },
+    include: { assignee: { select: notifiableUserSelect }, owner: { select: notifiableUserSelect } },
   });
 
   const target = toNotificationTarget(assignee);
@@ -204,19 +230,31 @@ const updateSchema = z.object({
 });
 
 tasksRouter.patch("/:id", async (req, res) => {
-  const existing = await prisma.task.findFirst({ where: { id: req.params.id, deletedAt: null } });
+  const existing = await prisma.task.findFirst({
+    where: { id: req.params.id, deletedAt: null },
+    include: { createdBy: { select: { isSuperAdmin: true } } },
+  });
   if (!existing) return res.status(404).json({ error: "Not found" });
 
   const isAdmin = req.user!.role === "ADMIN";
   const isAssignee = existing.assigneeId === req.user!.sub;
   if (!isAdmin && !isAssignee) return res.status(403).json({ error: "Not allowed" });
 
+  // A regular Admin can't edit a task the Ultimate Admin set up, at all — not
+  // even if they happen to be its assignee, that just downgrades them to the
+  // employee-style status-only update below instead of a hard 403.
+  const locked = isLockedFromAdmin(existing, req.user!.isSuperAdmin);
+  if (locked && !isAssignee) {
+    return res.status(403).json({ error: "Само Ultimate Admin може да редактира тази задача" });
+  }
+
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const data: Record<string, unknown> = { ...parsed.data };
-  if (!isAdmin) {
-    // Employees can only start work; completion goes through /submit for owner review.
+  if (!isAdmin || locked) {
+    // Employees (and a locked Admin acting only as assignee) can only start
+    // work; completion goes through /submit for owner review.
     for (const key of ["title", "description", "assigneeId", "ownerId", "deadline", "priority"]) delete data[key];
     if (parsed.data.status && parsed.data.status !== "IN_PROGRESS") {
       return res.status(400).json({ error: "Use POST /tasks/:id/submit to complete a task" });
@@ -228,7 +266,7 @@ tasksRouter.patch("/:id", async (req, res) => {
 
   const task = await prisma.task.update({ where: { id: req.params.id }, data });
 
-  if (isAdmin && data.ownerId && data.ownerId !== existing.ownerId) {
+  if (isAdmin && !locked && data.ownerId && data.ownerId !== existing.ownerId) {
     const newOwner = await prisma.user.findUnique({ where: { id: data.ownerId as string } });
     const assignee = await prisma.user.findUnique({ where: { id: task.assigneeId } });
     if (newOwner && assignee) {
@@ -244,7 +282,7 @@ tasksRouter.patch("/:id", async (req, res) => {
     }
   }
 
-  if (isAdmin) {
+  if (isAdmin && !locked) {
     const changed = Object.fromEntries(
       Object.entries(parsed.data).filter(([key, value]) => value !== undefined && (existing as Record<string, unknown>)[key] !== value)
     );
@@ -264,8 +302,15 @@ tasksRouter.patch("/:id", async (req, res) => {
 });
 
 tasksRouter.delete("/:id", requireAdmin, async (req, res) => {
-  const existing = await prisma.task.findFirst({ where: { id: req.params.id, deletedAt: null } });
+  const existing = await prisma.task.findFirst({
+    where: { id: req.params.id, deletedAt: null },
+    include: { createdBy: { select: { isSuperAdmin: true } } },
+  });
   if (!existing) return res.status(404).json({ error: "Not found" });
+
+  if (isLockedFromAdmin(existing, req.user!.isSuperAdmin)) {
+    return res.status(403).json({ error: "Само Ultimate Admin може да изтрие тази задача" });
+  }
 
   await prisma.task.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
   await logAction(req.user!.sub, "TASK_DELETED", "Task", existing.id, `Изтрита задача "${existing.title}"`, existing);

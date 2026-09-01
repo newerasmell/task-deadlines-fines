@@ -27,27 +27,37 @@ const publicUser = {
 
 // Admins see everyone. Everyone else gets just enough of the roster to
 // build task forms with: themselves, every Admin (to pick as Owner for a
-// self-assigned task), and — if they're a Lead — the employees in their
-// assignment scope (who they're allowed to create tasks for).
+// self-assigned task), the employees in their assignment scope if they're
+// a Lead (who they're allowed to create tasks for), and — also only if
+// they're a Lead — every other active Lead, since Leads may hand tasks to
+// one another without needing an explicit scope entry.
 usersRouter.get("/", async (req, res) => {
   if (req.user!.role === "ADMIN") {
     const users = await prisma.user.findMany({ select: publicUser, orderBy: { createdAt: "asc" } });
     return res.json(users);
   }
 
-  const [self, admins, scope] = await Promise.all([
-    prisma.user.findUnique({ where: { id: req.user!.sub }, select: publicUser }),
+  const self = await prisma.user.findUnique({ where: { id: req.user!.sub }, select: publicUser });
+
+  const [admins, scope, otherLeads] = await Promise.all([
     prisma.user.findMany({ where: { role: "ADMIN", active: true }, select: publicUser }),
     prisma.assignmentScope.findMany({
       where: { leadId: req.user!.sub },
       include: { employee: { select: publicUser } },
     }),
+    self?.canAssignTasks
+      ? prisma.user.findMany({
+          where: { canAssignTasks: true, active: true, id: { not: req.user!.sub } },
+          select: publicUser,
+        })
+      : Promise.resolve([]),
   ]);
 
   const byId = new Map<string, (typeof admins)[number]>();
   if (self) byId.set(self.id, self);
   for (const a of admins) byId.set(a.id, a);
   for (const s of scope) byId.set(s.employee.id, s.employee);
+  for (const l of otherLeads) byId.set(l.id, l);
 
   res.json([...byId.values()]);
 });
