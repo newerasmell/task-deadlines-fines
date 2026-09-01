@@ -14,8 +14,35 @@ const statusBadgeClass: Record<Task["status"], string> = {
   CANCELLED: "badge",
 };
 
+const BOARD_COLUMNS: { status: Task["status"]; label: string; color: string; droppable: boolean }[] = [
+  { status: "PENDING", label: "Чакаща", color: "#9d99b9", droppable: true },
+  { status: "IN_PROGRESS", label: "В процес", color: "#579bfc", droppable: true },
+  { status: "PENDING_REVIEW", label: "За преглед", color: "#a25ddc", droppable: false },
+  { status: "OVERDUE", label: "Просрочена", color: "#e2445c", droppable: true },
+  { status: "DONE", label: "Завършена", color: "#00c875", droppable: true },
+];
+
+const PRIORITY_COLORS: Record<Priority, string> = {
+  LOW: "#9d99b9",
+  MEDIUM: "#579bfc",
+  HIGH: "#fdab3d",
+  CRITICAL: "#e2445c",
+};
+
+const EMPLOYEE_PALETTE = [
+  "#579bfc", "#a25ddc", "#ff642e", "#00c875", "#fdab3d",
+  "#e2445c", "#66ccff", "#037f4c", "#784bd1", "#ff158a", "#bb3354",
+];
+
+function colorForEmployee(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return EMPLOYEE_PALETTE[hash % EMPLOYEE_PALETTE.length];
+}
+
 type ExpandedMode = "submit" | "review" | "edit" | null;
 type Tab = "active" | "completed";
+type ViewMode = "board" | "list";
 
 export function Tasks() {
   const { user } = useAuth();
@@ -26,6 +53,7 @@ export function Tasks() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<{ taskId: string; mode: ExpandedMode } | null>(null);
   const [tab, setTab] = useState<Tab>("active");
+  const [view, setView] = useState<ViewMode>(isAdmin ? "board" : "list");
 
   async function refresh() {
     const t = await api<Task[]>("/tasks");
@@ -54,9 +82,15 @@ export function Tasks() {
     setExpanded((cur) => (cur?.taskId === taskId && cur.mode === mode ? null : { taskId, mode }));
   }
 
+  async function handleBoardStatusChange(taskId: string, status: Task["status"]) {
+    await api(`/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    refresh();
+  }
+
   if (loading) return <p>Зареждане…</p>;
 
   const visibleTasks = tasks.filter((t) => (tab === "completed" ? t.status === "DONE" : t.status !== "DONE"));
+  const expandedTask = expanded ? tasks.find((t) => t.id === expanded.taskId) : undefined;
 
   return (
     <div>
@@ -84,16 +118,48 @@ export function Tasks() {
         />
       )}
 
-      <div className="tabs">
-        <button className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>
-          Активни
-        </button>
-        <button className={tab === "completed" ? "active" : ""} onClick={() => setTab("completed")}>
-          Завършени
-        </button>
-      </div>
+      {isAdmin && (
+        <div className="tabs">
+          <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>
+            Табло
+          </button>
+          <button className={view === "list" ? "active" : ""} onClick={() => setView("list")}>
+            Списък
+          </button>
+        </div>
+      )}
 
-      <table className="table">
+      {isAdmin && view === "board" ? (
+        <>
+          <TaskBoard
+            tasks={tasks}
+            onEdit={(taskId) => toggleExpanded(taskId, "edit")}
+            onStatusChange={handleBoardStatusChange}
+          />
+          {expanded && expandedTask && expanded.mode === "edit" && (
+            <TaskForm
+              task={expandedTask}
+              employees={employees}
+              onSaved={() => {
+                setExpanded(null);
+                refresh();
+              }}
+              onCancel={() => setExpanded(null)}
+            />
+          )}
+        </>
+      ) : (
+        <>
+          <div className="tabs">
+            <button className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>
+              Активни
+            </button>
+            <button className={tab === "completed" ? "active" : ""} onClick={() => setTab("completed")}>
+              Завършени
+            </button>
+          </div>
+
+          <table className="table">
         <thead>
           <tr>
             <th>Задача</th>
@@ -218,7 +284,119 @@ export function Tasks() {
             </tr>
           )}
         </tbody>
-      </table>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TaskBoard({
+  tasks,
+  onEdit,
+  onStatusChange,
+}: {
+  tasks: Task[];
+  onEdit: (taskId: string) => void;
+  onStatusChange: (taskId: string, status: Task["status"]) => void;
+}) {
+  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+
+  const grouped = new Map<string, Task[]>();
+  for (const t of tasks) {
+    if (t.status === "CANCELLED") continue;
+    const list = grouped.get(t.assigneeId) ?? [];
+    list.push(t);
+    grouped.set(t.assigneeId, list);
+  }
+  const employeeIds = [...grouped.keys()].sort((a, b) =>
+    grouped.get(a)![0].assignee.name.localeCompare(grouped.get(b)![0].assignee.name, "bg")
+  );
+
+  if (employeeIds.length === 0) return <p className="muted">Няма задачи.</p>;
+
+  return (
+    <div className="board">
+      {employeeIds.map((empId) => {
+        const empTasks = grouped.get(empId)!;
+        const color = colorForEmployee(empId);
+        return (
+          <div className="board-group" key={empId} style={{ borderLeftColor: color }}>
+            <div className="board-group-header">
+              <span className="board-group-dot" style={{ background: color }} />
+              <span style={{ color }}>{empTasks[0].assignee.name}</span>
+              <span className="board-group-count">{empTasks.length}</span>
+            </div>
+            <div className="board-columns">
+              {BOARD_COLUMNS.map((col) => {
+                const colTasks = empTasks.filter((t) => t.status === col.status);
+                const key = `${empId}:${col.status}`;
+                const isDragOver = dragOverKey === key;
+                return (
+                  <div
+                    key={col.status}
+                    className={`board-column${isDragOver ? " board-column-over" : ""}`}
+                    onDragOver={(e) => {
+                      if (!col.droppable || !dragTaskId) return;
+                      e.preventDefault();
+                      setDragOverKey(key);
+                    }}
+                    onDragLeave={() => setDragOverKey((cur) => (cur === key ? null : cur))}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOverKey(null);
+                      if (!col.droppable || !dragTaskId) return;
+                      onStatusChange(dragTaskId, col.status);
+                      setDragTaskId(null);
+                    }}
+                  >
+                    <div className="board-column-header" style={{ borderTopColor: col.color }}>
+                      {col.label} <span className="muted small">({colTasks.length})</span>
+                    </div>
+                    <div className="board-column-body">
+                      {colTasks.map((t) => {
+                        const activeFines = (t.fines ?? []).filter((f) => f.status === "ACTIVE");
+                        const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
+                        return (
+                          <div
+                            key={t.id}
+                            className="board-card"
+                            style={{ borderLeftColor: PRIORITY_COLORS[t.priority] }}
+                            draggable
+                            onDragStart={() => setDragTaskId(t.id)}
+                            onDragEnd={() => {
+                              setDragTaskId(null);
+                              setDragOverKey(null);
+                            }}
+                            onClick={() => onEdit(t.id)}
+                            title="Кликни за редакция"
+                          >
+                            <div className="board-card-title">
+                              {t.title}
+                              {t.templateId && <span title="Повтаряща се задача"> ↻</span>}
+                            </div>
+                            <div className="board-card-meta muted small">
+                              {new Date(t.deadline).toLocaleDateString("bg-BG")}
+                              {t.owner && ` · Owner: ${t.owner.name}`}
+                            </div>
+                            {fineTotal > 0 && (
+                              <span className="badge badge-danger board-card-fine">
+                                {fineTotal.toFixed(2)} {activeFines[0].currency}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {colTasks.length === 0 && <div className="board-column-empty" />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
