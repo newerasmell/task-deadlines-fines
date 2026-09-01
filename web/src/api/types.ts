@@ -88,13 +88,14 @@ export interface Fine {
 export interface FineRule {
   id: string;
   name: string;
-  priority: Priority | null;
   baseAmount: number;
   perDayAmount: number;
   graceHours: number;
   maxAmount: number | null;
   currency: string;
   active: boolean;
+  // Accounts pinned to this rule. Empty = fallback rule for everyone else.
+  assignedUsers: { userId: string; user: { id: string; name: string } }[];
 }
 
 export interface RecurringTaskTemplate {

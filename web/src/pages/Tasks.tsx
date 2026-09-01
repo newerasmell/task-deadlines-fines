@@ -653,14 +653,24 @@ function TaskForm({
   const isSelfAssign = !isEdit && assigneeId === user?.id;
 
   // A non-admin's `employees` list is already scoped by the server to just
-  // {self, every Admin, their own Lead scope} — assignee options exclude the
-  // Admins in that list (they're only there for the Owner picker below).
+  // {self, every Admin, their own Lead scope, other Leads} — Admins in that
+  // list are excluded from the assignee options below UNLESS the Ultimate
+  // Admin explicitly added that Admin to this Lead's own scope (e.g. so a
+  // regular employee can be granted the right to assign tasks to the
+  // Ultimate Admin specifically).
+  const [ownScope, setOwnScope] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isAdmin && isLead && user?.id) {
+      api<string[]>(`/users/${user.id}/scope`).then(setOwnScope).catch(() => {});
+    }
+  }, [isAdmin, isLead, user?.id]);
+
   const assigneeOptions = useMemo(
     () =>
       isAdmin
         ? employees.filter((e) => e.active || e.id === assigneeId || e.id === ownerId)
-        : employees.filter((e) => e.id === user?.id || e.role !== "ADMIN"),
-    [employees, assigneeId, ownerId, isAdmin, user?.id]
+        : employees.filter((e) => e.id === user?.id || e.role !== "ADMIN" || ownScope.includes(e.id)),
+    [employees, assigneeId, ownerId, isAdmin, user?.id, ownScope]
   );
   const ownerOptions = useMemo(() => {
     const base = isAdmin

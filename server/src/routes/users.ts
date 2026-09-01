@@ -168,7 +168,13 @@ usersRouter.delete("/:id", requireAdmin, async (req, res) => {
 
 // --- Assignment scope: which employees a Lead may create/assign tasks for ---
 
-usersRouter.get("/:id/scope", requireAdmin, async (req, res) => {
+// Any admin can look up anyone's scope; a Lead can also look up their own —
+// the Tasks UI needs it to know which non-default (e.g. Admin) accounts it's
+// allowed to offer as an assignee.
+usersRouter.get("/:id/scope", async (req, res) => {
+  if (req.user!.role !== "ADMIN" && req.user!.sub !== req.params.id) {
+    return res.status(403).json({ error: "Not allowed" });
+  }
   const scope = await prisma.assignmentScope.findMany({
     where: { leadId: req.params.id },
     select: { employeeId: true },

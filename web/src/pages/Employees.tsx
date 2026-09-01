@@ -255,7 +255,10 @@ function EmployeeForm({
     }
   }
 
-  const scopeCandidates = allEmployees.filter((e) => e.id !== user?.id && e.role !== "ADMIN" && e.active);
+  // Any active account can be added to a Lead's scope, including Admins and
+  // the Ultimate Admin — that's how a regular employee gets the right to
+  // assign tasks specifically to the Ultimate Admin.
+  const scopeCandidates = allEmployees.filter((e) => e.id !== user?.id && e.active);
 
   return (
     <form className="card form" onSubmit={handleSubmit}>

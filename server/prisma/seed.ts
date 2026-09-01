@@ -43,13 +43,15 @@ async function main() {
     },
   });
 
+  // Fine rules no longer key off task priority — the Ultimate Admin assigns
+  // each rule directly to specific accounts. A rule with nobody assigned to
+  // it is the fallback used for everyone else.
   await prisma.fineRule.upsert({
     where: { id: "default-rule" },
     update: {},
     create: {
       id: "default-rule",
       name: "Стандартно правило",
-      priority: null,
       baseAmount: 10,
       perDayAmount: 5,
       graceHours: 2,
@@ -60,12 +62,11 @@ async function main() {
   });
 
   await prisma.fineRule.upsert({
-    where: { id: "critical-rule" },
+    where: { id: "strict-rule" },
     update: {},
     create: {
-      id: "critical-rule",
-      name: "Критични задачи",
-      priority: "CRITICAL",
+      id: "strict-rule",
+      name: "Строго правило (пример за конкретен акаунт)",
       baseAmount: 25,
       perDayAmount: 13,
       graceHours: 0,
@@ -73,6 +74,12 @@ async function main() {
       currency: "EUR",
       active: true,
     },
+  });
+
+  await prisma.fineRuleAssignment.upsert({
+    where: { userId: employee.id },
+    update: { ruleId: "strict-rule" },
+    create: { userId: employee.id, ruleId: "strict-rule" },
   });
 
   await prisma.task.upsert({

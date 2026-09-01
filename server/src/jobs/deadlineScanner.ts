@@ -7,10 +7,16 @@ import { spawnRecurringOccurrences } from "./recurringTasks";
 
 const OPEN_STATUSES = ["PENDING", "IN_PROGRESS", "OVERDUE"] as const;
 
-async function pickRuleFor(priority: string) {
-  const specific = await prisma.fineRule.findFirst({ where: { priority, active: true } });
+// Fine rules are assigned per account by the Ultimate Admin, not by task
+// priority: a user pinned to a specific rule always uses it regardless of
+// what they're overdue on; everyone else falls back to the one rule (if
+// any) nobody is specifically assigned to.
+async function pickRuleForUser(userId: string) {
+  const specific = await prisma.fineRule.findFirst({
+    where: { active: true, assignedUsers: { some: { userId } } },
+  });
   if (specific) return specific;
-  return prisma.fineRule.findFirst({ where: { priority: null, active: true } });
+  return prisma.fineRule.findFirst({ where: { active: true, assignedUsers: { none: {} } } });
 }
 
 /**
@@ -113,8 +119,8 @@ async function handleOverdueTasks(now: Date): Promise<void> {
   });
 
   for (const task of overdue) {
-    const rule = await pickRuleFor(task.priority);
-    if (!rule) continue; // No fine rule configured; still mark overdue below.
+    const rule = await pickRuleForUser(task.assigneeId);
+    if (!rule) continue; // No fine rule configured for this account; still mark overdue below.
 
     const hoursLate = hoursBetween(task.deadline, now);
     const { daysLate, amount, currency } = calculateFine(hoursLate, rule);
@@ -172,7 +178,7 @@ async function handleOverdueReviews(now: Date): Promise<void> {
     const task = submission.task;
     if (!task.ownerId || !task.owner) continue; // No owner assigned; nothing to fine.
 
-    const rule = await pickRuleFor(task.priority);
+    const rule = await pickRuleForUser(task.ownerId);
     if (!rule) continue;
 
     const hoursLate = hoursBetween(submission.reviewDueAt!, now);

@@ -1,26 +1,37 @@
 import { Fragment, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
-import { CHANNEL_LABELS, PRIORITY_LABELS } from "../api/types";
-import type { ChannelStatus, FineRule, Priority } from "../api/types";
+import { CHANNEL_LABELS } from "../api/types";
+import type { ChannelStatus, FineRule, User } from "../api/types";
+import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 
 export function Settings() {
+  const { user } = useAuth();
+  const isSuperAdmin = Boolean(user?.isSuperAdmin);
   const { t } = useI18n();
   const [rules, setRules] = useState<FineRule[]>([]);
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
+  const [employees, setEmployees] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function refresh() {
-    const [r, c] = await Promise.all([api<FineRule[]>("/fine-rules"), api<ChannelStatus[]>("/notifications/channels")]);
+    const promises: [Promise<FineRule[]>, Promise<ChannelStatus[]>, Promise<User[]>?] = [
+      api<FineRule[]>("/fine-rules"),
+      api<ChannelStatus[]>("/notifications/channels"),
+    ];
+    if (isSuperAdmin) promises[2] = api<User[]>("/users");
+    const [r, c, u] = await Promise.all(promises);
     setRules(r);
     setChannels(c);
+    if (u) setEmployees(u);
   }
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function toggleActive(rule: FineRule) {
@@ -70,23 +81,26 @@ export function Settings() {
 
       <div className="page-header">
         <h2>{t("Правила за глоби")}</h2>
-        <button
-          onClick={() => {
-            setShowForm((s) => !s);
-            setEditingId(null);
-          }}
-        >
-          {showForm ? t("Затвори") : t("+ Ново правило")}
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => {
+              setShowForm((s) => !s);
+              setEditingId(null);
+            }}
+          >
+            {showForm ? t("Затвори") : t("+ Ново правило")}
+          </button>
+        )}
       </div>
       <p className="muted">
         {t(
-          "Всяка задача се проверява спрямо правилото за нейния приоритет (или общото правило, ако няма специфично). При просрочие след периода на толеранс се начислява базова сума, плюс сума за всеки следващ ден закъснение, до максимума."
+          "Правилата не зависят от приоритета на задачата — само Ultimate Admin решава кой акаунт по кое правило се глобява. Правило без зададени акаунти е общото правило за всички останали. При просрочие след периода на толеранс се начислява базова сума, плюс сума за всеки следващ ден закъснение, до максимума."
         )}
       </p>
 
-      {showForm && (
+      {isSuperAdmin && showForm && (
         <RuleForm
+          allEmployees={employees}
           onSaved={() => {
             setShowForm(false);
             refresh();
@@ -99,13 +113,13 @@ export function Settings() {
         <thead>
           <tr>
             <th>{t("Име")}</th>
-            <th>{t("Приоритет")}</th>
+            <th>{t("Служители")}</th>
             <th>{t("Толеранс (ч)")}</th>
             <th>{t("Базова сума")}</th>
             <th>{t("На ден")}</th>
             <th>{t("Максимум")}</th>
             <th>{t("Активно")}</th>
-            <th></th>
+            {isSuperAdmin && <th></th>}
           </tr>
         </thead>
         <tbody>
@@ -113,7 +127,11 @@ export function Settings() {
             <Fragment key={r.id}>
               <tr>
                 <td data-label={t("Име")}>{r.name}</td>
-                <td data-label={t("Приоритет")}>{r.priority ? t(PRIORITY_LABELS[r.priority]) : t("Всички (по подразбиране)")}</td>
+                <td data-label={t("Служители")}>
+                  {r.assignedUsers.length === 0
+                    ? t("Всички (по подразбиране)")
+                    : r.assignedUsers.map((a) => a.user.name).join(", ")}
+                </td>
                 <td data-label={t("Толеранс (ч)")}>{r.graceHours}</td>
                 <td data-label={t("Базова сума")}>
                   {r.baseAmount} {r.currency}
@@ -125,29 +143,32 @@ export function Settings() {
                 <td data-label={t("Активно")}>
                   <span className={r.active ? "badge badge-success" : "badge"}>{r.active ? t("Да") : t("Не")}</span>
                 </td>
-                <td className="row-actions">
-                  <button
-                    className="small-btn"
-                    onClick={() => {
-                      setEditingId(editingId === r.id ? null : r.id);
-                      setShowForm(false);
-                    }}
-                  >
-                    {editingId === r.id ? t("Затвори") : t("Редактирай")}
-                  </button>
-                  <button className="small-btn" onClick={() => toggleActive(r)}>
-                    {r.active ? t("Деактивирай") : t("Активирай")}
-                  </button>
-                  <button className="small-btn" onClick={() => deleteRule(r)}>
-                    {t("Изтрий")}
-                  </button>
-                </td>
+                {isSuperAdmin && (
+                  <td className="row-actions">
+                    <button
+                      className="small-btn"
+                      onClick={() => {
+                        setEditingId(editingId === r.id ? null : r.id);
+                        setShowForm(false);
+                      }}
+                    >
+                      {editingId === r.id ? t("Затвори") : t("Редактирай")}
+                    </button>
+                    <button className="small-btn" onClick={() => toggleActive(r)}>
+                      {r.active ? t("Деактивирай") : t("Активирай")}
+                    </button>
+                    <button className="small-btn" onClick={() => deleteRule(r)}>
+                      {t("Изтрий")}
+                    </button>
+                  </td>
+                )}
               </tr>
-              {editingId === r.id && (
+              {isSuperAdmin && editingId === r.id && (
                 <tr>
                   <td colSpan={8}>
                     <RuleForm
                       rule={r}
+                      allEmployees={employees}
                       onSaved={() => {
                         setEditingId(null);
                         refresh();
@@ -173,18 +194,32 @@ export function Settings() {
   );
 }
 
-function RuleForm({ rule, onSaved, onCancel }: { rule?: FineRule; onSaved: () => void; onCancel?: () => void }) {
+function RuleForm({
+  rule,
+  allEmployees,
+  onSaved,
+  onCancel,
+}: {
+  rule?: FineRule;
+  allEmployees: User[];
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
   const { t } = useI18n();
   const isEdit = Boolean(rule);
   const [name, setName] = useState(rule?.name ?? "");
-  const [priority, setPriority] = useState<Priority | "">(rule?.priority ?? "");
   const [baseAmount, setBaseAmount] = useState(String(rule?.baseAmount ?? 20));
   const [perDayAmount, setPerDayAmount] = useState(String(rule?.perDayAmount ?? 10));
   const [graceHours, setGraceHours] = useState(String(rule?.graceHours ?? 2));
   const [maxAmount, setMaxAmount] = useState(rule?.maxAmount != null ? String(rule.maxAmount) : "");
   const [currency, setCurrency] = useState(rule?.currency ?? "EUR");
+  const [userIds, setUserIds] = useState<string[]>(rule?.assignedUsers.map((a) => a.userId) ?? []);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  function toggleUser(id: string) {
+    setUserIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -193,18 +228,20 @@ function RuleForm({ rule, onSaved, onCancel }: { rule?: FineRule; onSaved: () =>
     try {
       const body = {
         name,
-        priority: priority || null,
         baseAmount: Number(baseAmount),
         perDayAmount: Number(perDayAmount),
         graceHours: Number(graceHours),
         maxAmount: maxAmount ? Number(maxAmount) : null,
         currency,
       };
+      let ruleId = rule?.id;
       if (isEdit) {
         await api(`/fine-rules/${rule!.id}`, { method: "PATCH", body: JSON.stringify(body) });
       } else {
-        await api("/fine-rules", { method: "POST", body: JSON.stringify(body) });
+        const created = await api<FineRule>("/fine-rules", { method: "POST", body: JSON.stringify(body) });
+        ruleId = created.id;
       }
+      await api(`/fine-rules/${ruleId}/assignees`, { method: "PUT", body: JSON.stringify({ userIds }) });
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("Грешка"));
@@ -220,19 +257,6 @@ function RuleForm({ rule, onSaved, onCancel }: { rule?: FineRule; onSaved: () =>
           {t("Име")}
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
-        <label>
-          {t("Приоритет")}
-          <select value={priority} onChange={(e) => setPriority(e.target.value as Priority | "")}>
-            <option value="">{t("Всички (по подразбиране)")}</option>
-            {(["LOW", "MEDIUM", "HIGH", "CRITICAL"] as Priority[]).map((p) => (
-              <option key={p} value={p}>
-                {t(PRIORITY_LABELS[p])}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="form-row">
         <label>
           {t("Толеранс (часове)")}
           <input type="number" min="0" value={graceHours} onChange={(e) => setGraceHours(e.target.value)} />
@@ -254,6 +278,21 @@ function RuleForm({ rule, onSaved, onCancel }: { rule?: FineRule; onSaved: () =>
           <input value={currency} onChange={(e) => setCurrency(e.target.value)} />
         </label>
       </div>
+      <label>
+        {t("Акаунти, глобени по това правило")}
+        <div className="scope-picker">
+          {allEmployees.length === 0 && <span className="muted small">{t("Няма налични служители.")}</span>}
+          {allEmployees.map((emp) => (
+            <label key={emp.id} className="checkbox-label">
+              <input type="checkbox" checked={userIds.includes(emp.id)} onChange={() => toggleUser(emp.id)} />
+              {emp.name}
+            </label>
+          ))}
+        </div>
+        <span className="muted small">
+          {t("Без избрани акаунти това правило важи като общо правило за всички останали.")}
+        </span>
+      </label>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>

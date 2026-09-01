@@ -218,6 +218,11 @@ export const en: Record<string, string> = {
   "+ Ново правило": "+ New rule",
   "Всяка задача се проверява спрямо правилото за нейния приоритет (или общото правило, ако няма специфично). При просрочие след периода на толеранс се начислява базова сума, плюс сума за всеки следващ ден закъснение, до максимума.":
     "Every task is checked against the rule for its priority (or the general rule, if there's no specific one). Once overdue past the grace period, a base amount is charged, plus an amount for each further day late, up to the cap.",
+  "Правилата не зависят от приоритета на задачата — само Ultimate Admin решава кой акаунт по кое правило се глобява. Правило без зададени акаунти е общото правило за всички останали. При просрочие след периода на толеранс се начислява базова сума, плюс сума за всеки следващ ден закъснение, до максимума.":
+    "Rules don't depend on task priority — only the Ultimate Admin decides which account is fined under which rule. A rule with no accounts assigned is the general rule for everyone else. Once overdue past the grace period, a base amount is charged, plus an amount for each further day late, up to the cap.",
+  "Акаунти, глобени по това правило": "Accounts fined under this rule",
+  "Без избрани акаунти това правило важи като общо правило за всички останали.":
+    "With no accounts selected, this rule acts as the general rule for everyone else.",
   "Толеранс (ч)": "Grace (h)",
   "Базова сума": "Base amount",
   "На ден": "Per day",

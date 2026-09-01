@@ -63,6 +63,8 @@ model User {
   assignableEmployees AssignmentScope[] @relation("LeadScope")
   // Leads who are allowed to assign tasks to this user.
   assignableByLeads   AssignmentScope[] @relation("EmployeeScope")
+  // The one specific fine rule this account is pinned to, if any.
+  fineRuleAssignment  FineRuleAssignment?
 }
 
 // Restricts which employees a given Lead (User.canAssignTasks) may create
@@ -172,10 +174,13 @@ model RecurringTaskTemplate {
   occurrences   Task[]
 }
 
+// A fine rule no longer keys off the task's priority — the Ultimate Admin
+// assigns each rule directly to specific accounts (see FineRuleAssignment).
+// A rule with no assigned accounts is the fallback used for anyone without
+// a rule of their own.
 model FineRule {
   id                String   @id @default(cuid())
   name              String
-  priority          String?
   baseAmount        Float
   perDayAmount      Float
   graceHours        Float    @default(0)
@@ -184,6 +189,20 @@ model FineRule {
   active            Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  assignedUsers     FineRuleAssignment[]
+}
+
+// Ties one account to (at most) one specific fine rule — enforced by the
+// unique userId below, so assigning a user to a new rule always detaches
+// them from whichever one they had before.
+model FineRuleAssignment {
+  id        String   @id @default(cuid())
+  ruleId    String
+  rule      FineRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
 }
 
 model Fine {
