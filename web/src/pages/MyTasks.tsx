@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
 import type { Task } from "../api/types";
+import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { SubmitForm, statusBadgeClass } from "./Tasks";
@@ -63,101 +64,101 @@ export function MyTasks() {
       </div>
 
       <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t("Задача")}</th>
-              <th>Owner</th>
-              <th>{t("Срок")}</th>
-              <th>{t("Приоритет")}</th>
-              <th>{t("Статус")}</th>
-              <th>{t("Глоби")}</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((tk) => {
-              const activeFines = (tk.fines ?? []).filter((f) => f.status === "ACTIVE");
-              const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
-              const canSubmit = tk.status === "PENDING" || tk.status === "IN_PROGRESS";
-              const isSubmitting = submittingId === tk.id;
-              return (
-                <Fragment key={tk.id}>
-                  <tr>
-                    <td data-label={t("Задача")}>
-                      <div
-                        className="task-cell-clickable"
-                        onClick={() => toggleDesc(tk.id)}
-                        role="button"
-                        tabIndex={0}
-                        title={t("Покажи/скрий пълното описание")}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            toggleDesc(tk.id);
-                          }
-                        }}
-                      >
-                        <div className={`cell-title${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
-                          {tk.title}
-                          {tk.templateId && (
-                            <span className="badge" title={t("Повтаряща се задача")}>
-                              ↻
-                            </span>
-                          )}
-                        </div>
-                        <div className={`muted small cell-description${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
-                          {tk.description}
-                        </div>
-                      </div>
-                    </td>
-                    <td data-label="Owner">{tk.owner?.name ?? "—"}</td>
-                    <td data-label={t("Срок")}>{new Date(tk.deadline).toLocaleString(locale)}</td>
-                    <td data-label={t("Приоритет")}>{t(PRIORITY_LABELS[tk.priority])}</td>
-                    <td data-label={t("Статус")}>
-                      <span className={statusBadgeClass[tk.status]}>{t(STATUS_LABELS[tk.status])}</span>
-                    </td>
-                    <td data-label={t("Глоби")}>{fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}</td>
-                    <td className="row-actions">
-                      <div className="row-actions-group">
-                        {tk.status === "PENDING" && (
-                          <button className="small-btn" onClick={() => startWork(tk.id)}>
-                            {t("Започни")}
-                          </button>
-                        )}
-                        {canSubmit && (
-                          <button className="small-btn" onClick={() => setSubmittingId(isSubmitting ? null : tk.id)}>
-                            {isSubmitting ? t("Затвори") : t("Подай за преглед")}
-                          </button>
+        <div
+          className="grid-table"
+          style={{ gridTemplateColumns: "minmax(220px, 2fr) 120px 160px 100px 110px 90px 56px" }}
+        >
+          <div className="grid-table-header">{t("Задача")}</div>
+          <div className="grid-table-header">Owner</div>
+          <div className="grid-table-header">{t("Срок")}</div>
+          <div className="grid-table-header">{t("Приоритет")}</div>
+          <div className="grid-table-header">{t("Статус")}</div>
+          <div className="grid-table-header">{t("Глоби")}</div>
+          <div className="grid-table-header"></div>
+
+          {visible.map((tk) => {
+            const activeFines = (tk.fines ?? []).filter((f) => f.status === "ACTIVE");
+            const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
+            const canSubmit = tk.status === "PENDING" || tk.status === "IN_PROGRESS";
+            const isSubmitting = submittingId === tk.id;
+            return (
+              <Fragment key={tk.id}>
+                <div className="grid-row">
+                  <div className="grid-cell" data-label={t("Задача")}>
+                    <div
+                      className="task-cell-clickable"
+                      onClick={() => toggleDesc(tk.id)}
+                      role="button"
+                      tabIndex={0}
+                      title={t("Покажи/скрий пълното описание")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleDesc(tk.id);
+                        }
+                      }}
+                    >
+                      <div className={`cell-title${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
+                        {tk.title}
+                        {tk.templateId && (
+                          <span className="badge" title={t("Повтаряща се задача")}>
+                            ↻
+                          </span>
                         )}
                       </div>
-                    </td>
-                  </tr>
-                  {isSubmitting && (
-                    <tr>
-                      <td colSpan={7}>
-                        <SubmitForm
-                          taskId={tk.id}
-                          onDone={() => {
-                            setSubmittingId(null);
-                            refresh();
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-            {visible.length === 0 && (
-              <tr>
-                <td colSpan={7} className="muted">
-                  {tab === "completed" ? t("Няма завършени задачи.") : t("Няма активни задачи.")}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                      <div className={`muted small cell-description${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
+                        {tk.description}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid-cell" data-label="Owner">
+                    {tk.owner?.name ?? "—"}
+                  </div>
+                  <div className="grid-cell" data-label={t("Срок")}>
+                    {new Date(tk.deadline).toLocaleString(locale)}
+                  </div>
+                  <div className="grid-cell" data-label={t("Приоритет")}>
+                    {t(PRIORITY_LABELS[tk.priority])}
+                  </div>
+                  <div className="grid-cell" data-label={t("Статус")}>
+                    <span className={statusBadgeClass[tk.status]}>{t(STATUS_LABELS[tk.status])}</span>
+                  </div>
+                  <div className="grid-cell" data-label={t("Глоби")}>
+                    {fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}
+                  </div>
+                  <div className="grid-cell grid-cell-actions">
+                    <RowMenu label={t("Действия")}>
+                      {tk.status === "PENDING" && (
+                        <RowMenuItem onClick={() => startWork(tk.id)}>{t("Започни")}</RowMenuItem>
+                      )}
+                      {canSubmit && (
+                        <RowMenuItem onClick={() => setSubmittingId(isSubmitting ? null : tk.id)}>
+                          {isSubmitting ? t("Затвори") : t("Подай за преглед")}
+                        </RowMenuItem>
+                      )}
+                    </RowMenu>
+                  </div>
+                </div>
+                {isSubmitting && (
+                  <div className="grid-cell-full">
+                    <SubmitForm
+                      taskId={tk.id}
+                      onDone={() => {
+                        setSubmittingId(null);
+                        refresh();
+                      }}
+                    />
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
+          {visible.length === 0 && (
+            <div className="grid-cell-full muted">
+              {tab === "completed" ? t("Няма завършени задачи.") : t("Няма активни задачи.")}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
