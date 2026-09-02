@@ -16,6 +16,16 @@ export function MyTasks() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("active");
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
+
+  function toggleDesc(id: string) {
+    setExpandedDescIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function refresh() {
     const all = await api<Task[]>("/tasks");
@@ -75,15 +85,31 @@ export function MyTasks() {
                 <Fragment key={tk.id}>
                   <tr>
                     <td data-label={t("Задача")}>
-                      <div className="cell-title">
-                        {tk.title}
-                        {tk.templateId && (
-                          <span className="badge" title={t("Повтаряща се задача")}>
-                            ↻
-                          </span>
-                        )}
+                      <div
+                        className="task-cell-clickable"
+                        onClick={() => toggleDesc(tk.id)}
+                        role="button"
+                        tabIndex={0}
+                        title={t("Покажи/скрий пълното описание")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleDesc(tk.id);
+                          }
+                        }}
+                      >
+                        <div className={`cell-title${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
+                          {tk.title}
+                          {tk.templateId && (
+                            <span className="badge" title={t("Повтаряща се задача")}>
+                              ↻
+                            </span>
+                          )}
+                        </div>
+                        <div className={`muted small cell-description${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
+                          {tk.description}
+                        </div>
                       </div>
-                      <div className="muted small cell-description">{tk.description}</div>
                     </td>
                     <td data-label="Owner">{tk.owner?.name ?? "—"}</td>
                     <td data-label={t("Срок")}>{new Date(tk.deadline).toLocaleString(locale)}</td>

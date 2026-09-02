@@ -41,14 +41,7 @@ function AppRoutes() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/my-tasks" element={<MyTasks />} />
         <Route path="/tasks" element={<Tasks />} />
-        <Route
-          path="/recurring"
-          element={
-            <RequireAdmin>
-              <RecurringTasks />
-            </RequireAdmin>
-          }
-        />
+        <Route path="/recurring" element={<RecurringTasks />} />
         <Route path="/fines" element={<Fines />} />
         <Route
           path="/employees"

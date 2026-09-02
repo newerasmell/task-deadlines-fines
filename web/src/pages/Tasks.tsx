@@ -54,6 +54,16 @@ export function Tasks() {
   const [filterEmployee, setFilterEmployee] = useState("");
   const [filterPriority, setFilterPriority] = useState<Priority | "">("");
   const [filterStatus, setFilterStatus] = useState<Task["status"] | "">("");
+  const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
+
+  function toggleDesc(id: string) {
+    setExpandedDescIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function refresh() {
     const t = await api<Task[]>("/tasks");
@@ -228,8 +238,20 @@ export function Tasks() {
                 <Fragment key={tk.id}>
                   <div className="grid-row">
                     <div className="grid-cell" data-label={t("Задача")}>
-                      <div>
-                        <div className="cell-title">
+                      <div
+                        className="task-cell-clickable"
+                        onClick={() => toggleDesc(tk.id)}
+                        role="button"
+                        tabIndex={0}
+                        title={t("Покажи/скрий пълното описание")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleDesc(tk.id);
+                          }
+                        }}
+                      >
+                        <div className={`cell-title${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
                           {tk.title}
                           {tk.templateId && (
                             <span className="badge" title={t("Повтаряща се задача")}>
@@ -242,7 +264,9 @@ export function Tasks() {
                             </span>
                           )}
                         </div>
-                        <div className="muted small cell-description">{tk.description}</div>
+                        <div className={`muted small cell-description${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
+                          {tk.description}
+                        </div>
                       </div>
                     </div>
                     <div className="grid-cell" data-label={t("Служител")}>

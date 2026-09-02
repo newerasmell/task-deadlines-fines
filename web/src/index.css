@@ -480,6 +480,21 @@ button.secondary:hover {
   margin-top: 2px;
 }
 
+.cell-title.expanded,
+.cell-description.expanded {
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.task-cell-clickable {
+  cursor: pointer;
+}
+
+.task-cell-clickable:hover .cell-title {
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+}
+
 .table th,
 .table td {
   text-align: left;
