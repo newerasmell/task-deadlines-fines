@@ -43,11 +43,9 @@ export function Layout() {
           <NavLink to="/tasks">
             <IconTasks /> {t("Задачи")}
           </NavLink>
-          {isAdmin && (
-            <NavLink to="/recurring">
-              <IconRepeat /> {t("Повтарящи се")}
-            </NavLink>
-          )}
+          <NavLink to="/recurring">
+            <IconRepeat /> {t("Повтарящи се")}
+          </NavLink>
           <NavLink to="/fines">
             <IconFines /> {t("Глоби")}
           </NavLink>

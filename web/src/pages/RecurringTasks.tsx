@@ -1,13 +1,24 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
 import { PRIORITY_LABELS, WEEKDAY_LABELS, WEEKDAYS } from "../api/types";
 import type { Priority, RecurringTaskTemplate, User, Weekday } from "../api/types";
 import { Avatar } from "../components/Avatar";
+import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 
+// Same rule as the server's canManage(): an Admin manages everything, and a
+// fully self-service template (you created it and you're the assignee) is
+// yours to manage too — anything else (a Lead created it for you, or you
+// created it for a scope employee) is Admin-only from here on.
+function canManage(tpl: RecurringTaskTemplate, userId: string | undefined, isAdmin: boolean) {
+  return isAdmin || (Boolean(userId) && tpl.createdById === userId && tpl.assigneeId === userId);
+}
+
 export function RecurringTasks() {
+  const { user } = useAuth();
   const { t } = useI18n();
+  const isAdmin = user?.role === "ADMIN";
   const [templates, setTemplates] = useState<RecurringTaskTemplate[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -103,21 +114,25 @@ export function RecurringTasks() {
                 </td>
                 <td className="row-actions">
                   <div className="row-actions-group">
-                    <button
-                      className="small-btn"
-                      onClick={() => {
-                        setEditingId(editingId === tpl.id ? null : tpl.id);
-                        setShowForm(false);
-                      }}
-                    >
-                      {editingId === tpl.id ? t("Затвори") : t("Редактирай")}
-                    </button>
-                    <button className="small-btn" onClick={() => toggleActive(tpl)}>
-                      {tpl.active ? t("Спри") : t("Активирай")}
-                    </button>
-                    <button className="small-btn" onClick={() => deleteTemplate(tpl)}>
-                      {t("Изтрий")}
-                    </button>
+                    {canManage(tpl, user?.id, isAdmin) && (
+                      <>
+                        <button
+                          className="small-btn"
+                          onClick={() => {
+                            setEditingId(editingId === tpl.id ? null : tpl.id);
+                            setShowForm(false);
+                          }}
+                        >
+                          {editingId === tpl.id ? t("Затвори") : t("Редактирай")}
+                        </button>
+                        <button className="small-btn" onClick={() => toggleActive(tpl)}>
+                          {tpl.active ? t("Спри") : t("Активирай")}
+                        </button>
+                        <button className="small-btn" onClick={() => deleteTemplate(tpl)}>
+                          {t("Изтрий")}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -163,11 +178,16 @@ function TemplateForm({
   onSaved: () => void;
   onCancel?: () => void;
 }) {
+  const { user } = useAuth();
   const { t } = useI18n();
+  const isAdmin = user?.role === "ADMIN";
+  const isLead = Boolean(user?.canAssignTasks);
   const isEdit = Boolean(template);
   const [title, setTitle] = useState(template?.title ?? "");
   const [description, setDescription] = useState(template?.description ?? "");
-  const [assigneeId, setAssigneeId] = useState(template?.assigneeId ?? employees[0]?.id ?? "");
+  const [assigneeId, setAssigneeId] = useState(
+    template?.assigneeId ?? (isAdmin ? employees[0]?.id ?? "" : user?.id ?? "")
+  );
   const [ownerId, setOwnerId] = useState(template?.ownerId ?? "");
   const [priority, setPriority] = useState<Priority>(template?.priority ?? "MEDIUM");
   const [days, setDays] = useState<Weekday[]>((template?.daysOfWeek.split(",").filter(Boolean) as Weekday[]) ?? []);
@@ -175,7 +195,34 @@ function TemplateForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const employeeOptions = employees.filter((e) => e.active || e.id === assigneeId || e.id === ownerId);
+  const isSelfAssign = !isEdit && assigneeId === user?.id;
+
+  // Mirrors TaskForm: a non-admin's `employees` list is server-scoped to
+  // {self, every Admin, their own Lead scope, other Leads} — Admins in that
+  // list are excluded from the assignee options unless the Ultimate Admin
+  // explicitly put them in this Lead's scope.
+  const [ownScope, setOwnScope] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isAdmin && isLead && user?.id) {
+      api<string[]>(`/users/${user.id}/scope`).then(setOwnScope).catch(() => {});
+    }
+  }, [isAdmin, isLead, user?.id]);
+
+  const assigneeOptions = useMemo(
+    () =>
+      isAdmin
+        ? employees.filter((e) => e.active || e.id === assigneeId || e.id === ownerId)
+        : employees.filter((e) => e.id === user?.id || e.role !== "ADMIN" || ownScope.includes(e.id)),
+    [employees, assigneeId, ownerId, isAdmin, user?.id, ownScope]
+  );
+  const ownerOptions = useMemo(() => {
+    const base = isAdmin
+      ? employees.filter((e) => e.active || e.id === ownerId)
+      : isSelfAssign
+        ? employees.filter((e) => e.role === "ADMIN")
+        : employees;
+    return base.filter((e) => e.id !== assigneeId);
+  }, [employees, assigneeId, ownerId, isAdmin, isSelfAssign]);
 
   function toggleDay(day: Weekday) {
     setDays((cur) => (cur.includes(day) ? cur.filter((d) => d !== day) : [...cur, day]));
@@ -192,13 +239,17 @@ function TemplateForm({
       setError(t("Избери поне един ден от седмицата."));
       return;
     }
+    if (isSelfAssign && !ownerId) {
+      setError(t("Самозададен шаблон трябва да има Owner — администратор, който да следи изпълнението."));
+      return;
+    }
     setSubmitting(true);
     try {
       const body = {
         title,
         description: description || undefined,
         assigneeId,
-        ownerId: ownerId || undefined,
+        ownerId: ownerId || null,
         priority,
         daysOfWeek: days,
         timeOfDay,
@@ -206,7 +257,7 @@ function TemplateForm({
       if (isEdit) {
         await api(`/task-templates/${template!.id}`, { method: "PATCH", body: JSON.stringify(body) });
       } else {
-        await api("/task-templates", { method: "POST", body: JSON.stringify(body) });
+        await api("/task-templates", { method: "POST", body: JSON.stringify({ ...body, ownerId: ownerId || undefined }) });
       }
       onSaved();
     } catch (err) {
@@ -229,27 +280,39 @@ function TemplateForm({
       <div className="form-row">
         <label>
           {t("Служител")}
-          <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} required>
-            <option value="" disabled>
-              {t("Избери…")}
-            </option>
-            {employeeOptions.map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {emp.name}
+          {!isEdit && !isAdmin && !isLead ? (
+            <input value={user?.name ?? ""} disabled />
+          ) : (
+            <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} required disabled={isEdit && !isAdmin}>
+              <option value="" disabled>
+                {t("Избери…")}
               </option>
-            ))}
-          </select>
+              {assigneeOptions.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.id === user?.id ? t("Ти") : emp.name}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
         <label>
           {t("Owner (проверява всеки цикъл)")}
-          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-            <option value="">{t("Без — admin преглежда")}</option>
-            {employeeOptions.map((emp) => (
+          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} required={isSelfAssign}>
+            {!isSelfAssign && <option value="">{t("Без — admin преглежда")}</option>}
+            {isSelfAssign && (
+              <option value="" disabled>
+                {t("Избери администратор…")}
+              </option>
+            )}
+            {ownerOptions.map((emp) => (
               <option key={emp.id} value={emp.id}>
                 {emp.name}
               </option>
             ))}
           </select>
+          {isSelfAssign && (
+            <span className="muted small">{t("Самозададен шаблон изисква администратор, който да следи изпълнението.")}</span>
+          )}
         </label>
         <label>
           {t("Приоритет")}

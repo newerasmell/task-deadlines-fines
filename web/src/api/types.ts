@@ -106,6 +106,8 @@ export interface RecurringTaskTemplate {
   assignee: UserRef;
   ownerId: string | null;
   owner: UserRef | null;
+  createdById: string;
+  createdBy: UserRef;
   priority: Priority;
   daysOfWeek: string;
   timeOfDay: string;
