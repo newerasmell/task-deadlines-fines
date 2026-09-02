@@ -883,11 +883,14 @@ button.secondary:hover {
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 0.82rem;
-  cursor: grab;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.board-card:active {
+.board-card-clickable {
+  cursor: grab;
+}
+
+.board-card-clickable:active {
   cursor: grabbing;
 }
 
@@ -902,6 +905,17 @@ button.secondary:hover {
 
 .board-card-fine {
   margin-top: 2px;
+}
+
+.board-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.board-card-actions .small-btn {
+  margin-right: 0;
 }
 
 .dashboard-columns {

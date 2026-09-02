@@ -133,26 +133,28 @@ export function Tasks() {
         />
       )}
 
-      {isAdmin && (
-        <div className="tabs">
-          <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>
-            {t("Табло")}
-          </button>
-          <button className={view === "list" ? "active" : ""} onClick={() => setView("list")}>
-            {t("Списък")}
-          </button>
-        </div>
-      )}
+      <div className="tabs">
+        <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>
+          {t("Табло")}
+        </button>
+        <button className={view === "list" ? "active" : ""} onClick={() => setView("list")}>
+          {t("Списък")}
+        </button>
+      </div>
 
-      {isAdmin && view === "board" ? (
+      {view === "board" ? (
         <>
           <TaskBoard
             tasks={tasks}
+            currentUserId={user?.id}
+            isAdmin={isAdmin}
             onEdit={(taskId) => toggleExpanded(taskId, "edit")}
+            onStart={startWork}
+            onSubmit={(taskId) => toggleExpanded(taskId, "submit")}
             onStatusChange={handleBoardStatusChange}
             isLockedTask={isLockedTask}
           />
-          {expanded && expandedTask && expanded.mode === "edit" && (
+          {expanded && expandedTask && expanded.mode === "edit" && isAdmin && (
             <TaskForm
               task={expandedTask}
               employees={employees}
@@ -161,6 +163,15 @@ export function Tasks() {
                 refresh();
               }}
               onCancel={() => setExpanded(null)}
+            />
+          )}
+          {expanded && expandedTask && expanded.mode === "submit" && (
+            <SubmitForm
+              taskId={expanded.taskId}
+              onDone={() => {
+                setExpanded(null);
+                refresh();
+              }}
             />
           )}
         </>
@@ -365,12 +376,20 @@ export function Tasks() {
 
 function TaskBoard({
   tasks,
+  currentUserId,
+  isAdmin,
   onEdit,
+  onStart,
+  onSubmit,
   onStatusChange,
   isLockedTask,
 }: {
   tasks: Task[];
+  currentUserId: string | undefined;
+  isAdmin: boolean;
   onEdit: (taskId: string) => void;
+  onStart: (taskId: string) => void;
+  onSubmit: (taskId: string) => void;
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   isLockedTask: (tk: Task) => boolean;
 }) {
@@ -454,19 +473,29 @@ function TaskBoard({
                         const activeFines = (tk.fines ?? []).filter((f) => f.status === "ACTIVE");
                         const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
                         const locked = isLockedTask(tk);
+                        const isAssignee = tk.assigneeId === currentUserId;
+                        const canStart = isAssignee && tk.status === "PENDING";
+                        const canSubmitCard = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS");
+                        const canClickToEdit = isAdmin && !locked;
                         return (
                           <div
                             key={tk.id}
-                            className="board-card"
+                            className={`board-card${canClickToEdit ? " board-card-clickable" : ""}`}
                             style={{ borderLeftColor: PRIORITY_COLORS[tk.priority] }}
-                            draggable={!locked}
-                            onDragStart={() => !locked && setDragTaskId(tk.id)}
+                            draggable={canClickToEdit}
+                            onDragStart={() => canClickToEdit && setDragTaskId(tk.id)}
                             onDragEnd={() => {
                               setDragTaskId(null);
                               setDragOverKey(null);
                             }}
-                            onClick={() => !locked && onEdit(tk.id)}
-                            title={locked ? t("Зададена от Ultimate Admin — само той може да я редактира/изтрие") : t("Кликни за редакция")}
+                            onClick={() => canClickToEdit && onEdit(tk.id)}
+                            title={
+                              isAdmin
+                                ? locked
+                                  ? t("Зададена от Ultimate Admin — само той може да я редактира/изтрие")
+                                  : t("Кликни за редакция")
+                                : undefined
+                            }
                           >
                             <div className="board-card-title">
                               {tk.title}
@@ -481,6 +510,32 @@ function TaskBoard({
                               <span className="badge badge-danger board-card-fine">
                                 {fineTotal.toFixed(2)} {activeFines[0].currency}
                               </span>
+                            )}
+                            {(canStart || canSubmitCard) && (
+                              <div className="board-card-actions">
+                                {canStart && (
+                                  <button
+                                    className="small-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onStart(tk.id);
+                                    }}
+                                  >
+                                    {t("Започни")}
+                                  </button>
+                                )}
+                                {canSubmitCard && (
+                                  <button
+                                    className="small-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onSubmit(tk.id);
+                                    }}
+                                  >
+                                    {t("Подай за преглед")}
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         );
