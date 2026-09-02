@@ -10,6 +10,7 @@ import { absoluteUploadPath, uploadAttachments } from "../lib/uploads";
 import { requireAdmin, requireAuth } from "../middleware/auth";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
 import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { spawnRecurringOccurrencesThrottled } from "../jobs/recurringTasks";
 
 export const tasksRouter = Router();
 
@@ -90,6 +91,8 @@ tasksRouter.get(
 tasksRouter.use(requireAuth);
 
 tasksRouter.get("/", async (req, res) => {
+  await spawnRecurringOccurrencesThrottled();
+
   const isAdmin = req.user!.role === "ADMIN";
   const assigneeFilter = typeof req.query.assigneeId === "string" ? req.query.assigneeId : undefined;
 

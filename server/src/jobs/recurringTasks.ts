@@ -16,6 +16,32 @@ const WEEKDAY_CODES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const
  * at a time. daysOfWeek/timeOfDay are interpreted in the server process's
  * local time zone.
  */
+let lastThrottledSpawnAt = 0;
+const SPAWN_THROTTLE_MS = 60_000;
+
+/**
+ * Same as spawnRecurringOccurrences, but safe to call from a request handler:
+ * skips (rather than re-scanning every template) if it already ran within
+ * the last minute, and never throws — a failed spawn attempt shouldn't break
+ * the page that triggered it. This exists because the background cron only
+ * runs while the process is alive; on a host that suspends an idle web
+ * service (e.g. Render's free tier), a due occurrence could otherwise sit
+ * unspawned for however long the process was asleep, with nothing visible
+ * to the assignee (no task to submit against, no reminder) until the next
+ * tick after it wakes back up. Calling this from GET /tasks means loading
+ * the page itself is enough to catch it up.
+ */
+export async function spawnRecurringOccurrencesThrottled(now: Date = new Date()): Promise<void> {
+  const nowMs = Date.now();
+  if (nowMs - lastThrottledSpawnAt < SPAWN_THROTTLE_MS) return;
+  lastThrottledSpawnAt = nowMs;
+  try {
+    await spawnRecurringOccurrences(now);
+  } catch (err) {
+    console.error("[recurringTasks] throttled spawn failed:", err);
+  }
+}
+
 export async function spawnRecurringOccurrences(now: Date): Promise<void> {
   const templates = await prisma.recurringTaskTemplate.findMany({
     where: { active: true },
