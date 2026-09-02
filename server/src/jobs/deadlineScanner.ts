@@ -53,6 +53,7 @@ async function sendUpcomingReminders(now: Date): Promise<void> {
 
   const openTasks = await prisma.task.findMany({
     where: {
+      deletedAt: null,
       status: { in: ["PENDING", "IN_PROGRESS"] },
       deadline: { gt: now },
     },
@@ -113,6 +114,7 @@ async function sendUpcomingReminders(now: Date): Promise<void> {
 async function handleOverdueTasks(now: Date): Promise<void> {
   const overdue = await prisma.task.findMany({
     where: {
+      deletedAt: null,
       status: { in: OPEN_STATUSES as unknown as string[] },
       deadline: { lt: now },
     },
@@ -171,7 +173,7 @@ async function handleOverdueTasks(now: Date): Promise<void> {
  */
 async function handleOverdueReviews(now: Date): Promise<void> {
   const pendingReviews = await prisma.taskSubmission.findMany({
-    where: { reviewStatus: "PENDING", reviewDueAt: { lt: now } },
+    where: { reviewStatus: "PENDING", reviewDueAt: { lt: now }, task: { deletedAt: null } },
     include: { task: { include: { owner: true } } },
   });
 
