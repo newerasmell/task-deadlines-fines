@@ -421,6 +421,17 @@ function TaskBoard({
 
   if (employeeIds.length === 0) return <p className="muted">{t("Няма задачи.")}</p>;
 
+  // Admins can drag any (non-locked) card between any droppable column — it's
+  // a raw status PATCH. Non-admins can only drag their OWN pending cards into
+  // "В процес", the one status change PATCH /tasks/:id actually lets a plain
+  // assignee make; every other transition (submit, approve, overdue) has its
+  // own dedicated flow and isn't a valid drag target.
+  function canDropInto(col: (typeof BOARD_COLUMNS)[number], draggedTask: Task | undefined): boolean {
+    if (!draggedTask) return false;
+    if (isAdmin) return col.droppable && !isLockedTask(draggedTask);
+    return draggedTask.assigneeId === currentUserId && draggedTask.status === "PENDING" && col.status === "IN_PROGRESS";
+  }
+
   return (
     <div className="board">
       {employeeIds.map((empId) => {
@@ -450,7 +461,9 @@ function TaskBoard({
                     key={col.status}
                     className={`board-column${isDragOver ? " board-column-over" : ""}`}
                     onDragOver={(e) => {
-                      if (!col.droppable || !dragTaskId) return;
+                      if (!dragTaskId) return;
+                      const draggedTask = tasks.find((tk) => tk.id === dragTaskId);
+                      if (!canDropInto(col, draggedTask)) return;
                       e.preventDefault();
                       setDragOverKey(key);
                     }}
@@ -458,10 +471,14 @@ function TaskBoard({
                     onDrop={(e) => {
                       e.preventDefault();
                       setDragOverKey(null);
-                      if (!col.droppable || !dragTaskId) return;
-                      const draggedTask = empTasks.find((tk) => tk.id === dragTaskId) ?? tasks.find((tk) => tk.id === dragTaskId);
-                      if (draggedTask && isLockedTask(draggedTask)) return;
-                      onStatusChange(dragTaskId, col.status);
+                      if (!dragTaskId) return;
+                      const draggedTask = tasks.find((tk) => tk.id === dragTaskId);
+                      if (!canDropInto(col, draggedTask)) return;
+                      if (isAdmin) {
+                        onStatusChange(dragTaskId, col.status);
+                      } else {
+                        onStart(dragTaskId);
+                      }
                       setDragTaskId(null);
                     }}
                   >
@@ -477,13 +494,14 @@ function TaskBoard({
                         const canStart = isAssignee && tk.status === "PENDING";
                         const canSubmitCard = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS");
                         const canClickToEdit = isAdmin && !locked;
+                        const canDrag = isAdmin ? !locked : canStart;
                         return (
                           <div
                             key={tk.id}
-                            className={`board-card${canClickToEdit ? " board-card-clickable" : ""}`}
+                            className={`board-card${canDrag ? " board-card-clickable" : ""}`}
                             style={{ borderLeftColor: PRIORITY_COLORS[tk.priority] }}
-                            draggable={canClickToEdit}
-                            onDragStart={() => canClickToEdit && setDragTaskId(tk.id)}
+                            draggable={canDrag}
+                            onDragStart={() => canDrag && setDragTaskId(tk.id)}
                             onDragEnd={() => {
                               setDragTaskId(null);
                               setDragOverKey(null);
@@ -494,13 +512,17 @@ function TaskBoard({
                                 ? locked
                                   ? t("Зададена от Ultimate Admin — само той може да я редактира/изтрие")
                                   : t("Кликни за редакция")
-                                : undefined
+                                : canStart
+                                  ? t("Провлачи в „В процес“, за да започнеш")
+                                  : undefined
                             }
                           >
                             <div className="board-card-title">
                               {tk.title}
                               {tk.templateId && <span title={t("Повтаряща се задача")}> ↻</span>}
-                              {locked && <span> 🔒</span>}
+                              {isAdmin && locked && (
+                                <span title={t("Зададена от Ultimate Admin — само той може да я редактира/изтрие")}> 🔒</span>
+                              )}
                             </div>
                             <div className="board-card-meta muted small">
                               {new Date(tk.deadline).toLocaleDateString(locale)}

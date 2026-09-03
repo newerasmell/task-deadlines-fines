@@ -80,6 +80,7 @@ export const en: Record<string, string> = {
   "Няма активни задачи.": "No active tasks.",
   "Няма задачи.": "No tasks.",
   "Кликни за редакция": "Click to edit",
+  "Провлачи в „В процес“, за да започнеш": "Drag into \"In progress\" to start",
   "Разгъни": "Expand",
   "Свий": "Collapse",
   "В процес": "In progress",
