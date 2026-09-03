@@ -240,7 +240,7 @@ export function Tasks() {
               const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
               const isAssignee = tk.assigneeId === user?.id;
               const isOwner = tk.ownerId === user?.id;
-              const canSubmit = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS");
+              const canSubmit = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS" || tk.status === "OVERDUE");
               const canReview = (isOwner || isAdmin) && tk.status === "PENDING_REVIEW";
               const isExpanded = expanded?.taskId === tk.id;
               const locked = isLockedTask(tk);
@@ -492,7 +492,7 @@ function TaskBoard({
                         const locked = isLockedTask(tk);
                         const isAssignee = tk.assigneeId === currentUserId;
                         const canStart = isAssignee && tk.status === "PENDING";
-                        const canSubmitCard = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS");
+                        const canSubmitCard = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS" || tk.status === "OVERDUE");
                         const canClickToEdit = isAdmin && !locked;
                         const canDrag = isAdmin ? !locked : canStart;
                         return (

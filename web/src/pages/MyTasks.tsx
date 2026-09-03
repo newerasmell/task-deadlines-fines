@@ -79,7 +79,7 @@ export function MyTasks() {
           {visible.map((tk) => {
             const activeFines = (tk.fines ?? []).filter((f) => f.status === "ACTIVE");
             const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
-            const canSubmit = tk.status === "PENDING" || tk.status === "IN_PROGRESS";
+            const canSubmit = tk.status === "PENDING" || tk.status === "IN_PROGRESS" || tk.status === "OVERDUE";
             const isSubmitting = submittingId === tk.id;
             return (
               <Fragment key={tk.id}>
