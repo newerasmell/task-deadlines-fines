@@ -48,6 +48,9 @@ export const en: Record<string, string> = {
   "Завършена": "Done",
   "Просрочена": "Overdue",
   "Отменена": "Cancelled",
+  "Чака предходна стъпка": "Waiting on previous step",
+  "Чака проект": "Waiting on project",
+  "Стъпка {order} от проект": "Step {order} of project",
 
   // Audit action labels
   "Създадена задача": "Task created",
@@ -106,6 +109,23 @@ export const en: Record<string, string> = {
   "Запази промените": "Save changes",
   "Създай задача": "Create task",
   "Отказ": "Cancel",
+
+  // Complex (multi-step) tasks
+  "+ Сложна задача": "+ Complex task",
+  "Име на проекта": "Project name",
+  "Верига от 2 до 4 задачи, всяка към различен служител. Първата стъпка тръгва веднага, а всяка следваща се активира едва след като предходната бъде одобрена — тогава срокът ѝ се пресмята автоматично (одобрение + брой дни). Всички участници получават известие за цялата верига веднага при създаването.":
+    "A chain of 2-4 tasks, each to a different employee. The first step starts right away; each next one only activates once the previous one is approved — its deadline is then computed automatically (approval time + number of days). Everyone involved gets notified about the whole chain as soon as it's created.",
+  "Стъпка {n}": "Step {n}",
+  "Премахни": "Remove",
+  "+ Добави следваща стъпка": "+ Add next step",
+  "Дни след предходната стъпка": "Days after the previous step",
+  "Създай проект": "Create project",
+  "Избери служител за стъпка {n}.": "Select an employee for step {n}.",
+  "Въведи заглавие на задачата за стъпка {n}.": "Enter a task title for step {n}.",
+  "Първата стъпка трябва да има краен срок.": "The first step needs a deadline.",
+  "Стъпка {n} трябва да има брой дни след предходната.": "Step {n} needs a number of days after the previous one.",
+  'Стъпка {n} ("{title}") е самозададена и трябва да има Owner — администратор.':
+    'Step {n} ("{title}") is self-assigned and needs an Owner — an admin.',
   "Ти": "You",
   "Избери администратор…": "Select an admin…",
   "Самозададена задача изисква администратор, който да следи изпълнението.": "A self-assigned task requires an admin to keep track of it.",

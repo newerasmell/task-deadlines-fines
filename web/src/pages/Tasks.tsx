@@ -17,9 +17,11 @@ export const statusBadgeClass: Record<Task["status"], string> = {
   DONE: "badge badge-success",
   OVERDUE: "badge badge-danger",
   CANCELLED: "badge",
+  BLOCKED: "badge",
 };
 
 const BOARD_COLUMNS: { status: Task["status"]; label: string; color: string; droppable: boolean }[] = [
+  { status: "BLOCKED", label: "Чака проект", color: "#c4c4c4", droppable: false },
   { status: "PENDING", label: "Чакаща", color: "#9d99b9", droppable: true },
   { status: "IN_PROGRESS", label: "В процес", color: "#579bfc", droppable: true },
   { status: "PENDING_REVIEW", label: "За преглед", color: "#a25ddc", droppable: false },
@@ -43,9 +45,11 @@ export function Tasks() {
   const { t, lang } = useI18n();
   const locale = lang === "en" ? "en-GB" : "bg-BG";
   const isAdmin = user?.role === "ADMIN";
+  const isLead = Boolean(user?.canAssignTasks);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showComplexForm, setShowComplexForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<{ taskId: string; mode: ExpandedMode } | null>(null);
   const [tab, setTab] = useState<Tab>("active");
@@ -113,14 +117,29 @@ export function Tasks() {
     <div>
       <div className="page-header">
         <h1>{t("Задачи")}</h1>
-        <button
-          onClick={() => {
-            setShowForm((s) => !s);
-            setExpanded(null);
-          }}
-        >
-          {showForm ? t("Затвори") : t("+ Нова задача")}
-        </button>
+        <div className="form-row" style={{ margin: 0 }}>
+          {(isAdmin || isLead) && (
+            <button
+              className="secondary"
+              onClick={() => {
+                setShowComplexForm((s) => !s);
+                setShowForm(false);
+                setExpanded(null);
+              }}
+            >
+              {showComplexForm ? t("Затвори") : t("+ Сложна задача")}
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setShowForm((s) => !s);
+              setShowComplexForm(false);
+              setExpanded(null);
+            }}
+          >
+            {showForm ? t("Затвори") : t("+ Нова задача")}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -130,6 +149,17 @@ export function Tasks() {
             setShowForm(false);
             refresh();
           }}
+        />
+      )}
+
+      {showComplexForm && (
+        <ComplexTaskForm
+          employees={employees}
+          onSaved={() => {
+            setShowComplexForm(false);
+            refresh();
+          }}
+          onCancel={() => setShowComplexForm(false)}
         />
       )}
 
@@ -269,6 +299,11 @@ export function Tasks() {
                               ↻
                             </span>
                           )}
+                          {tk.projectId && (
+                            <span className="badge" title={t("Стъпка {order} от проект", { order: tk.chainOrder ?? "?" })}>
+                              🔗 {tk.chainOrder}
+                            </span>
+                          )}
                           {isAdmin && locked && (
                             <span className="badge" title={t("Зададена от Ultimate Admin — само той може да я редактира/изтрие")}>
                               🔒
@@ -288,7 +323,11 @@ export function Tasks() {
                       {tk.owner?.name ?? "—"}
                     </div>
                     <div className="grid-cell" data-label={t("Срок")}>
-                      {new Date(tk.deadline).toLocaleString(locale)}
+                      {tk.status === "BLOCKED" ? (
+                        <span className="muted">{t("Чака предходна стъпка")}</span>
+                      ) : (
+                        new Date(tk.deadline).toLocaleString(locale)
+                      )}
                     </div>
                     <div className="grid-cell" data-label={t("Приоритет")}>
                       {t(PRIORITY_LABELS[tk.priority])}
@@ -520,12 +559,15 @@ function TaskBoard({
                             <div className="board-card-title">
                               {tk.title}
                               {tk.templateId && <span title={t("Повтаряща се задача")}> ↻</span>}
+                              {tk.projectId && <span title={t("Стъпка {order} от проект", { order: tk.chainOrder ?? "?" })}> 🔗{tk.chainOrder}</span>}
                               {isAdmin && locked && (
                                 <span title={t("Зададена от Ultimate Admin — само той може да я редактира/изтрие")}> 🔒</span>
                               )}
                             </div>
                             <div className="board-card-meta muted small">
-                              {new Date(tk.deadline).toLocaleDateString(locale)}
+                              {tk.status === "BLOCKED"
+                                ? t("Чака предходна стъпка")
+                                : new Date(tk.deadline).toLocaleDateString(locale)}
                               {tk.owner && ` · Owner: ${tk.owner.name}`}
                             </div>
                             {fineTotal > 0 && (
@@ -877,6 +919,239 @@ function TaskForm({
       <div className="form-row">
         <button type="submit" disabled={submitting}>
           {submitting ? t("Записване…") : isEdit ? t("Запази промените") : t("Създай задача")}
+        </button>
+        {onCancel && (
+          <button type="button" className="secondary" onClick={onCancel}>
+            {t("Отказ")}
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+interface ComplexStepDraft {
+  assigneeId: string;
+  title: string;
+  description: string;
+  ownerId: string;
+  priority: Priority;
+  deadline: string; // datetime-local string — step 0 only
+  delayDays: string; // step 1+ only
+}
+
+function emptyComplexStep(defaultAssigneeId: string): ComplexStepDraft {
+  return { assigneeId: defaultAssigneeId, title: "", description: "", ownerId: "", priority: "MEDIUM", deadline: "", delayDays: "" };
+}
+
+// A "сложна задача": a chain of 2-4 task steps, each with its own
+// assignee/owner. Step 1 gets a real deadline right away; every step after
+// it only becomes active (a real deadline, visible in the normal flow) once
+// the step before it is approved — see POST /projects and the
+// activateNextChainStep() chain-activation block in the approve route.
+function ComplexTaskForm({
+  employees,
+  onSaved,
+  onCancel,
+}: {
+  employees: User[];
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
+  const { user } = useAuth();
+  const { t } = useI18n();
+  const isAdmin = user?.role === "ADMIN";
+  const isLead = Boolean(user?.canAssignTasks);
+  const [projectTitle, setProjectTitle] = useState("");
+  const [steps, setSteps] = useState<ComplexStepDraft[]>([
+    emptyComplexStep(isAdmin ? "" : (user?.id ?? "")),
+    emptyComplexStep(""),
+  ]);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [ownScope, setOwnScope] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isAdmin && isLead && user?.id) {
+      api<string[]>(`/users/${user.id}/scope`).then(setOwnScope).catch(() => {});
+    }
+  }, [isAdmin, isLead, user?.id]);
+
+  function assigneeOptionsFor(step: ComplexStepDraft) {
+    return isAdmin
+      ? employees.filter((e) => e.active || e.id === step.assigneeId || e.id === step.ownerId)
+      : employees.filter((e) => e.id === user?.id || e.role !== "ADMIN" || ownScope.includes(e.id));
+  }
+
+  function ownerOptionsFor(step: ComplexStepDraft) {
+    const isSelfAssign = step.assigneeId === user?.id;
+    const base = isAdmin
+      ? employees.filter((e) => e.active || e.id === step.ownerId)
+      : isSelfAssign
+        ? employees.filter((e) => e.role === "ADMIN")
+        : employees;
+    return base.filter((e) => e.id !== step.assigneeId);
+  }
+
+  function updateStep(index: number, patch: Partial<ComplexStepDraft>) {
+    setSteps((cur) => cur.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+  }
+
+  function addStep() {
+    setSteps((cur) => (cur.length >= 4 ? cur : [...cur, emptyComplexStep("")]));
+  }
+
+  function removeStep(index: number) {
+    setSteps((cur) => (cur.length <= 2 ? cur : cur.filter((_, i) => i !== index)));
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      if (!step.assigneeId) return setError(t("Избери служител за стъпка {n}.", { n: i + 1 }));
+      if (!step.title) return setError(t("Въведи заглавие на задачата за стъпка {n}.", { n: i + 1 }));
+      if (i === 0 && !step.deadline) return setError(t("Първата стъпка трябва да има краен срок."));
+      if (i > 0 && !step.delayDays) return setError(t("Стъпка {n} трябва да има брой дни след предходната.", { n: i + 1 }));
+      const isSelfAssign = step.assigneeId === user?.id;
+      if (isSelfAssign && !isAdmin && !step.ownerId) {
+        return setError(t('Стъпка {n} ("{title}") е самозададена и трябва да има Owner — администратор.', { n: i + 1, title: step.title }));
+      }
+    }
+
+    setSubmitting(true);
+    try {
+      const body = {
+        title: projectTitle,
+        steps: steps.map((step, i) => ({
+          assigneeId: step.assigneeId,
+          title: step.title,
+          description: step.description || undefined,
+          ownerId: step.ownerId || undefined,
+          priority: step.priority,
+          deadline: i === 0 ? new Date(step.deadline).toISOString() : undefined,
+          delayDays: i > 0 ? Number(step.delayDays) : undefined,
+        })),
+      };
+      await api("/projects", { method: "POST", body: JSON.stringify(body) });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? t(err.message) : t("Грешка"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={handleSubmit}>
+      <label>
+        {t("Име на проекта")}
+        <input value={projectTitle} onChange={(e) => setProjectTitle(e.target.value)} required />
+      </label>
+      <p className="muted small">
+        {t(
+          "Верига от 2 до 4 задачи, всяка към различен служител. Първата стъпка тръгва веднага, а всяка следваща се активира едва след като предходната бъде одобрена — тогава срокът ѝ се пресмята автоматично (одобрение + брой дни). Всички участници получават известие за цялата верига веднага при създаването."
+        )}
+      </p>
+
+      {steps.map((step, i) => {
+        const isSelfAssign = step.assigneeId === user?.id;
+        const assigneeOptions = assigneeOptionsFor(step);
+        const ownerOptions = ownerOptionsFor(step);
+        const ownerRequired = isSelfAssign && !isAdmin;
+        return (
+          <div className="card" key={i}>
+            <div className="form-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <strong>{t("Стъпка {n}", { n: i + 1 })}</strong>
+              {steps.length > 2 && (
+                <button type="button" className="small-btn" onClick={() => removeStep(i)}>
+                  {t("Премахни")}
+                </button>
+              )}
+            </div>
+            <label>
+              {t("Задача")}
+              <input value={step.title} onChange={(e) => updateStep(i, { title: e.target.value })} required />
+            </label>
+            <label>
+              {t("Описание")}
+              <textarea value={step.description} onChange={(e) => updateStep(i, { description: e.target.value })} rows={2} />
+            </label>
+            <div className="form-row">
+              <label>
+                {t("Служител")}
+                <select value={step.assigneeId} onChange={(e) => updateStep(i, { assigneeId: e.target.value })} required>
+                  <option value="" disabled>
+                    {t("Избери…")}
+                  </option>
+                  {assigneeOptions.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.id === user?.id ? t("Ти") : emp.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("Owner (проверява изпълнението)")}
+                <select value={step.ownerId} onChange={(e) => updateStep(i, { ownerId: e.target.value })} required={ownerRequired}>
+                  {!ownerRequired && <option value="">{t("Без — admin преглежда")}</option>}
+                  {ownerRequired && (
+                    <option value="" disabled>
+                      {t("Избери администратор…")}
+                    </option>
+                  )}
+                  {ownerOptions.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("Приоритет")}
+                <select value={step.priority} onChange={(e) => updateStep(i, { priority: e.target.value as Priority })}>
+                  {(["LOW", "MEDIUM", "HIGH", "CRITICAL"] as Priority[]).map((p) => (
+                    <option key={p} value={p}>
+                      {t(PRIORITY_LABELS[p])}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {i === 0 ? (
+                <label>
+                  {t("Краен срок")}
+                  <input type="datetime-local" value={step.deadline} onChange={(e) => updateStep(i, { deadline: e.target.value })} required />
+                </label>
+              ) : (
+                <label>
+                  {t("Дни след предходната стъпка")}
+                  <input
+                    type="number"
+                    min={1}
+                    max={90}
+                    value={step.delayDays}
+                    onChange={(e) => updateStep(i, { delayDays: e.target.value })}
+                    required
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {steps.length < 4 && (
+        <button type="button" className="secondary" onClick={addStep}>
+          {t("+ Добави следваща стъпка")}
+        </button>
+      )}
+
+      {error && <div className="error-text">{error}</div>}
+      <div className="form-row">
+        <button type="submit" disabled={submitting}>
+          {submitting ? t("Записване…") : t("Създай проект")}
         </button>
         {onCancel && (
           <button type="button" className="secondary" onClick={onCancel}>

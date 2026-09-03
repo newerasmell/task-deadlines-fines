@@ -1,5 +1,5 @@
 export type Role = "ADMIN" | "EMPLOYEE";
-export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PENDING_REVIEW" | "DONE" | "OVERDUE" | "CANCELLED";
+export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PENDING_REVIEW" | "DONE" | "OVERDUE" | "CANCELLED" | "BLOCKED";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type FineStatus = "ACTIVE" | "WAIVED" | "PAID";
 export type Channel = "TELEGRAM" | "SLACK" | "EMAIL" | "WHATSAPP" | "VIBER" | "GOOGLE_CALENDAR";
@@ -68,6 +68,20 @@ export interface Task {
   createdAt: string;
   fines?: Fine[];
   submissions?: TaskSubmission[];
+  // Multi-step chain ("сложна задача") linkage — projectId is set on every
+  // step; chainOrder/delayDaysAfterPrevious/previousStepId only on steps
+  // past the first (null for a standalone task or the chain's first step).
+  projectId?: string | null;
+  chainOrder?: number | null;
+  delayDaysAfterPrevious?: number | null;
+  previousStepId?: string | null;
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  createdById: string;
+  createdAt: string;
 }
 
 export interface Fine {
@@ -160,6 +174,7 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
   DONE: "Завършена",
   OVERDUE: "Просрочена",
   CANCELLED: "Отменена",
+  BLOCKED: "Чака предходна стъпка",
 };
 
 export const PRIORITY_LABELS: Record<Priority, string> = {

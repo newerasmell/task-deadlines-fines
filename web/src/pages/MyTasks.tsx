@@ -105,6 +105,11 @@ export function MyTasks() {
                             ↻
                           </span>
                         )}
+                        {tk.projectId && (
+                          <span className="badge" title={t("Стъпка {order} от проект", { order: tk.chainOrder ?? "?" })}>
+                            🔗 {tk.chainOrder}
+                          </span>
+                        )}
                       </div>
                       <div className={`muted small cell-description${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
                         {tk.description}
@@ -115,7 +120,11 @@ export function MyTasks() {
                     {tk.owner?.name ?? "—"}
                   </div>
                   <div className="grid-cell" data-label={t("Срок")}>
-                    {new Date(tk.deadline).toLocaleString(locale)}
+                    {tk.status === "BLOCKED" ? (
+                      <span className="muted">{t("Чака предходна стъпка")}</span>
+                    ) : (
+                      new Date(tk.deadline).toLocaleString(locale)
+                    )}
                   </div>
                   <div className="grid-cell" data-label={t("Приоритет")}>
                     {t(PRIORITY_LABELS[tk.priority])}

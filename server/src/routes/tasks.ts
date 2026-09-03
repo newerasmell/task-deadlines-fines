@@ -439,8 +439,53 @@ tasksRouter.post("/:id/submissions/:submissionId/approve", uploadAttachments.arr
     body: `"${task.title}" (${task.assignee.name}) е одобрена от ${req.user!.email}.`,
   });
 
+  await activateNextChainStep(task, now);
+
   res.json({ ok: true });
 });
+
+// Multi-step project ("сложна задача"): approving one step's submission is
+// what unblocks the next one. A step past the first sits with status
+// "BLOCKED" and a placeholder deadline (see projects.ts) until its
+// predecessor lands here — this computes the real deadline (now + its own
+// delayDaysAfterPrevious) and flips it live.
+async function activateNextChainStep(completedTask: { id: string; title: string; projectId: string | null }, now: Date): Promise<void> {
+  if (!completedTask.projectId) return;
+
+  const nextStep = await prisma.task.findFirst({
+    where: { previousStepId: completedTask.id, status: "BLOCKED" },
+    include: { assignee: true, owner: true },
+  });
+  if (!nextStep || !nextStep.delayDaysAfterPrevious) return;
+
+  const newDeadline = new Date(now.getTime() + nextStep.delayDaysAfterPrevious * 24 * 60 * 60 * 1000);
+  await prisma.task.update({ where: { id: nextStep.id }, data: { deadline: newDeadline, status: "PENDING" } });
+
+  await dispatchToAllChannels(
+    toNotificationTarget(nextStep.assignee),
+    {
+      subject: `Твой ред е: ${nextStep.title}`,
+      body: `Задача "${completedTask.title}" беше изпълнена. Сега е твой ред по проекта — задача "${nextStep.title}", срок ${formatDateTime(newDeadline)}.\n\n${nextStep.description ?? ""}\n\nЗакъснението без основателна причина води до автоматична глоба.`,
+      deadline: newDeadline,
+    },
+    { taskId: nextStep.id }
+  );
+  if (nextStep.owner) {
+    await dispatchToAllChannels(
+      toNotificationTarget(nextStep.owner),
+      {
+        subject: `Активна стъпка за преглед: ${nextStep.title}`,
+        body: `Стъпката "${nextStep.title}" от проекта вече е активна (изпълнител: ${nextStep.assignee.name}, срок ${formatDateTime(newDeadline)}). Ще трябва да прегледаш работата, след като бъде подадена.`,
+        deadline: newDeadline,
+      },
+      { taskId: nextStep.id }
+    );
+  }
+  await broadcastToAdmins({
+    subject: "Следваща стъпка от проект активирана",
+    body: `"${nextStep.title}" (${nextStep.assignee.name}) — срок ${formatDateTime(newDeadline)}.`,
+  });
+}
 
 const rejectSchema = z.object({ reviewNote: z.string().min(1) });
 

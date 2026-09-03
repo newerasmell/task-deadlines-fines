@@ -58,6 +58,7 @@ model User {
   templatesAssigned RecurringTaskTemplate[] @relation("TemplateAssignee")
   templatesOwned    RecurringTaskTemplate[] @relation("TemplateOwner")
   templatesCreated  RecurringTaskTemplate[] @relation("TemplateCreatedBy")
+  projectsCreated   Project[] @relation("CreatedProjects")
   auditLogs     AuditLog[]
   // Employees this user (as a Lead) is allowed to create/assign tasks for.
   assignableEmployees AssignmentScope[] @relation("LeadScope")
@@ -82,6 +83,20 @@ model AssignmentScope {
   @@unique([leadId, employeeId])
 }
 
+// A "сложна задача" — a linear chain of up to 4 Task steps, each one
+// assigned (and reviewed) independently, where a step past the first only
+// gets a real deadline once its predecessor is approved (see Task.previousStep
+// and the chain-activation block in the submission-approve route).
+model Project {
+  id          String   @id @default(cuid())
+  title       String
+  createdById String
+  createdBy   User     @relation("CreatedProjects", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  steps       Task[]
+}
+
 model Task {
   id            String     @id @default(cuid())
   title         String
@@ -95,6 +110,21 @@ model Task {
 
   templateId    String?
   template      RecurringTaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  // Multi-step chain ("сложна задача"): this task is one link, belonging to
+  // Project and pointing at the step immediately before it. A step past the
+  // first starts out with status "BLOCKED" and a placeholder far-future
+  // deadline (never acted on by the scanner — BLOCKED isn't in any status
+  // list it scans) until its previousStep is approved, at which point the
+  // approve route computes the real deadline (approval time + delayDays)
+  // and flips it to PENDING — see approveSubmission's chain-activation block.
+  projectId     String?
+  project       Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  chainOrder    Int?
+  delayDaysAfterPrevious Int?
+  previousStepId String?   @unique
+  previousStep  Task?      @relation("ChainLink", fields: [previousStepId], references: [id])
+  nextStep      Task?      @relation("ChainLink")
 
   deadline      DateTime
   priority      String     @default("MEDIUM")
