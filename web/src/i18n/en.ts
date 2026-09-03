@@ -179,6 +179,8 @@ export const en: Record<string, string> = {
   "Анулиране на глоба за": "Waiving fine for",
   "Обосновка (защо закъснението е основателно)": "Justification (why the delay was reasonable)",
   "Потвърди анулиране": "Confirm waive",
+  "Ръчна глоба": "Manual fine",
+  "задача": "task",
 
   // Recurring tasks
   "Повтарящи се задачи": "Recurring tasks",

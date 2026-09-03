@@ -86,6 +86,7 @@ export function Fines() {
         <thead>
           <tr>
             <th>{t("Служител")}</th>
+            <th>{t("Задача")}</th>
             <th>{t("Причина")}</th>
             <th>{t("Сума")}</th>
             <th>{t("Дата")}</th>
@@ -101,6 +102,9 @@ export function Fines() {
                   {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
                   {f.user?.name}
                 </div>
+              </td>
+              <td data-label={t("Задача")}>
+                {f.task?.title ?? <span className="muted">{t("Ръчна глоба")}</span>}
               </td>
               <td data-label={t("Причина")}>
                 {f.reason}
@@ -133,7 +137,7 @@ export function Fines() {
           ))}
           {fines.length === 0 && (
             <tr>
-              <td colSpan={isAdmin ? 6 : 5} className="muted">
+              <td colSpan={isAdmin ? 7 : 6} className="muted">
                 {t("Няма глоби.")}
               </td>
             </tr>
@@ -233,6 +237,12 @@ function WaiveForm({ fine, onDone, onCancel }: { fine: Fine; onDone: () => void;
     <form className="card form" onSubmit={handleSubmit}>
       <p>
         {t("Анулиране на глоба за")} <strong>{fine.user?.name}</strong> ({fine.amount.toFixed(2)} {fine.currency})
+        {fine.task && (
+          <>
+            {" "}
+            — {t("задача")} <strong>{fine.task.title}</strong>
+          </>
+        )}
       </p>
       <label>
         {t("Обосновка (защо закъснението е основателно)")}

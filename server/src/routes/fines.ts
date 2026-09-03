@@ -55,6 +55,12 @@ finesRouter.post("/", requireAdmin, async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: parsed.data.userId } });
   if (!user) return res.status(400).json({ error: "User not found" });
 
+  let task: { title: string } | null = null;
+  if (parsed.data.taskId) {
+    task = await prisma.task.findUnique({ where: { id: parsed.data.taskId }, select: { title: true } });
+    if (!task) return res.status(400).json({ error: "Task not found" });
+  }
+
   const fine = await prisma.fine.create({ data: parsed.data });
 
   await dispatchToAllChannels(toNotificationTarget(user), {
@@ -65,7 +71,14 @@ finesRouter.post("/", requireAdmin, async (req, res) => {
     subject: "Ръчна глоба наложена",
     body: `${user.name}: ${fine.amount} ${fine.currency} — ${fine.reason} (от ${req.user!.email})`,
   });
-  await logAction(req.user!.sub, "FINE_CREATED", "Fine", fine.id, `Наложена глоба на ${user.name}: ${fine.amount} ${fine.currency}`, fine);
+  await logAction(
+    req.user!.sub,
+    "FINE_CREATED",
+    "Fine",
+    fine.id,
+    `Наложена глоба на ${user.name}${task ? ` за задача "${task.title}"` : ""}: ${fine.amount} ${fine.currency}`,
+    fine
+  );
 
   res.status(201).json(fine);
 });
@@ -87,7 +100,7 @@ finesRouter.post("/:id/waive", requireAdmin, async (req, res) => {
         waivedById: req.user!.sub,
         waivedReason: parsed.data.reason,
       },
-      include: { user: true },
+      include: { user: true, task: { select: { title: true } } },
     });
 
     await dispatchToAllChannels(toNotificationTarget(fine.user), {
@@ -103,7 +116,7 @@ finesRouter.post("/:id/waive", requireAdmin, async (req, res) => {
       "FINE_WAIVED",
       "Fine",
       fine.id,
-      `Анулирана глоба на ${fine.user.name}: ${fine.amount} ${fine.currency} — ${parsed.data.reason}`
+      `Анулирана глоба на ${fine.user.name}${fine.task ? ` за задача "${fine.task.title}"` : ""}: ${fine.amount} ${fine.currency} — ${parsed.data.reason}`
     );
 
     res.json(fine);
