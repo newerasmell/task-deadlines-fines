@@ -134,6 +134,12 @@ model Task {
   reminder4hSentAt  DateTime?
   lastPeriodicReminderAt DateTime?
   lastEscalationAt DateTime?
+  // The daysLate value the most recent fine on THIS deadline cycle was for.
+  // Fine history (including waived fines) is excluded from this check on
+  // purpose: waiving a fine forgives that day, it must not make the scanner
+  // re-fine the exact same day again on its next pass. Editing the deadline
+  // starts a fresh cycle and resets this to null (see PATCH /tasks/:id).
+  lastFinedDaysLate Int?
   completedAt      DateTime?
   deletedAt        DateTime?
 
@@ -160,6 +166,10 @@ model TaskSubmission {
   reviewNote    String?
   reviewedAt    DateTime?
   reviewLastEscalationAt DateTime?
+  // Mirrors Task.lastFinedDaysLate — the daysLate value the most recent
+  // review fine was for, tracked independently of Fine.status so a waived
+  // review fine doesn't get immediately re-created on the next scan.
+  reviewLastFinedDaysLate Int?
   // Reminder tracking, mirroring Task's reminder24hSentAt/reminder4hSentAt/
   // lastPeriodicReminderAt but for the Owner's review window instead of the
   // assignee's deadline.

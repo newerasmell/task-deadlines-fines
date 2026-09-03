@@ -131,7 +131,7 @@ async function handleOverdueTasks(now: Date): Promise<void> {
     const { daysLate, amount, currency } = calculateFine(hoursLate, rule);
 
     const wasAlreadyOverdue = task.status === "OVERDUE";
-    const isNewEscalationDay = daysLate > (await currentDaysLate(task.id, task.assigneeId));
+    const isNewEscalationDay = daysLate > (task.lastFinedDaysLate ?? 0);
 
     if (!wasAlreadyOverdue) {
       await prisma.task.update({ where: { id: task.id }, data: { status: "OVERDUE" } });
@@ -148,7 +148,7 @@ async function handleOverdueTasks(now: Date): Promise<void> {
           reason: `Неоснователно закъснение по задача "${task.title}" (${daysLate} ${daysLate === 1 ? "ден" : "дни"} закъснение)`,
         },
       });
-      await prisma.task.update({ where: { id: task.id }, data: { lastEscalationAt: now } });
+      await prisma.task.update({ where: { id: task.id }, data: { lastEscalationAt: now, lastFinedDaysLate: daysLate } });
 
       const target = toNotificationTarget(task.assignee);
       await dispatchToAllChannels(
@@ -248,7 +248,7 @@ async function handleOverdueReviews(now: Date): Promise<void> {
     const { daysLate, amount, currency } = calculateFine(hoursLate, rule);
     if (amount <= 0) continue;
 
-    const priorDaysLate = await currentDaysLate(task.id, task.ownerId);
+    const priorDaysLate = submission.reviewLastFinedDaysLate ?? 0;
     if (daysLate <= priorDaysLate) continue;
 
     const fine = await prisma.fine.create({
@@ -261,7 +261,10 @@ async function handleOverdueReviews(now: Date): Promise<void> {
         reason: `Забавен преглед на подадена задача "${task.title}" (${daysLate} ${daysLate === 1 ? "ден" : "дни"} закъснение на прегледа)`,
       },
     });
-    await prisma.taskSubmission.update({ where: { id: submission.id }, data: { reviewLastEscalationAt: now } });
+    await prisma.taskSubmission.update({
+      where: { id: submission.id },
+      data: { reviewLastEscalationAt: now, reviewLastFinedDaysLate: daysLate },
+    });
 
     await dispatchToAllChannels(toNotificationTarget(task.owner), {
       subject: "Забавен преглед и наложена глоба",
@@ -272,18 +275,4 @@ async function handleOverdueReviews(now: Date): Promise<void> {
       body: `Owner ${task.owner.name} не прегледа "${task.title}" навреме — ${daysLate} ${daysLate === 1 ? "ден" : "дни"} закъснение, глоба ${fine.amount} ${fine.currency}.`,
     });
   }
-}
-
-// A waived fine means an admin decided the lateness it recorded didn't
-// count — most often right before pushing the deadline out, so the task can
-// go through a fresh overdue cycle. If a waived fine still counted here, its
-// daysLate would keep blocking every new fine on this task until the new
-// cycle's own lateness happens to exceed it. A merely paid (not waived) fine
-// still represents a real day that was already fined, so it still counts.
-async function currentDaysLate(taskId: string, userId: string): Promise<number> {
-  const latest = await prisma.fine.findFirst({
-    where: { taskId, userId, status: { not: "WAIVED" } },
-    orderBy: { createdAt: "desc" },
-  });
-  return latest?.daysLate ?? 0;
 }
