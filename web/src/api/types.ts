@@ -98,6 +98,8 @@ export interface FineRule {
   assignedUsers: { userId: string; user: { id: string; name: string } }[];
 }
 
+export type RecurringFrequency = "WEEKLY" | "MONTHLY";
+
 export interface RecurringTaskTemplate {
   id: string;
   title: string;
@@ -109,7 +111,9 @@ export interface RecurringTaskTemplate {
   createdById: string;
   createdBy: UserRef;
   priority: Priority;
+  frequency: RecurringFrequency;
   daysOfWeek: string;
+  dayOfMonth: number | null;
   timeOfDay: string;
   active: boolean;
 }
@@ -176,3 +180,8 @@ export const WEEKDAY_LABELS: Record<Weekday, string> = {
 };
 
 export const WEEKDAYS: Weekday[] = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
+export const FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
+  WEEKLY: "Седмично",
+  MONTHLY: "Месечно",
+};

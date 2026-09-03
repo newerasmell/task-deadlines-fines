@@ -28,16 +28,30 @@ taskTemplatesRouter.get("/", async (req, res) => {
   res.json(templates);
 });
 
-const templateSchema = z.object({
+const templateBaseSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   assigneeId: z.string().min(1),
   ownerId: z.string().min(1).optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
-  daysOfWeek: z.array(z.enum(WEEKDAY_CODES)).min(1),
+  frequency: z.enum(["WEEKLY", "MONTHLY"]).default("WEEKLY"),
+  // WEEKLY only — which weekdays to spawn on.
+  daysOfWeek: z.array(z.enum(WEEKDAY_CODES)).optional(),
+  // MONTHLY only — which day of the month to spawn on.
+  dayOfMonth: z.number().int().min(1).max(31).optional(),
   timeOfDay: z.string().regex(timeOfDayRegex, "Expected HH:MM"),
   active: z.boolean().default(true),
 });
+
+const templateSchema = templateBaseSchema
+  .refine((data) => data.frequency !== "WEEKLY" || (data.daysOfWeek && data.daysOfWeek.length > 0), {
+    message: "Избери поне един ден от седмицата",
+    path: ["daysOfWeek"],
+  })
+  .refine((data) => data.frequency !== "MONTHLY" || data.dayOfMonth !== undefined, {
+    message: "Избери ден от месеца",
+    path: ["dayOfMonth"],
+  });
 
 // Same permission rules as POST /tasks: everyone can create a recurring
 // template for themselves; a Lead can also create one for an employee in
@@ -87,13 +101,18 @@ taskTemplatesRouter.post("/", async (req, res) => {
   }
 
   const template = await prisma.recurringTaskTemplate.create({
-    data: { ...parsed.data, daysOfWeek: parsed.data.daysOfWeek.join(","), createdById: req.user!.sub },
+    data: {
+      ...parsed.data,
+      daysOfWeek: (parsed.data.daysOfWeek ?? []).join(","),
+      dayOfMonth: parsed.data.frequency === "MONTHLY" ? parsed.data.dayOfMonth : null,
+      createdById: req.user!.sub,
+    },
     include: templateInclude,
   });
   res.status(201).json(template);
 });
 
-const updateSchema = templateSchema.partial().extend({
+const updateSchema = templateBaseSchema.partial().extend({
   ownerId: z.string().nullable().optional(),
 });
 
@@ -118,6 +137,11 @@ taskTemplatesRouter.patch("/:id", async (req, res) => {
 
   const data: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.daysOfWeek) data.daysOfWeek = parsed.data.daysOfWeek.join(",");
+  // The form always resends the full frequency + daysOfWeek/dayOfMonth combo
+  // together, so once frequency is part of the update we can trust it to
+  // clear out whichever of the two the new frequency doesn't use.
+  if (parsed.data.frequency === "WEEKLY") data.dayOfMonth = null;
+  if (parsed.data.frequency === "MONTHLY") data.daysOfWeek = "";
 
   try {
     const template = await prisma.recurringTaskTemplate.update({

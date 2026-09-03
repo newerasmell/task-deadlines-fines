@@ -162,8 +162,13 @@ model RecurringTaskTemplate {
   createdBy     User       @relation("TemplateCreatedBy", fields: [createdById], references: [id])
 
   priority      String     @default("MEDIUM")
-  // Comma-separated 3-letter weekday codes, e.g. "TUE,WED"
+  // "WEEKLY" (uses daysOfWeek) or "MONTHLY" (uses dayOfMonth)
+  frequency     String     @default("WEEKLY")
+  // Comma-separated 3-letter weekday codes, e.g. "TUE,WED" — WEEKLY only
   daysOfWeek    String
+  // Day of month 1-31 — MONTHLY only. A value past the end of a shorter
+  // month (e.g. 31 in April) spawns on that month's last day instead.
+  dayOfMonth    Int?
   // "HH:MM" 24h, server-local time
   timeOfDay     String
   active        Boolean    @default(true)

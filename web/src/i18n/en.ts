@@ -185,9 +185,10 @@ export const en: Record<string, string> = {
   // Recurring tasks
   "Повтарящи се задачи": "Recurring tasks",
   "+ Нов шаблон": "+ New template",
-  "Шаблон без крайна дата — на всеки избран ден от седмицата, в избрания час, системата автоматично създава нова задача (с оригиналните напомняния, срокове и глоби). Деактивирай шаблон, за да спреш генерирането.":
-    "An open-ended template — on each selected weekday, at the chosen time, the system automatically creates a new task (with the usual reminders, deadlines and fines). Deactivate a template to stop generating occurrences.",
+  "Шаблон без крайна дата — седмично на избрани дни или месечно на избрано число, в избрания час, системата автоматично създава нова задача (с оригиналните напомняния, срокове и глоби). Деактивирай шаблон, за да спреш генерирането.":
+    "An open-ended template — weekly on selected days, or monthly on a chosen date, at the set time, the system automatically creates a new task (with the usual reminders, deadlines and fines). Deactivate a template to stop generating occurrences.",
   "Дни": "Days",
+  "Повторение": "Recurrence",
   "Час": "Time",
   "Да": "Yes",
   "Не": "No",
@@ -198,6 +199,14 @@ export const en: Record<string, string> = {
   "Избери поне един ден от седмицата.": "Select at least one day of the week.",
   "Час на срока": "Deadline time",
   "Дни от седмицата": "Days of the week",
+  "Честота": "Frequency",
+  "Седмично": "Weekly",
+  "Месечно": "Monthly",
+  "Ден от месеца": "Day of the month",
+  "Избери ден от месеца (1–31).": "Select a day of the month (1–31).",
+  "Ако месецът е по-кратък (напр. февруари), задачата ще се създава на последния му ден.":
+    "If the month is shorter (e.g. February), the task is created on that month's last day instead.",
+  "Месечно на {day}-во число": "Monthly on day {day}",
   "Създаване…": "Creating…",
   "Създай шаблон": "Create template",
   'Наистина ли да изтрия шаблона "{title}"? Вече създадените задачи от него остават непроменени.':

@@ -1,11 +1,22 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
-import { PRIORITY_LABELS, WEEKDAY_LABELS, WEEKDAYS } from "../api/types";
-import type { Priority, RecurringTaskTemplate, User, Weekday } from "../api/types";
+import { FREQUENCY_LABELS, PRIORITY_LABELS, WEEKDAY_LABELS, WEEKDAYS } from "../api/types";
+import type { Priority, RecurringFrequency, RecurringTaskTemplate, User, Weekday } from "../api/types";
 import { Avatar } from "../components/Avatar";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
+
+function formatRecurrence(tpl: RecurringTaskTemplate, t: (text: string, params?: Record<string, string | number>) => string) {
+  if (tpl.frequency === "MONTHLY") {
+    return t("Месечно на {day}-во число", { day: tpl.dayOfMonth ?? 1 });
+  }
+  return tpl.daysOfWeek
+    .split(",")
+    .filter(Boolean)
+    .map((d) => t(WEEKDAY_LABELS[d as Weekday]))
+    .join(", ");
+}
 
 // Same rule as the server's canManage(): an Admin manages everything, and a
 // fully self-service template (you created it and you're the assignee) is
@@ -66,7 +77,7 @@ export function RecurringTasks() {
       </div>
       <p className="muted">
         {t(
-          "Шаблон без крайна дата — на всеки избран ден от седмицата, в избрания час, системата автоматично създава нова задача (с оригиналните напомняния, срокове и глоби). Деактивирай шаблон, за да спреш генерирането."
+          "Шаблон без крайна дата — седмично на избрани дни или месечно на избрано число, в избрания час, системата автоматично създава нова задача (с оригиналните напомняния, срокове и глоби). Деактивирай шаблон, за да спреш генерирането."
         )}
       </p>
 
@@ -87,7 +98,7 @@ export function RecurringTasks() {
             <th>{t("Заглавие")}</th>
             <th>{t("Служител")}</th>
             <th>Owner</th>
-            <th>{t("Дни")}</th>
+            <th>{t("Повторение")}</th>
             <th>{t("Час")}</th>
             <th>{t("Приоритет")}</th>
             <th>{t("Активен")}</th>
@@ -106,7 +117,7 @@ export function RecurringTasks() {
                   </div>
                 </td>
                 <td data-label="Owner">{tpl.owner?.name ?? "—"}</td>
-                <td data-label={t("Дни")}>{tpl.daysOfWeek.split(",").map((d) => t(WEEKDAY_LABELS[d as Weekday])).join(", ")}</td>
+                <td data-label={t("Повторение")}>{formatRecurrence(tpl, t)}</td>
                 <td data-label={t("Час")}>{tpl.timeOfDay}</td>
                 <td data-label={t("Приоритет")}>{t(PRIORITY_LABELS[tpl.priority])}</td>
                 <td data-label={t("Активен")}>
@@ -190,7 +201,9 @@ function TemplateForm({
   );
   const [ownerId, setOwnerId] = useState(template?.ownerId ?? "");
   const [priority, setPriority] = useState<Priority>(template?.priority ?? "MEDIUM");
+  const [frequency, setFrequency] = useState<RecurringFrequency>(template?.frequency ?? "WEEKLY");
   const [days, setDays] = useState<Weekday[]>((template?.daysOfWeek.split(",").filter(Boolean) as Weekday[]) ?? []);
+  const [dayOfMonth, setDayOfMonth] = useState<number>(template?.dayOfMonth ?? 1);
   const [timeOfDay, setTimeOfDay] = useState(template?.timeOfDay ?? "17:00");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -235,8 +248,12 @@ function TemplateForm({
       setError(t("Избери служител."));
       return;
     }
-    if (days.length === 0) {
+    if (frequency === "WEEKLY" && days.length === 0) {
       setError(t("Избери поне един ден от седмицата."));
+      return;
+    }
+    if (frequency === "MONTHLY" && (!dayOfMonth || dayOfMonth < 1 || dayOfMonth > 31)) {
+      setError(t("Избери ден от месеца (1–31)."));
       return;
     }
     if (isSelfAssign && !ownerId) {
@@ -251,7 +268,9 @@ function TemplateForm({
         assigneeId,
         ownerId: ownerId || null,
         priority,
-        daysOfWeek: days,
+        frequency,
+        daysOfWeek: frequency === "WEEKLY" ? days : [],
+        dayOfMonth: frequency === "MONTHLY" ? dayOfMonth : undefined,
         timeOfDay,
       };
       if (isEdit) {
@@ -325,21 +344,48 @@ function TemplateForm({
           </select>
         </label>
         <label>
+          {t("Честота")}
+          <select value={frequency} onChange={(e) => setFrequency(e.target.value as RecurringFrequency)}>
+            {(["WEEKLY", "MONTHLY"] as RecurringFrequency[]).map((f) => (
+              <option key={f} value={f}>
+                {t(FREQUENCY_LABELS[f])}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           {t("Час на срока")}
           <input type="time" value={timeOfDay} onChange={(e) => setTimeOfDay(e.target.value)} required />
         </label>
       </div>
-      <label>
-        {t("Дни от седмицата")}
-        <div className="weekday-picker">
-          {WEEKDAYS.map((day) => (
-            <label key={day}>
-              <input type="checkbox" checked={days.includes(day)} onChange={() => toggleDay(day)} />
-              {t(WEEKDAY_LABELS[day])}
-            </label>
-          ))}
-        </div>
-      </label>
+      {frequency === "WEEKLY" ? (
+        <label>
+          {t("Дни от седмицата")}
+          <div className="weekday-picker">
+            {WEEKDAYS.map((day) => (
+              <label key={day}>
+                <input type="checkbox" checked={days.includes(day)} onChange={() => toggleDay(day)} />
+                {t(WEEKDAY_LABELS[day])}
+              </label>
+            ))}
+          </div>
+        </label>
+      ) : (
+        <label>
+          {t("Ден от месеца")}
+          <input
+            type="number"
+            min={1}
+            max={31}
+            value={dayOfMonth}
+            onChange={(e) => setDayOfMonth(Number(e.target.value))}
+            required
+          />
+          <span className="muted small">
+            {t("Ако месецът е по-кратък (напр. февруари), задачата ще се създава на последния му ден.")}
+          </span>
+        </label>
+      )}
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>

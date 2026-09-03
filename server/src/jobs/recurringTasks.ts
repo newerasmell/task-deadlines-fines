@@ -6,6 +6,24 @@ import { dispatchToAllChannels, toNotificationTarget } from "../notifications/di
 
 const WEEKDAY_CODES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 
+function daysInMonth(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+
+// Whether `dayStart` is a day this template should spawn an occurrence on.
+// MONTHLY clamps to the month's last day when dayOfMonth falls past it
+// (e.g. dayOfMonth 31 spawns on the 30th in April, the 28th/29th in
+// February) rather than silently never firing that month.
+function isDueOn(template: { frequency: string; daysOfWeek: string; dayOfMonth: number | null }, dayStart: Date): boolean {
+  if (template.frequency === "MONTHLY") {
+    if (!template.dayOfMonth) return false;
+    const target = Math.min(template.dayOfMonth, daysInMonth(dayStart));
+    return dayStart.getDate() === target;
+  }
+  const days = template.daysOfWeek.split(",").map((d) => d.trim().toUpperCase());
+  return days.includes(WEEKDAY_CODES[dayStart.getDay()]);
+}
+
 /**
  * For every active RecurringTaskTemplate, looks ahead `RECURRING_LOOKAHEAD_DAYS`
  * days (today included) and creates a Task occurrence for each matching day
@@ -51,12 +69,11 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
   for (const template of templates) {
-    const days = template.daysOfWeek.split(",").map((d) => d.trim().toUpperCase());
     const [hh, mm] = template.timeOfDay.split(":").map(Number);
 
     for (let offset = 0; offset <= env.recurringLookaheadDays; offset++) {
       const dayStart = new Date(today.getTime() + offset * 24 * 60 * 60 * 1000);
-      if (!days.includes(WEEKDAY_CODES[dayStart.getDay()])) continue;
+      if (!isDueOn(template, dayStart)) continue;
 
       const deadline = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), hh, mm, 0, 0);
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
