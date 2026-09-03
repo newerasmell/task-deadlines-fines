@@ -12,6 +12,7 @@ type Tab = "active" | "completed";
 export function MyTasks() {
   const { user } = useAuth();
   const { t, lang } = useI18n();
+  const isAdmin = user?.role === "ADMIN";
   const locale = lang === "en" ? "en-GB" : "bg-BG";
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +42,16 @@ export function MyTasks() {
   async function startWork(id: string) {
     await api(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ status: "IN_PROGRESS" }) });
     refresh();
+  }
+
+  async function completeTask(tk: Task) {
+    if (!window.confirm(t('Да маркирам "{title}" като завършена? Прескача се преглед от Owner.', { title: tk.title }))) return;
+    await api(`/tasks/${tk.id}/complete`, { method: "POST" });
+    refresh();
+  }
+
+  function isLockedTask(tk: Task) {
+    return tk.createdBy.isSuperAdmin && !user?.isSuperAdmin;
   }
 
   if (loading) return <p>{t("Зареждане…")}</p>;
@@ -144,6 +155,9 @@ export function MyTasks() {
                         <RowMenuItem onClick={() => setSubmittingId(isSubmitting ? null : tk.id)}>
                           {isSubmitting ? t("Затвори") : t("Подай за преглед")}
                         </RowMenuItem>
+                      )}
+                      {isAdmin && !isLockedTask(tk) && tk.status !== "DONE" && tk.status !== "CANCELLED" && (
+                        <RowMenuItem onClick={() => completeTask(tk)}>{t("Затвори като готова")}</RowMenuItem>
                       )}
                     </RowMenu>
                   </div>

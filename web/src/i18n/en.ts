@@ -76,9 +76,12 @@ export const en: Record<string, string> = {
   "Прегледай": "Review",
   "Редактирай": "Edit",
   "Изтрий": "Delete",
+  "Затвори като готова": "Close as done",
   "Действия": "Actions",
   'Наистина ли да изтрия "{title}"? Действието се записва в дневника.':
     'Delete "{title}"? This action is recorded in the audit log.',
+  'Да маркирам "{title}" като завършена? Прескача се преглед от Owner.':
+    'Mark "{title}" as done? This skips the Owner\'s review.',
   "Няма завършени задачи.": "No completed tasks.",
   "Няма активни задачи.": "No active tasks.",
   "Няма задачи.": "No tasks.",

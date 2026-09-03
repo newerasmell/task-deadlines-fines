@@ -344,6 +344,68 @@ tasksRouter.delete("/:id", requireAdmin, async (req, res) => {
   res.status(204).send();
 });
 
+// Lets an Admin close a task as done directly, skipping the normal
+// submit-for-review -> approve flow entirely (e.g. the work was verified
+// some other way, or the flow just doesn't fit). Same lock rule as every
+// other admin action: a regular Admin can't force-close a task the Ultimate
+// Admin set up. If a submission is still sitting PENDING review, it gets
+// auto-approved with a note explaining why, so the review-reminder/fine
+// engine doesn't keep nagging (or fining) the Owner about reviewing
+// something that's already closed. If this is a project chain step, the
+// next step activates exactly as it would from a normal approve.
+tasksRouter.post("/:id/complete", async (req, res) => {
+  const task = await prisma.task.findFirst({
+    where: { id: req.params.id, deletedAt: null },
+    include: { assignee: true, owner: true, createdBy: { select: { isSuperAdmin: true } } },
+  });
+  if (!task) return res.status(404).json({ error: "Not found" });
+
+  if (req.user!.role !== "ADMIN") {
+    return res.status(403).json({ error: "Само администратор може директно да приключва задачи" });
+  }
+  if (isLockedFromAdmin(task, req.user!.isSuperAdmin)) {
+    return res.status(403).json({ error: "Само Ultimate Admin може да приключи тази задача" });
+  }
+  if (task.status === "DONE" || task.status === "CANCELLED") {
+    return res.status(400).json({ error: `Task is already ${task.status}` });
+  }
+
+  const note = typeof req.body?.note === "string" && req.body.note ? req.body.note : undefined;
+  const now = new Date();
+
+  const pendingSubmission = await prisma.taskSubmission.findFirst({
+    where: { taskId: task.id, reviewStatus: "PENDING" },
+    orderBy: { createdAt: "desc" },
+  });
+  if (pendingSubmission) {
+    await prisma.taskSubmission.update({
+      where: { id: pendingSubmission.id },
+      data: {
+        reviewStatus: "APPROVED",
+        reviewedById: req.user!.sub,
+        reviewedAt: now,
+        reviewNote: note ?? "Задачата беше затворена директно от администратор.",
+      },
+    });
+  }
+
+  await prisma.task.update({ where: { id: task.id }, data: { status: "DONE", completedAt: now } });
+
+  await dispatchToAllChannels(toNotificationTarget(task.assignee), {
+    subject: `Задачата е приключена: ${task.title}`,
+    body: `Задачата "${task.title}" беше маркирана като завършена от ${req.user!.email}.${note ? `\n${note}` : ""}`,
+  });
+  await broadcastToAdmins({
+    subject: "Задача приключена ръчно",
+    body: `"${task.title}" (${task.assignee.name}) беше затворена директно от ${req.user!.email}.`,
+  });
+  await logAction(req.user!.sub, "TASK_UPDATED", "Task", task.id, `Задача "${task.title}" затворена ръчно като завършена`);
+
+  await activateNextChainStep(task, now);
+
+  res.json({ ok: true });
+});
+
 // --- Submit for review ---
 
 tasksRouter.post("/:id/submit", uploadAttachments.array("attachments", 5), async (req, res) => {

@@ -90,6 +90,12 @@ export function Tasks() {
     refresh();
   }
 
+  async function completeTask(tk: Task) {
+    if (!window.confirm(t('Да маркирам "{title}" като завършена? Прескача се преглед от Owner.', { title: tk.title }))) return;
+    await api(`/tasks/${tk.id}/complete`, { method: "POST" });
+    refresh();
+  }
+
   function isLockedTask(tk: Task) {
     return tk.createdBy.isSuperAdmin && !user?.isSuperAdmin;
   }
@@ -182,6 +188,7 @@ export function Tasks() {
             onStart={startWork}
             onSubmit={(taskId) => toggleExpanded(taskId, "submit")}
             onStatusChange={handleBoardStatusChange}
+            onComplete={completeTask}
             isLockedTask={isLockedTask}
           />
           {expanded && expandedTask && expanded.mode === "edit" && isAdmin && (
@@ -358,6 +365,9 @@ export function Tasks() {
                             {isExpanded && expanded?.mode === "edit" ? t("Затвори") : t("Редактирай")}
                           </RowMenuItem>
                         )}
+                        {isAdmin && !locked && tk.status !== "DONE" && tk.status !== "CANCELLED" && (
+                          <RowMenuItem onClick={() => completeTask(tk)}>{t("Затвори като готова")}</RowMenuItem>
+                        )}
                         {isAdmin && !locked && <RowMenuItem onClick={() => deleteTask(tk)}>{t("Изтрий")}</RowMenuItem>}
                       </RowMenu>
                     </div>
@@ -421,6 +431,7 @@ function TaskBoard({
   onStart,
   onSubmit,
   onStatusChange,
+  onComplete,
   isLockedTask,
 }: {
   tasks: Task[];
@@ -430,6 +441,7 @@ function TaskBoard({
   onStart: (taskId: string) => void;
   onSubmit: (taskId: string) => void;
   onStatusChange: (taskId: string, status: Task["status"]) => void;
+  onComplete: (tk: Task) => void;
   isLockedTask: (tk: Task) => boolean;
 }) {
   const { t, lang } = useI18n();
@@ -532,6 +544,7 @@ function TaskBoard({
                         const isAssignee = tk.assigneeId === currentUserId;
                         const canStart = isAssignee && tk.status === "PENDING";
                         const canSubmitCard = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS" || tk.status === "OVERDUE");
+                        const canComplete = isAdmin && !locked && tk.status !== "DONE" && tk.status !== "CANCELLED";
                         const canClickToEdit = isAdmin && !locked;
                         const canDrag = isAdmin ? !locked : canStart;
                         return (
@@ -575,7 +588,7 @@ function TaskBoard({
                                 {fineTotal.toFixed(2)} {activeFines[0].currency}
                               </span>
                             )}
-                            {(canStart || canSubmitCard) && (
+                            {(canStart || canSubmitCard || canComplete) && (
                               <div className="board-card-actions">
                                 {canStart && (
                                   <button
@@ -597,6 +610,17 @@ function TaskBoard({
                                     }}
                                   >
                                     {t("Подай за преглед")}
+                                  </button>
+                                )}
+                                {canComplete && (
+                                  <button
+                                    className="small-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onComplete(tk);
+                                    }}
+                                  >
+                                    {t("Затвори като готова")}
                                   </button>
                                 )}
                               </div>
