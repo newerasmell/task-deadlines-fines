@@ -84,6 +84,41 @@ export interface Project {
   createdAt: string;
 }
 
+export interface Leave {
+  id: string;
+  userId: string;
+  user?: { id: string; name: string };
+  startDate: string;
+  endDate: string;
+  note: string | null;
+  createdById: string;
+  createdAt: string;
+}
+
+export type RescheduleStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface RescheduleRequest {
+  id: string;
+  taskId: string;
+  task: { id: string; title: string; deadline: string; ownerId: string | null; owner: { id: string; name: string } | null };
+  leave: { id: string; startDate: string; endDate: string } | null;
+  requestedBy: { id: string; name: string };
+  currentDeadline: string;
+  proposedDeadline: string;
+  note: string | null;
+  status: RescheduleStatus;
+  decidedBy: { id: string; name: string } | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+export const RESCHEDULE_STATUS_LABELS: Record<RescheduleStatus, string> = {
+  PENDING: "Чакаща",
+  APPROVED: "Одобрена",
+  REJECTED: "Отхвърлена",
+};
+
 export interface Fine {
   id: string;
   taskId: string | null;

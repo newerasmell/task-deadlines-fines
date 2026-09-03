@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { Avatar } from "./Avatar";
-import { IconBoard, IconFines, IconLog, IconMe, IconPeople, IconRepeat, IconSettings, IconTasks } from "./icons";
+import { IconBoard, IconCalendar, IconFines, IconLog, IconMe, IconPeople, IconRepeat, IconSettings, IconTasks } from "./icons";
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -45,6 +45,9 @@ export function Layout() {
           </NavLink>
           <NavLink to="/recurring">
             <IconRepeat /> {t("Повтарящи се")}
+          </NavLink>
+          <NavLink to="/leave">
+            <IconCalendar /> {t("Отпуска")}
           </NavLink>
           <NavLink to="/fines">
             <IconFines /> {t("Глоби")}

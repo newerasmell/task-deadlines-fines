@@ -768,6 +768,54 @@ button.secondary:hover {
   width: auto;
 }
 
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  background: var(--bg);
+}
+
+.calendar-day-empty {
+  background: transparent;
+}
+
+.calendar-day-today {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  font-weight: 700;
+}
+
+.calendar-day-blocked {
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .board {
   display: flex;
   flex-direction: column;

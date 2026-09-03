@@ -66,6 +66,10 @@ model User {
   assignableByLeads   AssignmentScope[] @relation("EmployeeScope")
   // The one specific fine rule this account is pinned to, if any.
   fineRuleAssignment  FineRuleAssignment?
+  leaves              Leave[]             @relation("UserLeaves")
+  leavesCreated       Leave[]             @relation("LeaveCreatedBy")
+  rescheduleRequestsMade     RescheduleRequest[] @relation("RescheduleRequestedBy")
+  rescheduleRequestsDecided  RescheduleRequest[] @relation("RescheduleDecidedBy")
 }
 
 // Restricts which employees a given Lead (User.canAssignTasks) may create
@@ -95,6 +99,53 @@ model Project {
   createdAt   DateTime @default(now())
 
   steps       Task[]
+}
+
+// A personal vacation/leave block — a day range an employee (or an Admin on
+// their behalf) has marked as unavailable. Two things flow from a Leave,
+// both automatic: the fine engine excludes days inside it from that
+// person's lateness count (see leaveHoursOverlap in deadlineScanner.ts,
+// applied to both the assignee's deadline and the owner's review clock),
+// and creating it scans that person's open tasks for ones due inside the
+// range and files a RescheduleRequest for each (see POST /leaves) — the
+// deadline itself never moves without the task's Owner (or an Admin)
+// approving that request.
+model Leave {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("UserLeaves", fields: [userId], references: [id])
+  startDate   DateTime
+  endDate     DateTime
+  note        String?
+  createdById String
+  createdBy   User     @relation("LeaveCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  rescheduleRequests RescheduleRequest[]
+}
+
+// Filed automatically when a Leave overlaps an open task's deadline.
+// status: PENDING | APPROVED | REJECTED — decided by the same people who
+// can review a submission (the task's Owner, or an Admin if it has none).
+// Approving copies proposedDeadline onto the Task exactly like an Admin's
+// manual deadline edit (same reminder/escalation reset).
+model RescheduleRequest {
+  id               String    @id @default(cuid())
+  taskId           String
+  task             Task      @relation(fields: [taskId], references: [id])
+  leaveId          String?
+  leave            Leave?    @relation(fields: [leaveId], references: [id], onDelete: SetNull)
+  requestedById    String
+  requestedBy      User      @relation("RescheduleRequestedBy", fields: [requestedById], references: [id])
+  currentDeadline  DateTime
+  proposedDeadline DateTime
+  note             String?
+  status           String    @default("PENDING")
+  decidedById      String?
+  decidedBy        User?     @relation("RescheduleDecidedBy", fields: [decidedById], references: [id])
+  decisionNote     String?
+  decidedAt        DateTime?
+  createdAt        DateTime  @default(now())
 }
 
 model Task {
@@ -149,6 +200,7 @@ model Task {
   fines         Fine[]
   notificationLogs NotificationLog[]
   submissions   TaskSubmission[]
+  rescheduleRequests RescheduleRequest[]
 }
 
 model TaskSubmission {

@@ -285,4 +285,28 @@ export const en: Record<string, string> = {
   "Среден": "Medium",
   "Висок": "High",
   "Критичен": "Critical",
+
+  // Leave / reschedule requests
+  "Отпуска": "Leave",
+  "Блокирай дни, в които няма да работиш. Глобите спират да текат за теб през тези дни, а за задачите ти със срок в периода автоматично се изпраща заявка за нов срок до отговорника — той решава дали да го одобри.":
+    "Block off days you won't be working. Fines stop accruing for you during those days, and any of your tasks due in that period automatically get a reschedule request sent to their Owner — they decide whether to approve it.",
+  "Начало": "Start",
+  "Край": "End",
+  "Бележка": "Note",
+  "Бележка (по избор)": "Note (optional)",
+  "Блокирай дните": "Block these days",
+  "Няма блокирани дни.": "No blocked days.",
+  "Избери начална и крайна дата.": "Pick a start and end date.",
+  "Крайната дата трябва да е след началната.": "The end date must be after the start date.",
+  "Да премахна ли този блокиран период? Вече одобрени нови срокове не се връщат обратно.":
+    "Remove this blocked period? Already-approved new deadlines aren't reverted.",
+  "Блокирано. {count} задача(и) са засегнати — изпратена е заявка за нов срок до отговорника за всяка.":
+    "Blocked. {count} task(s) affected — a reschedule request was sent to their Owner for each.",
+  "Заявки за нов срок — чакат твоето решение": "Reschedule requests — awaiting your decision",
+  "Текущ срок": "Current deadline",
+  "Предложен срок": "Proposed deadline",
+  "Причина за отхвърляне:": "Reason for rejecting:",
+  "Моите заявки за нов срок": "My reschedule requests",
+  "Одобрена": "Approved",
+  "Отхвърлена": "Rejected",
 };

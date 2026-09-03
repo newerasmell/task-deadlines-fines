@@ -6,7 +6,26 @@ import { dispatchToAllChannels, toNotificationTarget } from "../notifications/di
 import { calculateFine, hoursBetween } from "../services/fineCalculator";
 import { spawnRecurringOccurrences } from "./recurringTasks";
 
-const OPEN_STATUSES = ["PENDING", "IN_PROGRESS", "OVERDUE"] as const;
+export const OPEN_STATUSES = ["PENDING", "IN_PROGRESS", "OVERDUE"] as const;
+
+// How many hours of the [from, to) window fall inside an approved Leave for
+// this person — subtracted from their lateness before a fine is computed,
+// so nobody accrues a fine (or an escalating one) for time they were
+// pre-approved to be away. Applied to both the assignee's task deadline and
+// the owner's review deadline below.
+async function leaveHoursOverlap(userId: string, from: Date, to: Date): Promise<number> {
+  if (to <= from) return 0;
+  const leaves = await prisma.leave.findMany({
+    where: { userId, startDate: { lt: to }, endDate: { gt: from } },
+  });
+  let overlapMs = 0;
+  for (const leave of leaves) {
+    const start = Math.max(leave.startDate.getTime(), from.getTime());
+    const end = Math.min(leave.endDate.getTime(), to.getTime());
+    if (end > start) overlapMs += end - start;
+  }
+  return overlapMs / (1000 * 60 * 60);
+}
 
 // Fine rules are assigned per account by the Ultimate Admin, not by task
 // priority: a user pinned to a specific rule always uses it regardless of
@@ -127,7 +146,9 @@ async function handleOverdueTasks(now: Date): Promise<void> {
     const rule = await pickRuleForUser(task.assigneeId);
     if (!rule) continue; // No fine rule configured for this account; still mark overdue below.
 
-    const hoursLate = hoursBetween(task.deadline, now);
+    const rawHoursLate = hoursBetween(task.deadline, now);
+    const pausedHours = await leaveHoursOverlap(task.assigneeId, task.deadline, now);
+    const hoursLate = Math.max(0, rawHoursLate - pausedHours);
     const { daysLate, amount, currency } = calculateFine(hoursLate, rule);
 
     const wasAlreadyOverdue = task.status === "OVERDUE";
@@ -244,7 +265,9 @@ async function handleOverdueReviews(now: Date): Promise<void> {
     const rule = await pickRuleForUser(task.ownerId);
     if (!rule) continue;
 
-    const hoursLate = hoursBetween(submission.reviewDueAt!, now);
+    const rawHoursLate = hoursBetween(submission.reviewDueAt!, now);
+    const pausedHours = await leaveHoursOverlap(task.ownerId, submission.reviewDueAt!, now);
+    const hoursLate = Math.max(0, rawHoursLate - pausedHours);
     const { daysLate, amount, currency } = calculateFine(hoursLate, rule);
     if (amount <= 0) continue;
 
