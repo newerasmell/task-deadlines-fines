@@ -28,6 +28,7 @@ export function Fines() {
   const [showForm, setShowForm] = useState(false);
   const [waiving, setWaiving] = useState<Fine | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cleaning, setCleaning] = useState(false);
 
   async function refresh() {
     const f = await api<Fine[]>("/fines");
@@ -46,15 +47,35 @@ export function Fines() {
     refresh();
   }
 
+  async function cleanupDuplicates() {
+    if (!window.confirm(t("Да анулирам всички дублирани глоби (породени от вече поправения бъг с повторното начисляване)? Оригиналната глоба за всеки случай остава непроменена.")))
+      return;
+    setCleaning(true);
+    try {
+      const result = await api<{ waivedCount: number }>("/fines/cleanup-duplicates", { method: "POST" });
+      window.alert(t("Анулирани {count} дублирани глоби.", { count: result.waivedCount }));
+      refresh();
+    } finally {
+      setCleaning(false);
+    }
+  }
+
   if (loading) return <p>{t("Зареждане…")}</p>;
 
   return (
     <div>
       <div className="page-header">
         <h1>{t("Глоби")}</h1>
-        {isAdmin && (
-          <button onClick={() => setShowForm((s) => !s)}>{showForm ? t("Затвори") : t("+ Ръчна глоба")}</button>
-        )}
+        <div className="form-row" style={{ margin: 0 }}>
+          {user?.isSuperAdmin && (
+            <button className="secondary" onClick={cleanupDuplicates} disabled={cleaning}>
+              {cleaning ? t("Изчистване…") : t("Изчисти дублирани глоби")}
+            </button>
+          )}
+          {isAdmin && (
+            <button onClick={() => setShowForm((s) => !s)}>{showForm ? t("Затвори") : t("+ Ръчна глоба")}</button>
+          )}
+        </div>
       </div>
       <p className="muted">
         {t("Глобите се начисляват автоматично при просрочени задачи според зададените правила в „Настройки“. Ако закъснението е основателно, анулирай глобата с обяснение.")}

@@ -194,6 +194,11 @@ export const en: Record<string, string> = {
   "Анулирана:": "Waived:",
   "Анулирай": "Waive",
   "Платена": "Paid",
+  "Изчисти дублирани глоби": "Clean up duplicate fines",
+  "Изчистване…": "Cleaning up…",
+  "Да анулирам всички дублирани глоби (породени от вече поправения бъг с повторното начисляване)? Оригиналната глоба за всеки случай остава непроменена.":
+    "Waive all duplicate fines (caused by the now-fixed repeat-charging bug)? The original fine for each case is left untouched.",
+  "Анулирани {count} дублирани глоби.": "Waived {count} duplicate fines.",
   "Активна": "Active",
   "Анулирана": "Waived",
   "Няма глоби.": "No fines.",

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { logAction } from "../lib/auditLog";
 import { prisma } from "../lib/prisma";
-import { requireAdmin, requireAuth } from "../middleware/auth";
+import { requireAdmin, requireAuth, requireSuperAdmin } from "../middleware/auth";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
 import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
 
@@ -132,4 +132,59 @@ finesRouter.post("/:id/mark-paid", requireAdmin, async (req, res) => {
   } catch {
     res.status(404).json({ error: "Fine not found" });
   }
+});
+
+// One-time cleanup for the repeat-fine bug fixed alongside this route: before
+// the fix, waiving a fine made the scanner treat that day as never-fined
+// again, so it kept recreating an identical fine every scan cycle. This
+// finds every group of fines sharing the same task+person+day-late+reason
+// (the exact signature the bug produced) and waives every one in the group
+// past the first — the earliest is left exactly as it was (still Active if
+// nobody got to it, Paid/Waived if they did), so nothing about the real,
+// original charge is touched. Restricted to the Ultimate Admin since it's a
+// bulk write across other people's fines.
+finesRouter.post("/cleanup-duplicates", requireSuperAdmin, async (req, res) => {
+  const fines = await prisma.fine.findMany({
+    where: { taskId: { not: null }, status: "ACTIVE" },
+    include: { user: true, task: { select: { title: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const groups = new Map<string, typeof fines>();
+  for (const fine of fines) {
+    const key = `${fine.taskId}::${fine.userId}::${fine.daysLate}::${fine.reason}`;
+    const group = groups.get(key) ?? [];
+    group.push(fine);
+    groups.set(key, group);
+  }
+
+  const waivedReason = "Дублирана глоба — отстранен бъг в глобовия механизъм (повторно начисляване след анулиране).";
+  const waived: { id: string; userName: string; taskTitle: string | undefined; amount: number; currency: string }[] = [];
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    for (const dupe of group.slice(1)) {
+      await prisma.fine.update({
+        where: { id: dupe.id },
+        data: { status: "WAIVED", waivedById: req.user!.sub, waivedReason },
+      });
+      waived.push({ id: dupe.id, userName: dupe.user.name, taskTitle: dupe.task?.title, amount: dupe.amount, currency: dupe.currency });
+    }
+  }
+
+  if (waived.length > 0) {
+    await logAction(
+      req.user!.sub,
+      "FINE_WAIVED",
+      "Fine",
+      "bulk-cleanup",
+      `Автоматично изчистени ${waived.length} дублирани глоби (бъг в глобовия механизъм).`
+    );
+    await broadcastToAdmins({
+      subject: "Изчистени дублирани глоби",
+      body: `${req.user!.email} изчисти ${waived.length} дублирани глоби, породени от вече поправения бъг с повторното начисляване.`,
+    });
+  }
+
+  res.json({ waivedCount: waived.length, waived });
 });
