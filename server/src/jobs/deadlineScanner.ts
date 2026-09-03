@@ -214,9 +214,15 @@ async function handleOverdueReviews(now: Date): Promise<void> {
   }
 }
 
+// A waived fine means an admin decided the lateness it recorded didn't
+// count — most often right before pushing the deadline out, so the task can
+// go through a fresh overdue cycle. If a waived fine still counted here, its
+// daysLate would keep blocking every new fine on this task until the new
+// cycle's own lateness happens to exceed it. A merely paid (not waived) fine
+// still represents a real day that was already fined, so it still counts.
 async function currentDaysLate(taskId: string, userId: string): Promise<number> {
   const latest = await prisma.fine.findFirst({
-    where: { taskId, userId },
+    where: { taskId, userId, status: { not: "WAIVED" } },
     orderBy: { createdAt: "desc" },
   });
   return latest?.daysLate ?? 0;

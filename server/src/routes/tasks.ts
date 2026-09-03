@@ -268,6 +268,24 @@ tasksRouter.patch("/:id", async (req, res) => {
     data.completedAt = new Date();
   }
 
+  // Editing the deadline moves the task onto a new timeline — the old
+  // reminder/escalation bookkeeping (which 24h/4h reminders already fired,
+  // when it was last fined) belongs to the OLD deadline and must not carry
+  // over, or the scanner would think reminders already went out and skip
+  // straight past them, or refuse to re-fine a task that goes overdue again
+  // on the new date. If the task was stuck OVERDUE and the new deadline is
+  // in the future, it also needs to visibly drop back out of that status
+  // (unless the caller explicitly set a status of their own in this call).
+  if (data.deadline instanceof Date && data.deadline.getTime() !== existing.deadline.getTime()) {
+    data.reminder24hSentAt = null;
+    data.reminder4hSentAt = null;
+    data.lastPeriodicReminderAt = null;
+    data.lastEscalationAt = null;
+    if (existing.status === "OVERDUE" && !parsed.data.status && data.deadline.getTime() > Date.now()) {
+      data.status = "PENDING";
+    }
+  }
+
   const task = await prisma.task.update({ where: { id: req.params.id }, data });
 
   if (isAdmin && !locked && data.ownerId && data.ownerId !== existing.ownerId) {
