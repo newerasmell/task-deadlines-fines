@@ -21,6 +21,10 @@ export const env = {
   reminderFinalHoursBefore: Number(process.env.REMINDER_FINAL_HOURS_BEFORE ?? 4),
   reminderPeriodicHours: Number(process.env.REMINDER_PERIODIC_HOURS ?? 48),
   reviewDueHours: Number(process.env.REVIEW_DUE_HOURS ?? 24),
+  // How often to nudge the Owner about a submission still waiting on them,
+  // and how long before reviewDueAt to send the last "about to be fined" heads-up.
+  reviewReminderPeriodicHours: Number(process.env.REVIEW_REMINDER_PERIODIC_HOURS ?? 4),
+  reviewReminderFinalHoursBefore: Number(process.env.REVIEW_REMINDER_FINAL_HOURS_BEFORE ?? 1),
   recurringLookaheadDays: Number(process.env.RECURRING_LOOKAHEAD_DAYS ?? 3),
   uploadsDir: process.env.UPLOADS_DIR ?? "uploads",
 

@@ -24,13 +24,15 @@ async function pickRuleForUser(userId: string) {
  * Spawns due occurrences of recurring task templates, sends "deadline
  * approaching" reminders so employees can't claim they forgot, flags
  * newly-overdue tasks and applies/escalates fines for tasks that remain
- * overdue, and separately fines Owners who let a submitted task's review sit
- * past its own review deadline — notifying on every channel available.
+ * overdue, nudges Owners about submissions still waiting on their review,
+ * and separately fines Owners who let a submitted task's review sit past its
+ * own review deadline — notifying on every channel available.
  */
 export async function runDeadlineScan(now: Date = new Date()): Promise<void> {
   await spawnRecurringOccurrences(now);
   await sendUpcomingReminders(now);
   await handleOverdueTasks(now);
+  await sendUpcomingReviewReminders(now);
   await handleOverdueReviews(now);
 }
 
@@ -161,6 +163,64 @@ async function handleOverdueTasks(now: Date): Promise<void> {
         subject: "Просрочие и глоба",
         body: `"${task.title}" (${task.assignee.name}) — ${daysLate} ${daysLate === 1 ? "ден" : "дни"} закъснение, глоба ${fine.amount} ${fine.currency}.`,
       });
+    }
+  }
+}
+
+/**
+ * Mirrors sendUpcomingReminders, but for the Owner's review window instead
+ * of the assignee's task deadline:
+ *  - a repeating "still waiting on you" nudge every
+ *    REVIEW_REMINDER_PERIODIC_HOURS (default 4h) from the moment it was
+ *    submitted, while more than REVIEW_REMINDER_FINAL_HOURS_BEFORE remains;
+ *  - a one-off final reminder once REVIEW_REMINDER_FINAL_HOURS_BEFORE
+ *    (default 1h) remain before the review is considered late and starts
+ *    accruing a fine.
+ * Only fires while reviewDueAt is still in the future — once it passes,
+ * handleOverdueReviews takes over with fines instead of reminders.
+ */
+async function sendUpcomingReviewReminders(now: Date): Promise<void> {
+  const finalMs = env.reviewReminderFinalHoursBefore * 60 * 60 * 1000;
+  const periodicMs = env.reviewReminderPeriodicHours * 60 * 60 * 1000;
+
+  const pendingReviews = await prisma.taskSubmission.findMany({
+    where: { reviewStatus: "PENDING", reviewDueAt: { gt: now }, task: { deletedAt: null } },
+    include: { task: { include: { owner: true } }, submittedBy: true },
+  });
+
+  for (const submission of pendingReviews) {
+    const task = submission.task;
+    if (!task.ownerId || !task.owner) continue;
+
+    const timeToReviewDueMs = submission.reviewDueAt!.getTime() - now.getTime();
+    const target = toNotificationTarget(task.owner);
+
+    if (!submission.reviewFinalReminderSentAt && timeToReviewDueMs <= finalMs) {
+      await dispatchToAllChannels(
+        target,
+        {
+          subject: `Последно напомняне за преглед: ${task.title}`,
+          body: `Остава под ${env.reviewReminderFinalHoursBefore} ${env.reviewReminderFinalHoursBefore === 1 ? "час" : "часа"} да прегледаш подадената задача "${task.title}" (изпълнител: ${submission.submittedBy.name}, срок за преглед ${formatDateTime(submission.reviewDueAt!)}). След това започва да ти се начислява глоба.`,
+          deadline: submission.reviewDueAt!,
+        },
+        { taskId: task.id }
+      );
+      await prisma.taskSubmission.update({ where: { id: submission.id }, data: { reviewFinalReminderSentAt: now } });
+      continue;
+    }
+
+    const lastPeriodic = (submission.lastPeriodicReviewReminderAt ?? submission.createdAt).getTime();
+    if (now.getTime() - lastPeriodic >= periodicMs) {
+      await dispatchToAllChannels(
+        target,
+        {
+          subject: `Чака преглед: ${task.title}`,
+          body: `Все още имаш чакаща за преглед задача "${task.title}" (изпълнител: ${submission.submittedBy.name}, срок за преглед ${formatDateTime(submission.reviewDueAt!)}).`,
+          deadline: submission.reviewDueAt!,
+        },
+        { taskId: task.id }
+      );
+      await prisma.taskSubmission.update({ where: { id: submission.id }, data: { lastPeriodicReviewReminderAt: now } });
     }
   }
 }

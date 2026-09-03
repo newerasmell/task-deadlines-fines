@@ -130,6 +130,11 @@ model TaskSubmission {
   reviewNote    String?
   reviewedAt    DateTime?
   reviewLastEscalationAt DateTime?
+  // Reminder tracking, mirroring Task's reminder24hSentAt/reminder4hSentAt/
+  // lastPeriodicReminderAt but for the Owner's review window instead of the
+  // assignee's deadline.
+  reviewFinalReminderSentAt   DateTime?
+  lastPeriodicReviewReminderAt DateTime?
 
   createdAt     DateTime   @default(now())
 
