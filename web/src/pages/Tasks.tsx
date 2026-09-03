@@ -9,6 +9,7 @@ import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { colorForId } from "../lib/colors";
+import { RecurringTasks } from "./RecurringTasks";
 
 export const statusBadgeClass: Record<Task["status"], string> = {
   PENDING: "badge",
@@ -38,7 +39,7 @@ const PRIORITY_COLORS: Record<Priority, string> = {
 
 type ExpandedMode = "submit" | "review" | "edit" | null;
 type Tab = "active" | "completed";
-type ViewMode = "board" | "list";
+type ViewMode = "board" | "list" | "templates";
 
 export function Tasks() {
   const { user } = useAuth();
@@ -176,9 +177,14 @@ export function Tasks() {
         <button className={view === "list" ? "active" : ""} onClick={() => setView("list")}>
           {t("Списък")}
         </button>
+        <button className={view === "templates" ? "active" : ""} onClick={() => setView("templates")}>
+          {t("Шаблони")}
+        </button>
       </div>
 
-      {view === "board" ? (
+      {view === "templates" ? (
+        <RecurringTasks />
+      ) : view === "board" ? (
         <>
           <TaskBoard
             tasks={tasks}

@@ -63,6 +63,7 @@ export const en: Record<string, string> = {
   "+ Нова задача": "+ New task",
   "Затвори": "Close",
   "Списък": "List",
+  "Шаблони": "Templates",
   "Активни": "Active",
   "Завършени": "Completed",
   "Търсене по заглавие…": "Search by title…",
