@@ -193,6 +193,7 @@ export function Tasks() {
             onEdit={(taskId) => toggleExpanded(taskId, "edit")}
             onStart={startWork}
             onSubmit={(taskId) => toggleExpanded(taskId, "submit")}
+            onReview={(taskId) => toggleExpanded(taskId, "review")}
             onStatusChange={handleBoardStatusChange}
             onComplete={completeTask}
             isLockedTask={isLockedTask}
@@ -210,6 +211,15 @@ export function Tasks() {
           )}
           {expanded && expandedTask && expanded.mode === "submit" && (
             <SubmitForm
+              taskId={expanded.taskId}
+              onDone={() => {
+                setExpanded(null);
+                refresh();
+              }}
+            />
+          )}
+          {expanded && expandedTask && expanded.mode === "review" && (
+            <ReviewPanel
               taskId={expanded.taskId}
               onDone={() => {
                 setExpanded(null);
@@ -436,6 +446,7 @@ function TaskBoard({
   onEdit,
   onStart,
   onSubmit,
+  onReview,
   onStatusChange,
   onComplete,
   isLockedTask,
@@ -446,6 +457,7 @@ function TaskBoard({
   onEdit: (taskId: string) => void;
   onStart: (taskId: string) => void;
   onSubmit: (taskId: string) => void;
+  onReview: (taskId: string) => void;
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   onComplete: (tk: Task) => void;
   isLockedTask: (tk: Task) => boolean;
@@ -548,8 +560,10 @@ function TaskBoard({
                         const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
                         const locked = isLockedTask(tk);
                         const isAssignee = tk.assigneeId === currentUserId;
+                        const isOwner = tk.ownerId === currentUserId;
                         const canStart = isAssignee && tk.status === "PENDING";
                         const canSubmitCard = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS" || tk.status === "OVERDUE");
+                        const canReviewCard = (isOwner || isAdmin) && tk.status === "PENDING_REVIEW";
                         const canComplete = isAdmin && !locked && tk.status !== "DONE" && tk.status !== "CANCELLED";
                         const canClickToEdit = isAdmin && !locked;
                         const canDrag = isAdmin ? !locked : canStart;
@@ -594,7 +608,7 @@ function TaskBoard({
                                 {fineTotal.toFixed(2)} {activeFines[0].currency}
                               </span>
                             )}
-                            {(canStart || canSubmitCard || canComplete) && (
+                            {(canStart || canSubmitCard || canReviewCard || canComplete) && (
                               <div className="board-card-actions">
                                 {canStart && (
                                   <button
@@ -616,6 +630,17 @@ function TaskBoard({
                                     }}
                                   >
                                     {t("Подай за преглед")}
+                                  </button>
+                                )}
+                                {canReviewCard && (
+                                  <button
+                                    className="small-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onReview(tk.id);
+                                    }}
+                                  >
+                                    {t("Прегледай")}
                                   </button>
                                 )}
                                 {canComplete && (
