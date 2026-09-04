@@ -8,6 +8,7 @@ import { finesRouter } from "./routes/fines";
 import { leavesRouter, rescheduleRequestsRouter } from "./routes/leaves";
 import { notificationsRouter } from "./routes/notifications";
 import { projectsRouter } from "./routes/projects";
+import { subscriptionsRouter } from "./routes/subscriptions";
 import { taskTemplatesRouter } from "./routes/taskTemplates";
 import { tasksRouter } from "./routes/tasks";
 import { usersRouter } from "./routes/users";
@@ -29,6 +30,7 @@ export function createApp() {
   app.use("/api/fine-rules", fineRulesRouter);
   app.use("/api/leaves", leavesRouter);
   app.use("/api/reschedule-requests", rescheduleRequestsRouter);
+  app.use("/api/subscriptions", subscriptionsRouter);
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/audit-log", auditLogRouter);
 

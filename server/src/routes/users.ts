@@ -16,6 +16,7 @@ const publicUser = {
   active: true,
   isSuperAdmin: true,
   canAssignTasks: true,
+  canAccessSubscriptions: true,
   phone: true,
   telegramChatId: true,
   slackMemberId: true,
@@ -69,6 +70,7 @@ const createSchema = z.object({
   role: z.enum(["ADMIN", "EMPLOYEE"]).default("EMPLOYEE"),
   isSuperAdmin: z.boolean().optional(),
   canAssignTasks: z.boolean().optional(),
+  canAccessSubscriptions: z.boolean().optional(),
   phone: z.string().optional(),
   telegramChatId: z.string().optional(),
   slackMemberId: z.string().optional(),
@@ -86,10 +88,12 @@ usersRouter.post("/", requireAdmin, async (req, res) => {
 
   const { password, ...rest } = parsed.data;
   if (!req.user!.isSuperAdmin) {
-    // Only a super admin may hand out ADMIN role, Lead permission, or super-admin status.
+    // Only a super admin may hand out ADMIN role, Lead permission, super-admin
+    // status, or access to the Subscriptions page.
     rest.role = "EMPLOYEE";
     delete rest.isSuperAdmin;
     delete rest.canAssignTasks;
+    delete rest.canAccessSubscriptions;
   }
   const passwordHash = await hashPassword(password);
   const user = await prisma.user.create({
@@ -106,6 +110,7 @@ const updateSchema = z.object({
   active: z.boolean().optional(),
   isSuperAdmin: z.boolean().optional(),
   canAssignTasks: z.boolean().optional(),
+  canAccessSubscriptions: z.boolean().optional(),
   password: z.string().min(6).optional(),
   phone: z.string().nullable().optional(),
   telegramChatId: z.string().nullable().optional(),
@@ -116,8 +121,9 @@ const updateSchema = z.object({
 });
 
 // Admins can edit anyone; employees can edit their own contact channels only.
-// Role / isSuperAdmin / canAssignTasks can only be changed by a super admin,
-// regardless of who's being edited (even a regular admin can't self-promote).
+// Role / isSuperAdmin / canAssignTasks / canAccessSubscriptions can only be
+// changed by a super admin, regardless of who's being edited (even a
+// regular admin can't self-promote).
 usersRouter.patch("/:id", async (req, res) => {
   const isSelf = req.user!.sub === req.params.id;
   if (req.user!.role !== "ADMIN" && !isSelf) {
@@ -136,9 +142,9 @@ usersRouter.patch("/:id", async (req, res) => {
   const data: Record<string, unknown> = { ...parsed.data };
   if (req.user!.role !== "ADMIN") {
     // Employees may only touch their own notification identities, plus their own email/password.
-    for (const key of ["name", "role", "active", "isSuperAdmin", "canAssignTasks"]) delete data[key];
+    for (const key of ["name", "role", "active", "isSuperAdmin", "canAssignTasks", "canAccessSubscriptions"]) delete data[key];
   } else if (!req.user!.isSuperAdmin) {
-    for (const key of ["role", "isSuperAdmin", "canAssignTasks"]) delete data[key];
+    for (const key of ["role", "isSuperAdmin", "canAssignTasks", "canAccessSubscriptions"]) delete data[key];
   }
   if (parsed.data.password) {
     data.passwordHash = await hashPassword(parsed.data.password);

@@ -20,6 +20,7 @@ export interface User {
   active: boolean;
   isSuperAdmin: boolean;
   canAssignTasks: boolean;
+  canAccessSubscriptions: boolean;
   phone: string | null;
   telegramChatId: string | null;
   slackMemberId: string | null;
@@ -117,6 +118,30 @@ export const RESCHEDULE_STATUS_LABELS: Record<RescheduleStatus, string> = {
   PENDING: "Чакаща",
   APPROVED: "Одобрена",
   REJECTED: "Отхвърлена",
+};
+
+export type SubscriptionStatus = "ACTIVE" | "PAID" | "CANCELLED";
+
+export interface Subscription {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string | null;
+  dueDate: string;
+  amount: number | null;
+  currency: string | null;
+  status: SubscriptionStatus;
+  ownerId: string | null;
+  owner: { id: string; name: string; email: string } | null;
+  createdById: string;
+  createdBy: { id: string; name: string; email: string };
+  createdAt: string;
+}
+
+export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
+  ACTIVE: "Активен",
+  PAID: "Платен/подновен",
+  CANCELLED: "Отменен",
 };
 
 export interface Fine {

@@ -9,6 +9,7 @@ import { Employees } from "./pages/Employees";
 import { Fines } from "./pages/Fines";
 import { Leave } from "./pages/Leave";
 import { Login } from "./pages/Login";
+import { Subscriptions } from "./pages/Subscriptions";
 import { MyTasks } from "./pages/MyTasks";
 import { RecurringTasks } from "./pages/RecurringTasks";
 import { Settings } from "./pages/Settings";
@@ -28,6 +29,12 @@ function RequireAdmin({ children }: { children: ReactElement }) {
   return children;
 }
 
+function RequireSubscriptionsAccess({ children }: { children: ReactElement }) {
+  const { user } = useAuth();
+  if (!user?.canAccessSubscriptions && !user?.isSuperAdmin) return <Navigate to="/" replace />;
+  return children;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -44,6 +51,14 @@ function AppRoutes() {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/recurring" element={<RecurringTasks />} />
         <Route path="/leave" element={<Leave />} />
+        <Route
+          path="/subscriptions"
+          element={
+            <RequireSubscriptionsAccess>
+              <Subscriptions />
+            </RequireSubscriptionsAccess>
+          }
+        />
         <Route path="/fines" element={<Fines />} />
         <Route
           path="/employees"

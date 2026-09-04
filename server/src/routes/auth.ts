@@ -37,6 +37,7 @@ authRouter.post("/login", async (req, res) => {
       role: user.role,
       isSuperAdmin: user.isSuperAdmin,
       canAssignTasks: user.canAssignTasks,
+      canAccessSubscriptions: user.canAccessSubscriptions,
     },
   });
 });
@@ -51,6 +52,7 @@ authRouter.get("/me", requireAuth, async (req, res) => {
     role: user.role,
     isSuperAdmin: user.isSuperAdmin,
     canAssignTasks: user.canAssignTasks,
+    canAccessSubscriptions: user.canAccessSubscriptions,
   });
 });
 

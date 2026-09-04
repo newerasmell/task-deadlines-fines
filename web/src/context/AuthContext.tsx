@@ -10,6 +10,7 @@ interface AuthUser {
   role: Role;
   isSuperAdmin: boolean;
   canAssignTasks: boolean;
+  canAccessSubscriptions: boolean;
 }
 
 interface AuthContextValue {

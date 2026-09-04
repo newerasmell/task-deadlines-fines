@@ -136,6 +136,11 @@ export function Employees() {
                     {t("Отговорник")}
                   </span>
                 )}
+                {u.canAccessSubscriptions && (
+                  <span className="badge" style={{ marginLeft: 6 }} title={t("Достъп до „Абонаменти“ — изтичащи домейни, номера и абонаменти")}>
+                    {t("Абонаменти")}
+                  </span>
+                )}
               </td>
               <td className="small" data-label={t("Канали")}>
                 {[
@@ -202,6 +207,7 @@ function EmployeeForm({
   const [role, setRole] = useState<Role>(user?.role ?? "EMPLOYEE");
   const [canAssignTasks, setCanAssignTasks] = useState(user?.canAssignTasks ?? false);
   const [isSuperAdminFlag, setIsSuperAdminFlag] = useState(user?.isSuperAdmin ?? false);
+  const [canAccessSubscriptions, setCanAccessSubscriptions] = useState(user?.canAccessSubscriptions ?? false);
   const [scopeIds, setScopeIds] = useState<string[]>([]);
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState(user?.phone ?? "");
@@ -228,7 +234,7 @@ function EmployeeForm({
     setSubmitting(true);
     try {
       const channels = { phone, telegramChatId, slackMemberId, whatsappPhone, viberUserId };
-      const permissions = isSuperAdmin ? { role, canAssignTasks, isSuperAdmin: isSuperAdminFlag } : {};
+      const permissions = isSuperAdmin ? { role, canAssignTasks, isSuperAdmin: isSuperAdminFlag, canAccessSubscriptions } : {};
       let savedId = user?.id;
       if (isEdit && user) {
         await api(`/users/${user.id}`, {
@@ -308,6 +314,14 @@ function EmployeeForm({
             <label className="checkbox-label">
               <input type="checkbox" checked={isSuperAdminFlag} onChange={(e) => setIsSuperAdminFlag(e.target.checked)} />
               {t("Ultimate Admin — може да дава администраторски/отговорнически права на други")}
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={canAccessSubscriptions}
+                onChange={(e) => setCanAccessSubscriptions(e.target.checked)}
+              />
+              {t("Достъп до „Абонаменти“ — изтичащи домейни, номера и абонаменти")}
             </label>
           </div>
           {canAssignTasks && (

@@ -36,6 +36,11 @@ model User {
   // themselves; see AssignmentScope and the self-assignment rule in
   // POST /tasks (a self-assigned task's Owner must be an Admin).
   canAssignTasks Boolean @default(false)
+  // Grants access to the separate "Абонаменти" page (domains, phone
+  // numbers, recurring subscriptions — things with a payment due date, no
+  // fines involved). Off by default; toggled per-account only by a super
+  // admin, same as canAssignTasks above.
+  canAccessSubscriptions Boolean @default(false)
 
   phone         String?
   telegramChatId String?
@@ -70,6 +75,40 @@ model User {
   leavesCreated       Leave[]             @relation("LeaveCreatedBy")
   rescheduleRequestsMade     RescheduleRequest[] @relation("RescheduleRequestedBy")
   rescheduleRequestsDecided  RescheduleRequest[] @relation("RescheduleDecidedBy")
+  subscriptionsOwned    Subscription[] @relation("SubscriptionOwner")
+  subscriptionsCreated  Subscription[] @relation("SubscriptionCreatedBy")
+}
+
+// A tracked recurring cost with its own due date — a domain, phone number,
+// virtual number, or any other subscription that needs to be paid/renewed
+// by a certain time. Entirely separate from Task/Fine: nobody gets fined
+// for one of these running out, it's a reminder tool for a small set of
+// accounts (see User.canAccessSubscriptions). Reminder tiers are handled by
+// subscriptionScanner.ts: once each at 30/15 days out, daily from 7 days
+// out (including after the due date, so it never goes silent), and every 2
+// hours specifically on the due date's calendar day.
+model Subscription {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  category    String?
+  dueDate     DateTime
+  amount      Float?
+  currency    String?  @default("EUR")
+  status      String   @default("ACTIVE")
+
+  ownerId     String?
+  owner       User?    @relation("SubscriptionOwner", fields: [ownerId], references: [id])
+  createdById String
+  createdBy   User     @relation("SubscriptionCreatedBy", fields: [createdById], references: [id])
+
+  reminder30dSentAt      DateTime?
+  reminder15dSentAt      DateTime?
+  lastDailyReminderAt    DateTime?
+  lastPeriodicReminderAt DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // Restricts which employees a given Lead (User.canAssignTasks) may create
