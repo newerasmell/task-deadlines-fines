@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { formatDateTime } from "../lib/dateFormat";
+import { formatDateOnly, formatDateTime } from "../lib/dateFormat";
 import { logAction } from "../lib/auditLog";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
@@ -20,11 +20,17 @@ function canDecide(task: { ownerId: string | null }, userId: string, isAdmin: bo
   return isAdmin || task.ownerId === userId;
 }
 
+// A leave's start/end are calendar days, not real-world instants — always
+// anchored to UTC so the stored range doesn't shift depending on the
+// server's local timezone. parsed.data.startDate/endDate come from a plain
+// "YYYY-MM-DD" string (an HTML date input), which z.coerce.date() parses
+// as UTC midnight per the ECMAScript date-only-string rule, so reading it
+// back with the UTC getters here recovers exactly the day that was typed.
 function startOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
 }
 function endOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
 }
 
 leavesRouter.get("/", async (req, res) => {
@@ -93,7 +99,7 @@ leavesRouter.post("/", async (req, res) => {
         requestedById: targetUserId,
         currentDeadline: task.deadline,
         proposedDeadline,
-        note: `Автоматична заявка — отпуска ${formatDateTime(startDate)} – ${formatDateTime(endDate)}.`,
+        note: `Автоматична заявка — отпуска ${formatDateOnly(startDate)} – ${formatDateOnly(endDate)}.`,
       },
     });
     filed.push({ title: task.title, proposedDeadline });
@@ -101,19 +107,19 @@ leavesRouter.post("/", async (req, res) => {
     if (task.owner) {
       await dispatchToAllChannels(toNotificationTarget(task.owner), {
         subject: `Заявка за нов срок: ${task.title}`,
-        body: `${task.assignee.name} е в отпуск ${formatDateTime(startDate)} – ${formatDateTime(endDate)} и има засегната задача "${task.title}" (текущ срок ${formatDateTime(task.deadline)}). Предложен нов срок: ${formatDateTime(proposedDeadline)}. Одобри или отхвърли заявката в системата.`,
+        body: `${task.assignee.name} е в отпуск ${formatDateOnly(startDate)} – ${formatDateOnly(endDate)} и има засегната задача "${task.title}" (текущ срок ${formatDateTime(task.deadline)}). Предложен нов срок: ${formatDateTime(proposedDeadline)}. Одобри или отхвърли заявката в системата.`,
       });
     }
     await broadcastToAdmins({
       subject: "Заявка за нов срок (отпуска)",
-      body: `${task.assignee.name} — "${task.title}" — текущ срок ${formatDateTime(task.deadline)}, предложен ${formatDateTime(proposedDeadline)} (отпуска ${formatDateTime(startDate)} – ${formatDateTime(endDate)}).`,
+      body: `${task.assignee.name} — "${task.title}" — текущ срок ${formatDateTime(task.deadline)}, предложен ${formatDateTime(proposedDeadline)} (отпуска ${formatDateOnly(startDate)} – ${formatDateOnly(endDate)}).`,
     });
   }
 
   if (filed.length > 0) {
     await dispatchToAllChannels(toNotificationTarget(target), {
       subject: "Отпуската ти засяга задачи",
-      body: `Имаш ${filed.length} ${filed.length === 1 ? "задача, засегната" : "задачи, засегнати"} от отпуската ти ${formatDateTime(startDate)} – ${formatDateTime(endDate)}:\n${filed
+      body: `Имаш ${filed.length} ${filed.length === 1 ? "задача, засегната" : "задачи, засегнати"} от отпуската ти ${formatDateOnly(startDate)} – ${formatDateOnly(endDate)}:\n${filed
         .map((f) => `• "${f.title}" → предложен нов срок ${formatDateTime(f.proposedDeadline)}`)
         .join("\n")}\nЗа всяка е изпратена заявка за нов срок до отговорника — изчакай одобрение.`,
     });

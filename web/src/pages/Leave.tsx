@@ -8,9 +8,13 @@ import { useI18n } from "../i18n/I18nContext";
 
 const WEEKDAY_HEADERS = ["Пон", "Вт", "Ср", "Чет", "Пет", "Съб", "Нед"];
 
+// Leave start/end are calendar days anchored to UTC on the server (see
+// leaves.ts), not real instants — read them back with the UTC getters so a
+// viewer east of UTC doesn't see the end date roll into the next day (23:59
+// UTC on the 15th is already past midnight local in e.g. Sofia).
 function dayOnly(iso: string): Date {
   const d = new Date(iso);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
 export function Leave() {
@@ -228,8 +232,8 @@ export function Leave() {
           <tbody>
             {leaves.map((lv) => (
               <tr key={lv.id}>
-                <td data-label={t("Начало")}>{new Date(lv.startDate).toLocaleDateString(locale)}</td>
-                <td data-label={t("Край")}>{new Date(lv.endDate).toLocaleDateString(locale)}</td>
+                <td data-label={t("Начало")}>{new Date(lv.startDate).toLocaleDateString(locale, { timeZone: "UTC" })}</td>
+                <td data-label={t("Край")}>{new Date(lv.endDate).toLocaleDateString(locale, { timeZone: "UTC" })}</td>
                 <td data-label={t("Бележка")}>{lv.note ?? "—"}</td>
                 <td className="row-actions">
                   <button className="small-btn" onClick={() => deleteLeave(lv.id)}>

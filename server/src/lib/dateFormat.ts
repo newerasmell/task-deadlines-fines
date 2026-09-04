@@ -7,3 +7,13 @@ import { env } from "./env";
 export function formatDateTime(date: Date): string {
   return date.toLocaleString("bg-BG", { timeZone: env.timezone });
 }
+
+// For a value that represents a calendar day rather than a real instant
+// (a Leave's start/end — see leaves.ts) — pinned to UTC, since that's how
+// the day was anchored when parsed from a plain "YYYY-MM-DD" input, not to
+// env.timezone: formatting a day-boundary instant (e.g. 23:59:59.999Z) in
+// the team's local zone can roll it into the next calendar day for anyone
+// east of UTC.
+export function formatDateOnly(date: Date): string {
+  return date.toLocaleDateString("bg-BG", { timeZone: "UTC" });
+}
