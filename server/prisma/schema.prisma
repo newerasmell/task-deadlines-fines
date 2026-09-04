@@ -75,6 +75,7 @@ model User {
   leavesCreated       Leave[]             @relation("LeaveCreatedBy")
   rescheduleRequestsMade     RescheduleRequest[] @relation("RescheduleRequestedBy")
   rescheduleRequestsDecided  RescheduleRequest[] @relation("RescheduleDecidedBy")
+  subscriptionsAssigned Subscription[] @relation("SubscriptionAssignee")
   subscriptionsOwned    Subscription[] @relation("SubscriptionOwner")
   subscriptionsCreated  Subscription[] @relation("SubscriptionCreatedBy")
 }
@@ -97,6 +98,13 @@ model Subscription {
   currency    String?  @default("EUR")
   status      String   @default("ACTIVE")
 
+  // The person responsible for actually renewing/paying this — every
+  // reminder tier goes to them and to the Owner (if set), same split as
+  // Task.assignee/Task.owner. Defaults to whoever creates the entry but is
+  // independently editable, since an Admin often enters these on someone
+  // else's behalf.
+  assigneeId  String
+  assignee    User     @relation("SubscriptionAssignee", fields: [assigneeId], references: [id])
   ownerId     String?
   owner       User?    @relation("SubscriptionOwner", fields: [ownerId], references: [id])
   createdById String

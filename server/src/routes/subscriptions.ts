@@ -23,6 +23,7 @@ async function requireSubscriptionsAccess(req: Request, res: Response, next: Nex
 subscriptionsRouter.use(requireSubscriptionsAccess);
 
 const subscriptionInclude = {
+  assignee: { select: { id: true, name: true, email: true } },
   owner: { select: { id: true, name: true, email: true } },
   createdBy: { select: { id: true, name: true, email: true } },
 } as const;
@@ -42,15 +43,21 @@ const createSchema = z.object({
   dueDate: z.coerce.date(),
   amount: z.number().optional(),
   currency: z.string().optional(),
+  assigneeId: z.string().optional(),
   ownerId: z.string().optional(),
 });
 
-// One-off notification on creation, to both the creator and the Owner (if
-// different) — nothing further until the reminder tiers in
+// One-off notification on creation, to both the assignee ("служителя" —
+// whoever's actually responsible for renewing/paying this) and the Owner
+// (if set and different) — nothing further until the reminder tiers in
 // subscriptionScanner.ts start firing as the due date approaches.
 subscriptionsRouter.post("/", async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const assigneeId = parsed.data.assigneeId || req.user!.sub;
+  const assignee = await prisma.user.findUnique({ where: { id: assigneeId } });
+  if (!assignee) return res.status(400).json({ error: "Assignee not found" });
 
   let owner = null;
   if (parsed.data.ownerId) {
@@ -59,20 +66,17 @@ subscriptionsRouter.post("/", async (req, res) => {
   }
 
   const item = await prisma.subscription.create({
-    data: { ...parsed.data, createdById: req.user!.sub },
+    data: { ...parsed.data, assigneeId, createdById: req.user!.sub },
     include: subscriptionInclude,
   });
 
-  const creator = await prisma.user.findUnique({ where: { id: req.user!.sub } });
   const body = `Краен срок: ${formatDateTime(item.dueDate)}${item.amount ? `\nСума: ${item.amount} ${item.currency ?? "EUR"}` : ""}${item.description ? `\n\n${item.description}` : ""}`;
 
-  if (creator) {
-    await dispatchToAllChannels(toNotificationTarget(creator), {
-      subject: `Създаден елемент за проследяване: ${item.title}`,
-      body,
-    });
-  }
-  if (owner && owner.id !== item.createdById) {
+  await dispatchToAllChannels(toNotificationTarget(assignee), {
+    subject: `Създаден елемент за проследяване: ${item.title}`,
+    body,
+  });
+  if (owner && owner.id !== assigneeId) {
     await dispatchToAllChannels(toNotificationTarget(owner), {
       subject: `Ти си Owner на: ${item.title}`,
       body,
@@ -89,6 +93,7 @@ const updateSchema = z.object({
   dueDate: z.coerce.date().optional(),
   amount: z.number().nullable().optional(),
   currency: z.string().nullable().optional(),
+  assigneeId: z.string().optional(),
   ownerId: z.string().nullable().optional(),
   status: z.enum(["ACTIVE", "PAID", "CANCELLED"]).optional(),
 });

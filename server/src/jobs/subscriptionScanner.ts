@@ -31,11 +31,11 @@ function dedupeRecipients(users: (Recipient | null)[]): Recipient[] {
 export async function runSubscriptionScan(now: Date = new Date()): Promise<void> {
   const items = await prisma.subscription.findMany({
     where: { status: "ACTIVE" },
-    include: { owner: true, createdBy: true },
+    include: { assignee: true, owner: true },
   });
 
   for (const item of items) {
-    const recipients = dedupeRecipients([item.owner, item.createdBy]);
+    const recipients = dedupeRecipients([item.assignee, item.owner]);
     if (recipients.length === 0) continue;
 
     const daysRemaining = (item.dueDate.getTime() - now.getTime()) / DAY_MS;

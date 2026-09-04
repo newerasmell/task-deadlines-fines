@@ -131,6 +131,8 @@ export interface Subscription {
   amount: number | null;
   currency: string | null;
   status: SubscriptionStatus;
+  assigneeId: string;
+  assignee: { id: string; name: string; email: string };
   ownerId: string | null;
   owner: { id: string; name: string; email: string } | null;
   createdById: string;

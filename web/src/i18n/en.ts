@@ -334,7 +334,7 @@ export const en: Record<string, string> = {
   "Абонамент": "Subscription",
   "Друго": "Other",
   "Краен срок за плащане": "Payment due date",
-  "Без — само аз": "None — just me",
+  "Без — само служителят": "None — just the assignee",
   "Избери краен срок.": "Pick a due date.",
   "Създай": "Create",
 };

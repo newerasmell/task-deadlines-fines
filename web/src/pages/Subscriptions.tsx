@@ -109,6 +109,7 @@ export function Subscriptions() {
               <th>{t("Краен срок")}</th>
               <th>{t("Остават")}</th>
               <th>{t("Сума")}</th>
+              <th>{t("Служител")}</th>
               <th>Owner</th>
               <th>{t("Статус")}</th>
               <th></th>
@@ -139,6 +140,7 @@ export function Subscriptions() {
                       )}
                     </td>
                     <td data-label={t("Сума")}>{it.amount ? `${it.amount.toFixed(2)} ${it.currency ?? "EUR"}` : "—"}</td>
+                    <td data-label={t("Служител")}>{it.assignee.name}</td>
                     <td data-label="Owner">{it.owner?.name ?? "—"}</td>
                     <td data-label={t("Статус")}>
                       <span className={it.status === "ACTIVE" ? "badge" : "badge badge-success"}>
@@ -169,7 +171,7 @@ export function Subscriptions() {
                   </tr>
                   {isEditing && (
                     <tr>
-                      <td colSpan={8}>
+                      <td colSpan={9}>
                         <SubscriptionForm
                           item={it}
                           employees={employees}
@@ -187,7 +189,7 @@ export function Subscriptions() {
             })}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={8} className="muted">
+                <td colSpan={9} className="muted">
                   {tab === "active" ? t("Няма активни елементи.") : t("Няма елементи.")}
                 </td>
               </tr>
@@ -219,6 +221,7 @@ function SubscriptionForm({
   const [dueDate, setDueDate] = useState(item ? item.dueDate.slice(0, 16) : "");
   const [amount, setAmount] = useState(item?.amount != null ? String(item.amount) : "");
   const [currency, setCurrency] = useState(item?.currency ?? "EUR");
+  const [assigneeId, setAssigneeId] = useState(item?.assigneeId ?? user?.id ?? "");
   const [ownerId, setOwnerId] = useState(item?.ownerId ?? "");
   const [status, setStatus] = useState<SubscriptionStatus>(item?.status ?? "ACTIVE");
   const [error, setError] = useState<string | null>(null);
@@ -240,6 +243,7 @@ function SubscriptionForm({
         dueDate,
         amount: amount ? Number(amount) : undefined,
         currency: currency || undefined,
+        assigneeId: assigneeId || undefined,
         ownerId: ownerId || undefined,
       };
       if (isEdit && item) {
@@ -287,9 +291,19 @@ function SubscriptionForm({
           <input value={currency} onChange={(e) => setCurrency(e.target.value)} maxLength={8} />
         </label>
         <label>
+          {t("Служител")}
+          <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} required>
+            {employees.map((emp) => (
+              <option key={emp.id} value={emp.id}>
+                {emp.id === user?.id ? t("Ти") : emp.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           Owner
           <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-            <option value="">{t("Без — само аз")}</option>
+            <option value="">{t("Без — само служителят")}</option>
             {employees.map((emp) => (
               <option key={emp.id} value={emp.id}>
                 {emp.id === user?.id ? t("Ти") : emp.name}
