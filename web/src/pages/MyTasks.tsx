@@ -2,12 +2,13 @@ import { Fragment, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
 import type { Task } from "../api/types";
+import { Avatar } from "../components/Avatar";
 import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
-import { SubmitForm, statusBadgeClass } from "./Tasks";
+import { ReviewPanel, SubmitForm, statusBadgeClass } from "./Tasks";
 
-type Tab = "active" | "completed";
+type Tab = "active" | "review" | "completed";
 
 export function MyTasks() {
   const { user } = useAuth();
@@ -18,6 +19,7 @@ export function MyTasks() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("active");
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
 
   function toggleDesc(id: string) {
@@ -31,7 +33,7 @@ export function MyTasks() {
 
   async function refresh() {
     const all = await api<Task[]>("/tasks");
-    setTasks(all.filter((tk) => tk.assigneeId === user?.id));
+    setTasks(all);
   }
 
   useEffect(() => {
@@ -56,18 +58,30 @@ export function MyTasks() {
 
   if (loading) return <p>{t("Зареждане…")}</p>;
 
-  const visible = tasks.filter((tk) => (tab === "completed" ? tk.status === "DONE" : tk.status !== "DONE"));
+  const reviewCount = tasks.filter((tk) => tk.ownerId === user?.id && tk.status === "PENDING_REVIEW").length;
+
+  const visible = tasks.filter((tk) => {
+    if (tab === "review") return tk.ownerId === user?.id && tk.status === "PENDING_REVIEW";
+    if (tab === "completed") return tk.assigneeId === user?.id && tk.status === "DONE";
+    return tk.assigneeId === user?.id && tk.status !== "DONE";
+  });
 
   return (
     <div>
       <div className="page-header">
         <h1>{t("Моите задачи")}</h1>
       </div>
-      <p className="muted">{t("Само задачите, за които си изпълнител — независимо от ролята ти в системата.")}</p>
+      <p className="muted">
+        {t("Задачите, за които си изпълнител, плюс тези, подадени за преглед на теб като Owner — независимо от ролята ти в системата.")}
+      </p>
 
       <div className="tabs">
         <button className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>
           {t("Активни")}
+        </button>
+        <button className={tab === "review" ? "active" : ""} onClick={() => setTab("review")}>
+          {t("За преглед")}
+          {reviewCount > 0 && <span className="badge badge-info">{reviewCount}</span>}
         </button>
         <button className={tab === "completed" ? "active" : ""} onClick={() => setTab("completed")}>
           {t("Завършени")}
@@ -77,9 +91,10 @@ export function MyTasks() {
       <div className="table-wrap">
         <div
           className="grid-table"
-          style={{ gridTemplateColumns: "minmax(220px, 2fr) 120px 160px 100px 110px 90px 56px" }}
+          style={{ gridTemplateColumns: "minmax(220px, 2fr) 150px 120px 160px 100px 110px 90px 56px" }}
         >
           <div className="grid-table-header">{t("Задача")}</div>
+          <div className="grid-table-header">{t("Служител")}</div>
           <div className="grid-table-header">Owner</div>
           <div className="grid-table-header">{t("Срок")}</div>
           <div className="grid-table-header">{t("Приоритет")}</div>
@@ -90,8 +105,11 @@ export function MyTasks() {
           {visible.map((tk) => {
             const activeFines = (tk.fines ?? []).filter((f) => f.status === "ACTIVE");
             const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
-            const canSubmit = tk.status === "PENDING" || tk.status === "IN_PROGRESS" || tk.status === "OVERDUE";
+            const isAssignee = tk.assigneeId === user?.id;
+            const canSubmit = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS" || tk.status === "OVERDUE");
+            const canReview = tk.ownerId === user?.id && tk.status === "PENDING_REVIEW";
             const isSubmitting = submittingId === tk.id;
+            const isReviewing = reviewingId === tk.id;
             return (
               <Fragment key={tk.id}>
                 <div className="grid-row">
@@ -127,6 +145,10 @@ export function MyTasks() {
                       </div>
                     </div>
                   </div>
+                  <div className="grid-cell" data-label={t("Служител")}>
+                    <Avatar id={tk.assigneeId} name={tk.assignee.name} size={22} />
+                    {tk.assignee.name}
+                  </div>
                   <div className="grid-cell" data-label="Owner">
                     {tk.owner?.name ?? "—"}
                   </div>
@@ -148,12 +170,17 @@ export function MyTasks() {
                   </div>
                   <div className="grid-cell grid-cell-actions">
                     <RowMenu label={t("Действия")}>
-                      {tk.status === "PENDING" && (
+                      {isAssignee && tk.status === "PENDING" && (
                         <RowMenuItem onClick={() => startWork(tk.id)}>{t("Започни")}</RowMenuItem>
                       )}
                       {canSubmit && (
                         <RowMenuItem onClick={() => setSubmittingId(isSubmitting ? null : tk.id)}>
                           {isSubmitting ? t("Затвори") : t("Подай за преглед")}
+                        </RowMenuItem>
+                      )}
+                      {canReview && (
+                        <RowMenuItem onClick={() => setReviewingId(isReviewing ? null : tk.id)}>
+                          {isReviewing ? t("Затвори") : t("Прегледай")}
                         </RowMenuItem>
                       )}
                       {isAdmin && !isLockedTask(tk) && tk.status !== "DONE" && tk.status !== "CANCELLED" && (
@@ -173,12 +200,27 @@ export function MyTasks() {
                     />
                   </div>
                 )}
+                {isReviewing && (
+                  <div className="grid-cell-full">
+                    <ReviewPanel
+                      taskId={tk.id}
+                      onDone={() => {
+                        setReviewingId(null);
+                        refresh();
+                      }}
+                    />
+                  </div>
+                )}
               </Fragment>
             );
           })}
           {visible.length === 0 && (
             <div className="grid-cell-full muted">
-              {tab === "completed" ? t("Няма завършени задачи.") : t("Няма активни задачи.")}
+              {tab === "completed"
+                ? t("Няма завършени задачи.")
+                : tab === "review"
+                  ? t("Няма задачи, чакащи твоя преглед.")
+                  : t("Няма активни задачи.")}
             </div>
           )}
         </div>

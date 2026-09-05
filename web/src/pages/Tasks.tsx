@@ -715,7 +715,7 @@ export function SubmitForm({ taskId, onDone }: { taskId: string; onDone: () => v
   );
 }
 
-function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void }) {
+export function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => void }) {
   const { t, lang } = useI18n();
   const locale = lang === "en" ? "en-GB" : "bg-BG";
   const [task, setTask] = useState<Task | null>(null);

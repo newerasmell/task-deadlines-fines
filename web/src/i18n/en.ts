@@ -138,7 +138,9 @@ export const en: Record<string, string> = {
   "Нямаш право да задаваш задачи на този служител": "You're not allowed to assign tasks to this employee",
   "Owner-ът не може да е самият изпълнител": "The Owner can't be the assignee themselves",
   "Owner-ът на самозададена задача трябва да е администратор": "The Owner of a self-assigned task must be an admin",
-  "Само задачите, за които си изпълнител — независимо от ролята ти в системата.": "Only the tasks you're the assignee on — regardless of your role in the system.",
+  "Задачите, за които си изпълнител, плюс тези, подадени за преглед на теб като Owner — независимо от ролята ти в системата.":
+    "The tasks you're the assignee on, plus ones submitted for review to you as Owner — regardless of your role in the system.",
+  "Няма задачи, чакащи твоя преглед.": "No tasks waiting on your review.",
   "Само Ultimate Admin може да редактира тази задача": "Only the Ultimate Admin can edit this task",
   "Само Ultimate Admin може да изтрие тази задача": "Only the Ultimate Admin can delete this task",
   "Зададена от Ultimate Admin — само той може да я редактира/изтрие": "Set by the Ultimate Admin — only they can edit or delete it",
