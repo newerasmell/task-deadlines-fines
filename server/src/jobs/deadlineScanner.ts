@@ -169,17 +169,28 @@ async function handleOverdueTasks(now: Date): Promise<void> {
     }
 
     if (amount > 0 && isNewEscalationDay) {
+      // `amount` is the rule's cumulative total for being `daysLate` days
+      // late (base + perDay * extra days, capped). Only the increase since
+      // the last fine actually gets charged now — otherwise a "50 base + 50
+      // /day" rule would charge 50 on day 1 and a NEW 100 on day 2 instead
+      // of a further 50, double-counting day 1's charge.
+      const incrementalAmount = Math.round((amount - (task.lastFinedAmount ?? 0)) * 100) / 100;
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { lastEscalationAt: now, lastFinedDaysLate: daysLate, lastFinedAmount: amount },
+      });
+      if (incrementalAmount <= 0) continue; // Cap already reached; nothing new to charge.
+
       const fine = await prisma.fine.create({
         data: {
           taskId: task.id,
           userId: task.assigneeId,
-          amount,
+          amount: incrementalAmount,
           currency,
           daysLate,
           reason: `Неоснователно закъснение по задача "${task.title}" (${daysLate} ${daysLate === 1 ? "ден" : "дни"} закъснение)`,
         },
       });
-      await prisma.task.update({ where: { id: task.id }, data: { lastEscalationAt: now, lastFinedDaysLate: daysLate } });
 
       const target = toNotificationTarget(task.assignee);
       await dispatchToAllChannels(
@@ -287,19 +298,25 @@ async function handleOverdueReviews(now: Date): Promise<void> {
     const priorDaysLate = submission.reviewLastFinedDaysLate ?? 0;
     if (daysLate <= priorDaysLate) continue;
 
+    // Same incremental-charge fix as handleOverdueTasks: `amount` is the
+    // cumulative total for `daysLate` days late, so only the increase since
+    // the last review fine gets charged now.
+    const incrementalAmount = Math.round((amount - (submission.reviewLastFinedAmount ?? 0)) * 100) / 100;
+    await prisma.taskSubmission.update({
+      where: { id: submission.id },
+      data: { reviewLastEscalationAt: now, reviewLastFinedDaysLate: daysLate, reviewLastFinedAmount: amount },
+    });
+    if (incrementalAmount <= 0) continue; // Cap already reached; nothing new to charge.
+
     const fine = await prisma.fine.create({
       data: {
         taskId: task.id,
         userId: task.ownerId,
-        amount,
+        amount: incrementalAmount,
         currency,
         daysLate,
         reason: `Забавен преглед на подадена задача "${task.title}" (${daysLate} ${daysLate === 1 ? "ден" : "дни"} закъснение на прегледа)`,
       },
-    });
-    await prisma.taskSubmission.update({
-      where: { id: submission.id },
-      data: { reviewLastEscalationAt: now, reviewLastFinedDaysLate: daysLate },
     });
 
     await dispatchToAllChannels(toNotificationTarget(task.owner), {

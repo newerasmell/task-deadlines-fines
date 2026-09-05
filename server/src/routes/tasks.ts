@@ -294,6 +294,7 @@ tasksRouter.patch("/:id", async (req, res) => {
     data.lastPeriodicReminderAt = null;
     data.lastEscalationAt = null;
     data.lastFinedDaysLate = null;
+    data.lastFinedAmount = null;
     if (existing.status === "OVERDUE" && !parsed.data.status && newDeadline.getTime() > Date.now()) {
       data.status = "PENDING";
     }

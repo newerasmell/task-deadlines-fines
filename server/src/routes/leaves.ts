@@ -184,6 +184,7 @@ rescheduleRequestsRouter.post("/:id/approve", async (req, res) => {
       lastPeriodicReminderAt: null,
       lastEscalationAt: null,
       lastFinedDaysLate: null,
+      lastFinedAmount: null,
       ...(request.task.status === "OVERDUE" && request.proposedDeadline.getTime() > now.getTime() ? { status: "PENDING" } : {}),
     },
   });

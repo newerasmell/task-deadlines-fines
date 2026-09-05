@@ -238,6 +238,14 @@ model Task {
   // re-fine the exact same day again on its next pass. Editing the deadline
   // starts a fresh cycle and resets this to null (see PATCH /tasks/:id).
   lastFinedDaysLate Int?
+  // The cumulative fine total (per the rule's base+perDay formula, capped at
+  // maxAmount) already charged across every Fine row created so far this
+  // cycle. Each new escalation day only creates a Fine for the difference
+  // between the new cumulative total and this value — never the whole
+  // cumulative total again — so a rule of "50 base + 50/day" charges 50 on
+  // day 1 and another 50 on day 2, not 50 then 100. Reset to null wherever
+  // lastFinedDaysLate is.
+  lastFinedAmount Float?
   completedAt      DateTime?
   deletedAt        DateTime?
 
@@ -269,6 +277,10 @@ model TaskSubmission {
   // review fine was for, tracked independently of Fine.status so a waived
   // review fine doesn't get immediately re-created on the next scan.
   reviewLastFinedDaysLate Int?
+  // Mirrors Task.lastFinedAmount — the cumulative review-fine total already
+  // charged, so each new escalation day only fines the incremental
+  // difference instead of the whole cumulative amount again.
+  reviewLastFinedAmount Float?
   // Reminder tracking, mirroring Task's reminder24hSentAt/reminder4hSentAt/
   // lastPeriodicReminderAt but for the Owner's review window instead of the
   // assignee's deadline.
