@@ -6,6 +6,8 @@
 // government-decreed "moved" day off when a fixed holiday lands on a
 // weekend (those are announced case-by-case, not on a fixed rule).
 
+import { env } from "./env";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Orthodox Easter (Gregorian calendar date) via the Meeus Julian algorithm,
@@ -57,6 +59,25 @@ export function isNonWorkingDay(date: Date): boolean {
   return [year - 1, year, year + 1]
     .flatMap(bulgarianHolidays)
     .some((h) => dayKey(h) === key);
+}
+
+// Whether `deadline` itself was set for a Saturday or Sunday, going by the
+// team's own local calendar day (env.timezone) rather than the UTC day the
+// instant happens to fall on — a deadline is a real instant, and users think
+// of "what day is this due" in their own timezone, not UTC. A task assigned
+// a weekend deadline is deliberately meant to run through the weekend, so
+// it's excluded from the pause entirely: its clock runs and fines apply
+// exactly as if weekends/holidays didn't exist. Tasks with a Monday-Friday
+// deadline are unaffected by this and keep the normal pause.
+export function deadlineFallsOnWeekend(deadline: Date): boolean {
+  const key = new Intl.DateTimeFormat("en-CA", {
+    timeZone: env.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(deadline);
+  const dow = new Date(`${key}T00:00:00Z`).getUTCDay();
+  return dow === 0 || dow === 6;
 }
 
 /** Hours of [from, to) that fall on a Saturday, Sunday, or BG holiday. */
