@@ -1,3 +1,4 @@
+import { nonWorkingHoursBetween } from "../lib/bulgarianHolidays";
 import { formatDateTime } from "../lib/dateFormat";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
@@ -12,7 +13,8 @@ export const OPEN_STATUSES = ["PENDING", "IN_PROGRESS", "OVERDUE"] as const;
 // this person — subtracted from their lateness before a fine is computed,
 // so nobody accrues a fine (or an escalating one) for time they were
 // pre-approved to be away. Applied to both the assignee's task deadline and
-// the owner's review deadline below.
+// the owner's review deadline below, alongside nonWorkingHoursBetween
+// (weekends + BG holidays), which pauses the same clock for everyone.
 async function leaveHoursOverlap(userId: string, from: Date, to: Date): Promise<number> {
   if (to <= from) return 0;
   const leaves = await prisma.leave.findMany({
@@ -147,7 +149,8 @@ async function handleOverdueTasks(now: Date): Promise<void> {
     if (!rule) continue; // No fine rule configured for this account; still mark overdue below.
 
     const rawHoursLate = hoursBetween(task.deadline, now);
-    const pausedHours = await leaveHoursOverlap(task.assigneeId, task.deadline, now);
+    const pausedHours =
+      (await leaveHoursOverlap(task.assigneeId, task.deadline, now)) + nonWorkingHoursBetween(task.deadline, now);
     const hoursLate = Math.max(0, rawHoursLate - pausedHours);
     const { daysLate, amount, currency } = calculateFine(hoursLate, rule);
 
@@ -266,7 +269,9 @@ async function handleOverdueReviews(now: Date): Promise<void> {
     if (!rule) continue;
 
     const rawHoursLate = hoursBetween(submission.reviewDueAt!, now);
-    const pausedHours = await leaveHoursOverlap(task.ownerId, submission.reviewDueAt!, now);
+    const pausedHours =
+      (await leaveHoursOverlap(task.ownerId, submission.reviewDueAt!, now)) +
+      nonWorkingHoursBetween(submission.reviewDueAt!, now);
     const hoursLate = Math.max(0, rawHoursLate - pausedHours);
     const { daysLate, amount, currency } = calculateFine(hoursLate, rule);
     if (amount <= 0) continue;
