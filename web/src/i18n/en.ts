@@ -337,4 +337,12 @@ export const en: Record<string, string> = {
   "Без — само служителят": "None — just the assignee",
   "Избери краен срок.": "Pick a due date.",
   "Създай": "Create",
+
+  // Deadline-change warning on task edit
+  "Задължително е да опишеш причина за промяната на срока.": "You must describe the reason for changing the deadline.",
+  "Задачи с променена дата/час ще бъдат прегледани от Ultimate Admin и ако се приеме за неоснователно, ще се наложи ръчна глоба!":
+    "Tasks with a changed date/time will be reviewed by the Ultimate Admin, and if deemed unjustified, a manual fine will be issued!",
+  "Причина за промяна на срока": "Reason for the deadline change",
+  "Опиши защо се налага тази промяна…": "Describe why this change is needed…",
+  "Трябва да опишеш причина за промяната на срока.": "You must describe the reason for changing the deadline.",
 };

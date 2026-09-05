@@ -841,11 +841,14 @@ function TaskForm({
   const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? (isAdmin ? employees[0]?.id ?? "" : user?.id ?? ""));
   const [ownerId, setOwnerId] = useState(task?.ownerId ?? "");
   const [deadline, setDeadline] = useState(task ? toLocalInputValue(task.deadline) : "");
+  const originalDeadline = task ? toLocalInputValue(task.deadline) : "";
+  const [deadlineChangeReason, setDeadlineChangeReason] = useState("");
   const [priority, setPriority] = useState<Priority>(task?.priority ?? "MEDIUM");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const isSelfAssign = !isEdit && assigneeId === user?.id;
+  const isDeadlineChanged = isEdit && deadline !== originalDeadline;
 
   // A non-admin's `employees` list is already scoped by the server to just
   // {self, every Admin, their own Lead scope, other Leads} — Admins in that
@@ -887,9 +890,13 @@ function TaskForm({
       setError(t("Самозададена задача трябва да има Owner — администратор, който да следи изпълнението."));
       return;
     }
+    if (isDeadlineChanged && !deadlineChangeReason.trim()) {
+      setError(t("Задължително е да опишеш причина за промяната на срока."));
+      return;
+    }
     setSubmitting(true);
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         title,
         description: description || undefined,
         assigneeId,
@@ -897,6 +904,7 @@ function TaskForm({
         deadline: new Date(deadline).toISOString(),
         priority,
       };
+      if (isDeadlineChanged) body.deadlineChangeReason = deadlineChangeReason.trim();
       if (isEdit) {
         await api(`/tasks/${task!.id}`, { method: "PATCH", body: JSON.stringify(body) });
       } else {
@@ -970,6 +978,24 @@ function TaskForm({
           </select>
         </label>
       </div>
+      {isDeadlineChanged && (
+        <div className="deadline-change-warning">
+          <p>
+            {t(
+              "Задачи с променена дата/час ще бъдат прегледани от Ultimate Admin и ако се приеме за неоснователно, ще се наложи ръчна глоба!"
+            )}
+          </p>
+          <label>
+            {t("Причина за промяна на срока")}
+            <input
+              value={deadlineChangeReason}
+              onChange={(e) => setDeadlineChangeReason(e.target.value)}
+              required
+              placeholder={t("Опиши защо се налага тази промяна…")}
+            />
+          </label>
+        </div>
+      )}
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>

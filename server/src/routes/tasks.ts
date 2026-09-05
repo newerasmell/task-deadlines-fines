@@ -229,6 +229,10 @@ const updateSchema = z.object({
   assigneeId: z.string().min(1).optional(),
   ownerId: z.string().nullable().optional(),
   deadline: z.coerce.date().optional(),
+  // Required whenever deadline actually changes (checked below, not by zod,
+  // since it's only mandatory conditionally) — never stored on the Task
+  // itself, only used for the audit-log entry and the Ultimate Admin alert.
+  deadlineChangeReason: z.string().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   status: z.enum(["PENDING", "IN_PROGRESS", "DONE", "OVERDUE", "CANCELLED"]).optional(),
 });
@@ -276,18 +280,53 @@ tasksRouter.patch("/:id", async (req, res) => {
   // on the new date. If the task was stuck OVERDUE and the new deadline is
   // in the future, it also needs to visibly drop back out of that status
   // (unless the caller explicitly set a status of their own in this call).
-  if (data.deadline instanceof Date && data.deadline.getTime() !== existing.deadline.getTime()) {
+  const newDeadline = data.deadline instanceof Date ? data.deadline : undefined;
+  const isDeadlineChange = newDeadline !== undefined && newDeadline.getTime() !== existing.deadline.getTime();
+  const deadlineChangeReason = typeof parsed.data.deadlineChangeReason === "string" ? parsed.data.deadlineChangeReason.trim() : "";
+  delete data.deadlineChangeReason; // never a real Task column — logging/notification only
+
+  if (isDeadlineChange && newDeadline) {
+    if (!deadlineChangeReason) {
+      return res.status(400).json({ error: "Трябва да опишеш причина за промяната на срока." });
+    }
     data.reminder24hSentAt = null;
     data.reminder4hSentAt = null;
     data.lastPeriodicReminderAt = null;
     data.lastEscalationAt = null;
     data.lastFinedDaysLate = null;
-    if (existing.status === "OVERDUE" && !parsed.data.status && data.deadline.getTime() > Date.now()) {
+    if (existing.status === "OVERDUE" && !parsed.data.status && newDeadline.getTime() > Date.now()) {
       data.status = "PENDING";
     }
   }
 
   const task = await prisma.task.update({ where: { id: req.params.id }, data });
+
+  // A changed date/time on an already-live task is exactly the kind of
+  // thing that can quietly bury a real lateness — log it as its own clear
+  // entry (not buried in the generic "changed fields" summary below) and
+  // alert every Ultimate Admin directly, regardless of which admin made
+  // the change, so it always gets a second set of eyes.
+  if (isDeadlineChange) {
+    await logAction(
+      req.user!.sub,
+      "TASK_UPDATED",
+      "Task",
+      task.id,
+      `⚠️ Променен срок на задача "${task.title}": ${formatDateTime(existing.deadline)} → ${formatDateTime(task.deadline)}. Причина: ${deadlineChangeReason}`,
+      { oldDeadline: existing.deadline, newDeadline: task.deadline, reason: deadlineChangeReason }
+    );
+
+    const actor = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    const superAdmins = await prisma.user.findMany({
+      where: { isSuperAdmin: true, active: true, id: { not: req.user!.sub } },
+    });
+    for (const superAdmin of superAdmins) {
+      await dispatchToAllChannels(toNotificationTarget(superAdmin), {
+        subject: `Променен срок на задача: ${task.title}`,
+        body: `${actor?.name ?? req.user!.email} промени срока на задача "${task.title}" от ${formatDateTime(existing.deadline)} на ${formatDateTime(task.deadline)}.\nПричина: ${deadlineChangeReason}`,
+      });
+    }
+  }
 
   if (isAdmin && !locked && data.ownerId && data.ownerId !== existing.ownerId) {
     const newOwner = await prisma.user.findUnique({ where: { id: data.ownerId as string } });
@@ -307,7 +346,9 @@ tasksRouter.patch("/:id", async (req, res) => {
 
   if (isAdmin && !locked) {
     const changed = Object.fromEntries(
-      Object.entries(parsed.data).filter(([key, value]) => value !== undefined && (existing as Record<string, unknown>)[key] !== value)
+      Object.entries(parsed.data).filter(
+        ([key, value]) => key !== "deadlineChangeReason" && value !== undefined && (existing as Record<string, unknown>)[key] !== value
+      )
     );
     if (Object.keys(changed).length > 0) {
       await logAction(
