@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
 
-export type AdminAction = "TASK_CREATED" | "TASK_UPDATED" | "TASK_DELETED" | "FINE_CREATED" | "FINE_WAIVED";
+export type AdminAction = "TASK_CREATED" | "TASK_UPDATED" | "TASK_DELETED" | "FINE_CREATED" | "FINE_WAIVED" | "FINE_AMOUNT_EDITED";
 
 export function logAction(
   actorId: string,

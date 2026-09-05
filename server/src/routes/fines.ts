@@ -125,6 +125,53 @@ finesRouter.post("/:id/waive", requireAdmin, async (req, res) => {
   }
 });
 
+const editAmountSchema = z.object({
+  amount: z.number().positive(),
+  reason: z.string().min(1),
+});
+
+// Manually correcting what a specific fine actually charges — e.g. an
+// escalation-day fine that was miscalculated — directly changes what
+// someone owes, so it's restricted to the Ultimate Admin. A reason is
+// mandatory so the correction is traceable in the audit log, same as
+// waiving one.
+finesRouter.patch("/:id/amount", requireSuperAdmin, async (req, res) => {
+  const parsed = editAmountSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const existing = await prisma.fine.findUnique({
+    where: { id: req.params.id },
+    include: { user: true, task: { select: { title: true } } },
+  });
+  if (!existing) return res.status(404).json({ error: "Fine not found" });
+
+  const fine = await prisma.fine.update({
+    where: { id: req.params.id },
+    data: { amount: parsed.data.amount },
+    include: { user: true, task: { select: { title: true } } },
+  });
+
+  await logAction(
+    req.user!.sub,
+    "FINE_AMOUNT_EDITED",
+    "Fine",
+    fine.id,
+    `Коригирана сума на глоба на ${fine.user.name}${fine.task ? ` за задача "${fine.task.title}"` : ""}: ${existing.amount} ${existing.currency} → ${fine.amount} ${fine.currency}. Причина: ${parsed.data.reason}`,
+    { oldAmount: existing.amount, newAmount: fine.amount, reason: parsed.data.reason }
+  );
+
+  await dispatchToAllChannels(toNotificationTarget(fine.user), {
+    subject: "Коригирана сума на глоба",
+    body: `Сумата на глоба${fine.task ? ` за задача "${fine.task.title}"` : ""} беше коригирана от ${existing.amount} ${existing.currency} на ${fine.amount} ${fine.currency}.\nПричина: ${parsed.data.reason}`,
+  });
+  await broadcastToAdmins({
+    subject: "Коригирана сума на глоба",
+    body: `${fine.user.name}: ${existing.amount} ${existing.currency} → ${fine.amount} ${fine.currency} (от ${req.user!.email}). Причина: ${parsed.data.reason}`,
+  });
+
+  res.json(fine);
+});
+
 finesRouter.post("/:id/mark-paid", requireAdmin, async (req, res) => {
   try {
     const fine = await prisma.fine.update({ where: { id: req.params.id }, data: { status: "PAID" } });

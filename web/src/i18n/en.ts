@@ -211,6 +211,13 @@ export const en: Record<string, string> = {
   "Потвърди анулиране": "Confirm waive",
   "Ръчна глоба": "Manual fine",
   "задача": "task",
+  "Редактирай сума": "Edit amount",
+  "Редакция на сумата на глоба за": "Editing the amount of the fine for",
+  "текуща сума": "current amount",
+  "Нова сума": "New amount",
+  "Причина за корекцията": "Reason for the correction",
+  "Напр. грешно изчислена сума при ескалация": "E.g. miscalculated amount during escalation",
+  "Запази новата сума": "Save new amount",
 
   // Recurring tasks
   "Повтарящи се задачи": "Recurring tasks",

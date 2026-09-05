@@ -27,6 +27,7 @@ export function Fines() {
   const [employees, setEmployees] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [waiving, setWaiving] = useState<Fine | null>(null);
+  const [editingAmount, setEditingAmount] = useState<Fine | null>(null);
   const [loading, setLoading] = useState(true);
   const [cleaning, setCleaning] = useState(false);
 
@@ -102,6 +103,17 @@ export function Fines() {
         />
       )}
 
+      {editingAmount && (
+        <EditAmountForm
+          fine={editingAmount}
+          onDone={() => {
+            setEditingAmount(null);
+            refresh();
+          }}
+          onCancel={() => setEditingAmount(null)}
+        />
+      )}
+
       <div className="table-wrap">
       <table className="table">
         <thead>
@@ -150,6 +162,11 @@ export function Fines() {
                           {t("Платена")}
                         </button>
                       </>
+                    )}
+                    {user?.isSuperAdmin && (
+                      <button className="small-btn" onClick={() => setEditingAmount(f)}>
+                        {t("Редактирай сума")}
+                      </button>
                     )}
                   </div>
                 </td>
@@ -230,6 +247,64 @@ function ManualFineForm({ employees, onCreated }: { employees: User[]; onCreated
       <button type="submit" disabled={submitting}>
         {submitting ? t("Записване…") : t("Наложи глоба")}
       </button>
+    </form>
+  );
+}
+
+function EditAmountForm({ fine, onDone, onCancel }: { fine: Fine; onDone: () => void; onCancel: () => void }) {
+  const { t } = useI18n();
+  const [amount, setAmount] = useState(String(fine.amount));
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await api(`/fines/${fine.id}/amount`, {
+        method: "PATCH",
+        body: JSON.stringify({ amount: Number(amount), reason }),
+      });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Грешка"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={handleSubmit}>
+      <p>
+        {t("Редакция на сумата на глоба за")} <strong>{fine.user?.name}</strong> ({t("текуща сума")} {fine.amount.toFixed(2)} {fine.currency})
+        {fine.task && (
+          <>
+            {" "}
+            — {t("задача")} <strong>{fine.task.title}</strong>
+          </>
+        )}
+      </p>
+      <div className="form-row">
+        <label>
+          {t("Нова сума")} ({fine.currency})
+          <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
+        </label>
+      </div>
+      <label>
+        {t("Причина за корекцията")}
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Напр. грешно изчислена сума при ескалация")} required />
+      </label>
+      {error && <div className="error-text">{error}</div>}
+      <div className="form-row">
+        <button type="submit" disabled={submitting}>
+          {submitting ? t("Записване…") : t("Запази новата сума")}
+        </button>
+        <button type="button" className="secondary" onClick={onCancel}>
+          {t("Отказ")}
+        </button>
+      </div>
     </form>
   );
 }
