@@ -226,7 +226,7 @@ async function sendUpcomingReviewReminders(now: Date): Promise<void> {
   const periodicMs = env.reviewReminderPeriodicHours * 60 * 60 * 1000;
 
   const pendingReviews = await prisma.taskSubmission.findMany({
-    where: { reviewStatus: "PENDING", reviewDueAt: { gt: now }, task: { deletedAt: null } },
+    where: { reviewStatus: "PENDING", reviewDueAt: { gt: now }, task: { deletedAt: null, status: "PENDING_REVIEW" } },
     include: { task: { include: { owner: true } }, submittedBy: true },
   });
 
@@ -272,10 +272,17 @@ async function sendUpcomingReviewReminders(now: Date): Promise<void> {
  * after submission). If the Owner sits on it past that point, they accrue a
  * fine through the exact same engine used for task deadlines — the Owner's
  * job of checking the work is a deadline too.
+ *
+ * Gated on task.status === "PENDING_REVIEW", not just the submission's own
+ * reviewStatus — a task that got closed some other way (e.g. an admin
+ * editing its status directly to DONE, instead of going through approve/
+ * reject or the dedicated "close" action) would otherwise leave its
+ * submission stuck at reviewStatus "PENDING" forever, and this scan would
+ * keep fining the Owner daily for a task that's actually already done.
  */
 async function handleOverdueReviews(now: Date): Promise<void> {
   const pendingReviews = await prisma.taskSubmission.findMany({
-    where: { reviewStatus: "PENDING", reviewDueAt: { lt: now }, task: { deletedAt: null } },
+    where: { reviewStatus: "PENDING", reviewDueAt: { lt: now }, task: { deletedAt: null, status: "PENDING_REVIEW" } },
     include: { task: { include: { owner: true } } },
   });
 

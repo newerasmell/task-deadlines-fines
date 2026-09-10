@@ -302,6 +302,31 @@ tasksRouter.patch("/:id", async (req, res) => {
 
   const task = await prisma.task.update({ where: { id: req.params.id }, data });
 
+  // A status edit that moves the task off PENDING_REVIEW some other way
+  // than approve/reject/complete (e.g. an admin picking a different status
+  // directly here) would otherwise leave its submission's reviewStatus
+  // stuck at "PENDING" forever — invisible to the scanner's own
+  // PENDING_REVIEW check, but still capable of confusing anything that
+  // looks up "the pending submission" by hand. Auto-resolve it, same as
+  // /complete already does.
+  if (parsed.data.status && existing.status === "PENDING_REVIEW") {
+    const pendingSubmission = await prisma.taskSubmission.findFirst({
+      where: { taskId: task.id, reviewStatus: "PENDING" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (pendingSubmission) {
+      await prisma.taskSubmission.update({
+        where: { id: pendingSubmission.id },
+        data: {
+          reviewStatus: "APPROVED",
+          reviewedById: req.user!.sub,
+          reviewedAt: new Date(),
+          reviewNote: "Статусът на задачата беше сменен ръчно от администратор.",
+        },
+      });
+    }
+  }
+
   // A changed date/time on an already-live task is exactly the kind of
   // thing that can quietly bury a real lateness — log it as its own clear
   // entry (not buried in the generic "changed fields" summary below) and
