@@ -24,6 +24,7 @@ finesRouter.get("/", async (req, res) => {
       user: { select: { id: true, name: true, email: true } },
       task: { select: { id: true, title: true, deadline: true } },
       waivedBy: { select: { id: true, name: true } },
+      paidBy: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -174,11 +175,45 @@ finesRouter.patch("/:id/amount", requireSuperAdmin, async (req, res) => {
 
 finesRouter.post("/:id/mark-paid", requireAdmin, async (req, res) => {
   try {
-    const fine = await prisma.fine.update({ where: { id: req.params.id }, data: { status: "PAID" } });
+    const fine = await prisma.fine.update({
+      where: { id: req.params.id },
+      data: { status: "PAID", paidAt: new Date(), paidById: req.user!.sub },
+    });
     res.json(fine);
   } catch {
     res.status(404).json({ error: "Fine not found" });
   }
+});
+
+const markPaidBulkSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+});
+
+// Settle a batch of fines (e.g. everything an employee owes) in one action
+// instead of clicking "Платена" on each row — only fines still ACTIVE are
+// actually touched, so re-submitting a selection that includes an
+// already-waived or already-paid one is harmless.
+finesRouter.post("/mark-paid-bulk", requireAdmin, async (req, res) => {
+  const parsed = markPaidBulkSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const now = new Date();
+  const result = await prisma.fine.updateMany({
+    where: { id: { in: parsed.data.ids }, status: "ACTIVE" },
+    data: { status: "PAID", paidAt: now, paidById: req.user!.sub },
+  });
+
+  if (result.count > 0) {
+    await logAction(
+      req.user!.sub,
+      "FINE_PAID_BULK",
+      "Fine",
+      "bulk-mark-paid",
+      `Маркирани като платени ${result.count} ${result.count === 1 ? "глоба" : "глоби"}.`
+    );
+  }
+
+  res.json({ paidCount: result.count });
 });
 
 // One-time cleanup for the repeat-fine bug fixed alongside this route: before

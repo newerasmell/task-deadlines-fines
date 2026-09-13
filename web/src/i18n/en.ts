@@ -220,6 +220,17 @@ export const en: Record<string, string> = {
   "Причина за корекцията": "Reason for the correction",
   "Напр. грешно изчислена сума при ескалация": "E.g. miscalculated amount during escalation",
   "Запази новата сума": "Save new amount",
+  "Платена на": "Paid on",
+  "дължи": "owes",
+  "глоба": "fine",
+  "глоби": "fines",
+  "Всичко уредено": "All settled",
+  "Избери всички активни глоби": "Select all active fines",
+  "Избери всички активни глоби на този служител": "Select all active fines for this employee",
+  "Избрани: {count} — общо {total}": "Selected: {count} — total {total}",
+  "Плати избраните": "Pay selected",
+  "Изчисти избора": "Clear selection",
+  "Да маркирам {count} избрани глоби като платени — общо {total}?": "Mark {count} selected fines as paid — total {total}?",
 
   // Recurring tasks
   "Повтарящи се задачи": "Recurring tasks",

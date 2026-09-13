@@ -558,6 +558,38 @@ button.secondary:hover {
   color: #1d4ed8;
 }
 
+.fine-group-header td {
+  background: #f5f6fa;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.fine-group-header:hover td {
+  background: #eef0f6;
+}
+
+.fine-group-toggle {
+  display: inline-block;
+  width: 14px;
+  color: var(--muted);
+}
+
+.fine-bulk-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 10px 14px;
+  background: var(--info-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+
+.fine-bulk-bar .spacer {
+  flex: 1;
+}
+
 .stat-grid {
   display: flex;
   gap: 16px;

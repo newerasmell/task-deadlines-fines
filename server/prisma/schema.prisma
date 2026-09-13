@@ -57,6 +57,7 @@ model User {
   tasksOwned    Task[]   @relation("OwnedTasks")
   fines         Fine[]   @relation("UserFines")
   finesWaived   Fine[]   @relation("WaivedByUser")
+  finesMarkedPaid Fine[] @relation("PaidByUser")
   notificationLogs NotificationLog[]
   submissions   TaskSubmission[] @relation("SubmittedBy")
   reviews       TaskSubmission[] @relation("ReviewedBy")
@@ -382,6 +383,10 @@ model Fine {
   waivedById    String?
   waivedBy      User?      @relation("WaivedByUser", fields: [waivedById], references: [id])
   waivedReason  String?
+
+  paidAt        DateTime?
+  paidById      String?
+  paidBy        User?      @relation("PaidByUser", fields: [paidById], references: [id])
 
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt

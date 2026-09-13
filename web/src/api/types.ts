@@ -158,6 +158,8 @@ export interface Fine {
   daysLate: number;
   status: FineStatus;
   waivedReason: string | null;
+  paidAt: string | null;
+  paidBy?: { id: string; name: string } | null;
   createdAt: string;
 }
 

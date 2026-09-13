@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
 import type { Fine, FineStatus, User } from "../api/types";
@@ -18,6 +18,39 @@ const statusClass: Record<FineStatus, string> = {
   PAID: "badge badge-success",
 };
 
+interface FineGroup {
+  userId: string;
+  user?: { id: string; name: string; email: string };
+  fines: Fine[];
+  activeTotals: Record<string, number>;
+}
+
+function groupFines(fines: Fine[]): FineGroup[] {
+  const byUser = new Map<string, FineGroup>();
+  for (const f of fines) {
+    let group = byUser.get(f.userId);
+    if (!group) {
+      group = { userId: f.userId, user: f.user, fines: [], activeTotals: {} };
+      byUser.set(f.userId, group);
+    }
+    group.fines.push(f);
+    if (f.status === "ACTIVE") {
+      group.activeTotals[f.currency] = (group.activeTotals[f.currency] ?? 0) + f.amount;
+    }
+  }
+  return Array.from(byUser.values()).sort((a, b) => totalOwed(b) - totalOwed(a));
+}
+
+function totalOwed(group: FineGroup): number {
+  return Object.values(group.activeTotals).reduce((s, v) => s + v, 0);
+}
+
+function formatTotals(totals: Record<string, number>): string {
+  const entries = Object.entries(totals).filter(([, v]) => v > 0);
+  if (entries.length === 0) return "0.00";
+  return entries.map(([currency, sum]) => `${sum.toFixed(2)} ${currency}`).join(" + ");
+}
+
 export function Fines() {
   const { user } = useAuth();
   const { t, lang } = useI18n();
@@ -30,10 +63,19 @@ export function Fines() {
   const [editingAmount, setEditingAmount] = useState<Fine | null>(null);
   const [loading, setLoading] = useState(true);
   const [cleaning, setCleaning] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [toggledGroups, setToggledGroups] = useState<Set<string>>(new Set());
+  const [payingBulk, setPayingBulk] = useState(false);
 
   async function refresh() {
     const f = await api<Fine[]>("/fines");
     setFines(f);
+    setSelectedIds((cur) => {
+      const activeIds = new Set(f.filter((fine) => fine.status === "ACTIVE").map((fine) => fine.id));
+      const next = new Set<string>();
+      for (const id of cur) if (activeIds.has(id)) next.add(id);
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -45,6 +87,11 @@ export function Fines() {
 
   async function markPaid(id: string) {
     await api(`/fines/${id}/mark-paid`, { method: "POST" });
+    setSelectedIds((cur) => {
+      const next = new Set(cur);
+      next.delete(id);
+      return next;
+    });
     refresh();
   }
 
@@ -61,7 +108,68 @@ export function Fines() {
     }
   }
 
+  function toggleSelected(id: string) {
+    setSelectedIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectedMany(ids: string[], select: boolean) {
+    setSelectedIds((cur) => {
+      const next = new Set(cur);
+      for (const id of ids) {
+        if (select) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleGroup(userId: string) {
+    setToggledGroups((cur) => {
+      const next = new Set(cur);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  async function bulkMarkPaid() {
+    const selectedFines = fines.filter((f) => selectedIds.has(f.id));
+    const totalsByCurrency: Record<string, number> = {};
+    for (const f of selectedFines) totalsByCurrency[f.currency] = (totalsByCurrency[f.currency] ?? 0) + f.amount;
+    if (
+      !window.confirm(
+        t("Да маркирам {count} избрани глоби като платени — общо {total}?", {
+          count: selectedFines.length,
+          total: formatTotals(totalsByCurrency),
+        })
+      )
+    )
+      return;
+    setPayingBulk(true);
+    try {
+      await api<{ paidCount: number }>("/fines/mark-paid-bulk", {
+        method: "POST",
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      setSelectedIds(new Set());
+      refresh();
+    } finally {
+      setPayingBulk(false);
+    }
+  }
+
   if (loading) return <p>{t("Зареждане…")}</p>;
+
+  const groups = groupFines(fines);
+  const allActiveIds = fines.filter((f) => f.status === "ACTIVE").map((f) => f.id);
+  const allSelected = allActiveIds.length > 0 && allActiveIds.every((id) => selectedIds.has(id));
+  const selectedTotals: Record<string, number> = {};
+  for (const f of fines) if (selectedIds.has(f.id)) selectedTotals[f.currency] = (selectedTotals[f.currency] ?? 0) + f.amount;
 
   return (
     <div>
@@ -114,68 +222,148 @@ export function Fines() {
         />
       )}
 
+      {isAdmin && selectedIds.size > 0 && (
+        <div className="fine-bulk-bar">
+          <span>
+            {t("Избрани: {count} — общо {total}", { count: selectedIds.size, total: formatTotals(selectedTotals) })}
+          </span>
+          <span className="spacer" />
+          <button onClick={bulkMarkPaid} disabled={payingBulk}>
+            {payingBulk ? t("Записване…") : t("Плати избраните")}
+          </button>
+          <button className="secondary" onClick={() => setSelectedIds(new Set())}>
+            {t("Изчисти избора")}
+          </button>
+        </div>
+      )}
+
       <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
+            {isAdmin && (
+              <th>
+                {allActiveIds.length > 0 && (
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={(e) => toggleSelectedMany(allActiveIds, e.target.checked)}
+                    title={t("Избери всички активни глоби")}
+                  />
+                )}
+              </th>
+            )}
             <th>{t("Служител")}</th>
             <th>{t("Задача")}</th>
             <th>{t("Причина")}</th>
             <th>{t("Сума")}</th>
             <th>{t("Дата")}</th>
+            <th>{t("Платена на")}</th>
             <th>{t("Статус")}</th>
             {isAdmin && <th></th>}
           </tr>
         </thead>
         <tbody>
-          {fines.map((f) => (
-            <tr key={f.id}>
-              <td className="person-cell" data-label={t("Служител")}>
-                <div className="person-cell-group">
-                  {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
-                  {f.user?.name}
-                </div>
-              </td>
-              <td data-label={t("Задача")}>
-                {f.task?.title ?? <span className="muted">{t("Ръчна глоба")}</span>}
-              </td>
-              <td data-label={t("Причина")}>
-                {f.reason}
-                {f.waivedReason && <div className="muted small">{t("Анулирана:")} {f.waivedReason}</div>}
-              </td>
-              <td data-label={t("Сума")}>
-                {f.amount.toFixed(2)} {f.currency}
-              </td>
-              <td data-label={t("Дата")}>{new Date(f.createdAt).toLocaleString(locale)}</td>
-              <td data-label={t("Статус")}>
-                <span className={statusClass[f.status]}>{t(statusLabels[f.status])}</span>
-              </td>
-              {isAdmin && (
-                <td className="row-actions">
-                  <div className="row-actions-group">
-                    {f.status === "ACTIVE" && (
-                      <>
-                        <button className="small-btn" onClick={() => setWaiving(f)}>
-                          {t("Анулирай")}
-                        </button>
-                        <button className="small-btn" onClick={() => markPaid(f.id)}>
-                          {t("Платена")}
-                        </button>
-                      </>
+          {groups.map((group) => {
+            const owed = totalOwed(group);
+            const defaultExpanded = owed > 0;
+            const expanded = toggledGroups.has(group.userId) ? !defaultExpanded : defaultExpanded;
+            const groupActiveIds = group.fines.filter((f) => f.status === "ACTIVE").map((f) => f.id);
+            const groupAllSelected = groupActiveIds.length > 0 && groupActiveIds.every((id) => selectedIds.has(id));
+            const colCount = isAdmin ? 9 : 7;
+            return (
+              <Fragment key={group.userId}>
+                <tr className="fine-group-header">
+                  {isAdmin && (
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {groupActiveIds.length > 0 && (
+                        <input
+                          type="checkbox"
+                          checked={groupAllSelected}
+                          onChange={(e) => toggleSelectedMany(groupActiveIds, e.target.checked)}
+                          title={t("Избери всички активни глоби на този служител")}
+                        />
+                      )}
+                    </td>
+                  )}
+                  <td colSpan={colCount - (isAdmin ? 1 : 0)} onClick={() => toggleGroup(group.userId)}>
+                    <span className="fine-group-toggle">{expanded ? "▾" : "▸"}</span>
+                    {group.user && <Avatar id={group.userId} name={group.user.name} size={22} />}{" "}
+                    <strong>{group.user?.name ?? "—"}</strong>{" "}
+                    <span className="muted small">
+                      ({group.fines.length} {group.fines.length === 1 ? t("глоба") : t("глоби")})
+                    </span>{" "}
+                    {owed > 0 ? (
+                      <span className="badge badge-danger">
+                        {t("дължи")} {formatTotals(group.activeTotals)}
+                      </span>
+                    ) : (
+                      <span className="badge badge-success">{t("Всичко уредено")}</span>
                     )}
-                    {user?.isSuperAdmin && (
-                      <button className="small-btn" onClick={() => setEditingAmount(f)}>
-                        {t("Редактирай сума")}
-                      </button>
-                    )}
-                  </div>
-                </td>
-              )}
-            </tr>
-          ))}
+                  </td>
+                </tr>
+                {expanded &&
+                  group.fines.map((f) => (
+                    <tr key={f.id}>
+                      {isAdmin && (
+                        <td>
+                          {f.status === "ACTIVE" && (
+                            <input type="checkbox" checked={selectedIds.has(f.id)} onChange={() => toggleSelected(f.id)} />
+                          )}
+                        </td>
+                      )}
+                      <td className="person-cell" data-label={t("Служител")}>
+                        <div className="person-cell-group">
+                          {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
+                          {f.user?.name}
+                        </div>
+                      </td>
+                      <td data-label={t("Задача")}>
+                        {f.task?.title ?? <span className="muted">{t("Ръчна глоба")}</span>}
+                      </td>
+                      <td data-label={t("Причина")}>
+                        {f.reason}
+                        {f.waivedReason && <div className="muted small">{t("Анулирана:")} {f.waivedReason}</div>}
+                      </td>
+                      <td data-label={t("Сума")}>
+                        {f.amount.toFixed(2)} {f.currency}
+                      </td>
+                      <td data-label={t("Дата")}>{new Date(f.createdAt).toLocaleString(locale)}</td>
+                      <td data-label={t("Платена на")}>
+                        {f.paidAt ? new Date(f.paidAt).toLocaleString(locale) : <span className="muted">—</span>}
+                      </td>
+                      <td data-label={t("Статус")}>
+                        <span className={statusClass[f.status]}>{t(statusLabels[f.status])}</span>
+                      </td>
+                      {isAdmin && (
+                        <td className="row-actions">
+                          <div className="row-actions-group">
+                            {f.status === "ACTIVE" && (
+                              <>
+                                <button className="small-btn" onClick={() => setWaiving(f)}>
+                                  {t("Анулирай")}
+                                </button>
+                                <button className="small-btn" onClick={() => markPaid(f.id)}>
+                                  {t("Платена")}
+                                </button>
+                              </>
+                            )}
+                            {user?.isSuperAdmin && (
+                              <button className="small-btn" onClick={() => setEditingAmount(f)}>
+                                {t("Редактирай сума")}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+              </Fragment>
+            );
+          })}
           {fines.length === 0 && (
             <tr>
-              <td colSpan={isAdmin ? 7 : 6} className="muted">
+              <td colSpan={isAdmin ? 9 : 7} className="muted">
                 {t("Няма глоби.")}
               </td>
             </tr>

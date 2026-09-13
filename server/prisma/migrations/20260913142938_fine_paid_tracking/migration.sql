@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Fine" ADD COLUMN "paidAt" DATETIME;
+ALTER TABLE "Fine" ADD COLUMN "paidById" TEXT;
