@@ -202,6 +202,12 @@ async function refreshScrapeSource(store: Store, source: Source): Promise<{ matc
             url,
           });
         } else {
+          // A confirmed "no price on this page" is meaningful evidence the
+          // product isn't listed there (right)now — unlike the catch block
+          // below (a timeout/network error proves nothing either way),
+          // clear any previously-matched price so a stale/since-corrected
+          // match doesn't linger forever feeding the suggestion engine.
+          await prisma.competitorPrice.deleteMany({ where: { sourceId: source.id, productId: product.id } });
           await upsertScrapeAttempt({
             sourceId: source.id,
             productId: product.id,

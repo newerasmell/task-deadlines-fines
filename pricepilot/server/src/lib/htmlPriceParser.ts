@@ -1,9 +1,22 @@
 // Best-effort, site-agnostic price extraction for `scrape`-type sources.
 // No per-site CSS selectors (out of scope for the pilot per the brief) —
-// tries, in order, the structured signals most e-commerce sites already
-// expose, then falls back to a plain-text currency scan. Returns null
-// (rather than guessing) when nothing usable is found; the caller treats
-// that as a failed fetch for the degraded-source counter.
+// tries the structured signals most e-commerce sites already expose.
+// Returns null (rather than guessing) when nothing usable is found; the
+// caller treats that as a failed fetch for the degraded-source counter.
+//
+// This used to also fall back to a plain-text currency scan when neither
+// structured signal was present — deliberately removed, not just left
+// unused: confirmed live it produces false positives, not just missed
+// matches. On a genuine "no results found" page (zero matching products),
+// it still grabbed some unrelated price-shaped number elsewhere on the page — a
+// shipping-threshold banner, a recommended-item price, a filter widget —
+// and reported it as a confirmed competitor price. That fed straight into
+// the suggestion engine, which recommended dropping a real ~€199-235
+// product to €139 based on a fabricated "€15 competitor price" it never
+// actually saw. A false "no price found" costs coverage; a false price
+// costs the user money if they trust and publish it — asymmetric enough
+// that only structured, site-authored product-price signals (JSON-LD,
+// price meta tags) are trusted to confirm an actual match.
 
 interface ParsedPrice {
   price: number;
@@ -52,25 +65,6 @@ function tryMetaTags(html: string): ParsedPrice | null {
   return null;
 }
 
-const CURRENCY_PATTERN = /(\d{1,6}[.,]\d{2})\s*(?:лв\.?|BGN|EUR|€|USD|\$|PLN|zł)|(?:лв\.?|BGN|EUR|€|USD|\$|PLN|zł)\s*(\d{1,6}[.,]\d{2})/i;
-
-function tryCurrencyScan(html: string): ParsedPrice | null {
-  // Strip script/style noise and cap the scan window so we're reading near
-  // the top of the page (likely the main product block), not a "related
-  // products" carousel further down. 120000 (was 40000): confirmed live
-  // against real search-results pages (nav/filters/header before the actual
-  // listings push real content well past 40KB) that this was cutting off
-  // before reaching any price at all, not just picking up the wrong one.
-  const cleaned = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-  const window = cleaned.slice(0, 120000);
-  const match = window.match(CURRENCY_PATTERN);
-  if (!match) return null;
-  const raw = match[1] ?? match[2];
-  const price = parseFloat(raw.replace(",", "."));
-  if (Number.isNaN(price) || price <= 0) return null;
-  return { price };
-}
-
 export function extractPriceFromHtml(html: string): ParsedPrice | null {
-  return tryJsonLd(html) ?? tryMetaTags(html) ?? tryCurrencyScan(html);
+  return tryJsonLd(html) ?? tryMetaTags(html);
 }
