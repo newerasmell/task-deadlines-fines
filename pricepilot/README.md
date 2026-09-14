@@ -143,8 +143,14 @@ service) — New → Web Service, point at this repo, then:
 - **Root Directory**: `pricepilot`
 - **Build Command** (the `--include=dev` flags matter: `NODE_ENV=production`
   below is visible during the build too, and npm skips devDependencies
-  under it by default — which is where typescript/@types/prisma/vite live):
-  `cd server && npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build && cd ../web && npm install --include=dev && npm run build`
+  under it by default — which is where typescript/@types/prisma/vite live.
+  `npx playwright install chromium` downloads the actual browser binary the
+  scrape-source refresh needs at runtime — without it that fails with
+  "Executable doesn't exist". `prisma migrate deploy` is deliberately *not*
+  run in Build Command: persistent disks aren't mounted during the build
+  step, only at runtime — the server runs its own migration at startup
+  instead, in `index.ts`, before it starts listening):
+  `cd server && npm install --include=dev && npx playwright install chromium && npx prisma generate && npm run build && cd ../web && npm install --include=dev && npm run build`
 - **Start Command**: `cd server && npm start`
 - Add a **persistent disk** mounted at `/data` (Settings → Disks — requires
   a paid plan, not Free)
@@ -175,6 +181,19 @@ show the sidebar link.
 - No currency conversion, no automatic/unattended publishing, no stock
   tracking, no multi-user roles — all explicitly out of scope for the
   pilot per the brief.
+- `scrape` sources fetch pages with a real headless Chromium (via
+  Playwright), not a plain HTTP request — some competitor sites block
+  non-browser clients outright via TLS/header fingerprinting, which no
+  amount of manually-set fetch() headers can get around. This has real
+  costs: a browser instance uses meaningfully more memory than a plain
+  request (launched per refresh run and closed immediately after, not
+  kept resident, specifically to limit this) and is slower per product.
+  On a small hosting plan this can hit memory limits under load — if
+  refreshes start failing/crashing, the fix is a larger plan, not more
+  code. It also still won't get past sites running dedicated bot-management
+  services (Cloudflare, Akamai, DataDome, etc.) that specifically detect
+  automated browsers — going further than that (stealth plugins, proxies,
+  CAPTCHA-solving) is deliberately out of scope.
 
 ## Acceptance checklist
 

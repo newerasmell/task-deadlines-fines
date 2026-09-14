@@ -1,4 +1,5 @@
 import type { Product, Source, Store } from "@prisma/client";
+import { BrowserSession } from "../lib/browserFetch";
 import { extractPriceFromHtml } from "../lib/htmlPriceParser";
 import { politeDelay, politeGet } from "../lib/httpClient";
 import { prisma } from "../lib/prisma";
@@ -160,59 +161,72 @@ async function refreshScrapeSource(store: Store, source: Source): Promise<{ matc
   const products = await prisma.product.findMany({ where: { storeId: store.id } });
   const targets = pickScrapeTargets(products);
 
+  // Real (headless) browser rather than a plain fetch(): some competitor
+  // sites block non-browser HTTP clients outright via TLS/header
+  // fingerprinting no amount of manually-set headers can fix. Scoped to
+  // this one run (launched lazily on first use below, closed in the
+  // `finally` at the bottom) rather than a shared long-lived instance —
+  // Chromium can use 150-300MB+ RAM, real pressure on a small hosting plan,
+  // so it's only paid for while a refresh is actually in progress.
+  const browser = new BrowserSession();
+
   let matched = 0;
-  for (const product of targets) {
-    const url = buildSearchUrl(source.searchUrlTemplate, product);
-    try {
-      const html = await politeGet(url);
-      const result = extractPriceFromHtml(html);
-      if (result) {
-        const matchKey = product.barcode
-          ? normalizeBarcode(product.barcode)
-          : buildFallbackMatchKey(product.vendor, product.title);
-        await upsertCompetitorPrice({
-          sourceId: source.id,
-          productId: product.id, // we searched FOR this exact product, so it's already known
-          matchKey,
-          competitorTitle: product.title,
-          competitorSku: product.sku,
-          competitorBarcode: product.barcode,
-          price: result.price,
-          currency: store.currency,
-          url: result.url ?? url,
-        });
-        matched++;
-        await upsertScrapeAttempt({
-          sourceId: source.id,
-          productId: product.id,
-          found: true,
-          price: result.price,
-          error: null,
-          url,
-        });
-      } else {
+  try {
+    for (const product of targets) {
+      const url = buildSearchUrl(source.searchUrlTemplate, product);
+      try {
+        const html = await browser.get(url);
+        const result = extractPriceFromHtml(html);
+        if (result) {
+          const matchKey = product.barcode
+            ? normalizeBarcode(product.barcode)
+            : buildFallbackMatchKey(product.vendor, product.title);
+          await upsertCompetitorPrice({
+            sourceId: source.id,
+            productId: product.id, // we searched FOR this exact product, so it's already known
+            matchKey,
+            competitorTitle: product.title,
+            competitorSku: product.sku,
+            competitorBarcode: product.barcode,
+            price: result.price,
+            currency: store.currency,
+            url: result.url ?? url,
+          });
+          matched++;
+          await upsertScrapeAttempt({
+            sourceId: source.id,
+            productId: product.id,
+            found: true,
+            price: result.price,
+            error: null,
+            url,
+          });
+        } else {
+          await upsertScrapeAttempt({
+            sourceId: source.id,
+            productId: product.id,
+            found: false,
+            price: null,
+            error: "No price found on the page",
+            url,
+          });
+        }
+      } catch (err) {
+        // One failed target shouldn't abort the whole run — the source-level
+        // degraded flag is driven by refreshSource's own try/catch below.
         await upsertScrapeAttempt({
           sourceId: source.id,
           productId: product.id,
           found: false,
           price: null,
-          error: "No price found on the page",
+          error: err instanceof Error ? err.message : "Unknown error",
           url,
         });
       }
-    } catch (err) {
-      // One failed target shouldn't abort the whole run — the source-level
-      // degraded flag is driven by refreshSource's own try/catch below.
-      await upsertScrapeAttempt({
-        sourceId: source.id,
-        productId: product.id,
-        found: false,
-        price: null,
-        error: err instanceof Error ? err.message : "Unknown error",
-        url,
-      });
+      await politeDelay();
     }
-    await politeDelay();
+  } finally {
+    await browser.close();
   }
   return { matched, attempted: targets.length };
 }

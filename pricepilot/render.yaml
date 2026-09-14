@@ -16,8 +16,16 @@ services:
     # where typescript, @types/*, prisma, and vite all live. Without this
     # flag the build fails with "Cannot find name 'console'" and similar,
     # because @types/node etc. silently never got installed.
+    # `npx playwright install chromium` downloads the actual browser binary
+    # the `playwright` npm package (installed above) needs — without it, the
+    # scrape-source refresh fails at runtime with "Executable doesn't exist".
+    # Deliberately omitting --with-deps here: it also apt-get-installs a
+    # long list of system libraries, which is a much bigger, riskier build
+    # step (could fail outright depending on what the build image allows) —
+    # if the deploy log shows a missing-shared-library error at *runtime*
+    # instead, add --with-deps and accept that tradeoff.
     buildCommand: >
-      cd server && npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build &&
+      cd server && npm install --include=dev && npx playwright install chromium && npx prisma generate && npx prisma migrate deploy && npm run build &&
       cd ../web && npm install --include=dev && npm run build
     startCommand: cd server && npm start
     healthCheckPath: /api/health
