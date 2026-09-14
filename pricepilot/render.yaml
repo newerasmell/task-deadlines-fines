@@ -16,12 +16,16 @@ services:
     # where typescript, @types/*, prisma, and vite all live. Without this
     # flag the build fails with "Cannot find name 'console'" and similar,
     # because @types/node etc. silently never got installed.
-    # `npx playwright install chromium chromium-headless-shell` downloads the
-    # actual browser binaries the `playwright` npm package (installed above)
-    # needs at runtime — chromium.launch({headless:true}) resolves to the
-    # separate "headless shell" build, not the regular Chromium download;
-    # installing only `chromium` left that missing and every scrape-source
-    # refresh failed with "Executable doesn't exist at
+    # `npx playwright install --force chromium chromium-headless-shell`
+    # downloads the actual browser binaries the `playwright` npm package
+    # (installed above) needs at runtime — chromium.launch({headless:true})
+    # resolves to the separate "headless shell" build, not the regular
+    # Chromium download. --force matters: Render appears to cache this
+    # folder across builds, and an earlier deploy's install (without
+    # --force) left a broken/incomplete chromium_headless_shell folder that
+    # every later build silently skipped re-downloading (folder-exists
+    # check, not a content/integrity check) — every scrape-source refresh
+    # then failed at runtime with "Executable doesn't exist at
     # .../chromium_headless_shell-NNNN/...". Deliberately omitting
     # --with-deps here: it also apt-get-installs a long list of system
     # libraries, a much bigger/riskier build step that could fail outright
@@ -29,7 +33,7 @@ services:
     # missing-shared-library error at *runtime* instead, add --with-deps and
     # accept that tradeoff.
     buildCommand: >
-      cd server && npm install --include=dev && npx playwright install chromium chromium-headless-shell && npx prisma generate && npx prisma migrate deploy && npm run build &&
+      cd server && npm install --include=dev && npx playwright install --force chromium chromium-headless-shell && npx prisma generate && npm run build &&
       cd ../web && npm install --include=dev && npm run build
     startCommand: cd server && npm start
     healthCheckPath: /api/health

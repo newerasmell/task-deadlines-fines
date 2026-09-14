@@ -144,16 +144,21 @@ service) — New → Web Service, point at this repo, then:
 - **Build Command** (the `--include=dev` flags matter: `NODE_ENV=production`
   below is visible during the build too, and npm skips devDependencies
   under it by default — which is where typescript/@types/prisma/vite live.
-  `npx playwright install chromium chromium-headless-shell` downloads the
-  browser binaries the scrape-source refresh needs at runtime — both names
-  are required: `chromium.launch({headless:true})` resolves to the separate
-  "headless shell" build, not the regular Chromium download, so installing
-  only `chromium` fails at runtime with "Executable doesn't exist at
-  .../chromium_headless_shell-NNNN/...". `prisma migrate deploy` is
-  deliberately *not* run in Build Command: persistent disks aren't mounted
-  during the build step, only at runtime — the server runs its own
-  migration at startup instead, in `index.ts`, before it starts listening):
-  `cd server && npm install --include=dev && npx playwright install chromium chromium-headless-shell && npx prisma generate && npm run build && cd ../web && npm install --include=dev && npm run build`
+  `npx playwright install --force chromium chromium-headless-shell` downloads
+  the browser binaries the scrape-source refresh needs at runtime — both
+  names are required: `chromium.launch({headless:true})` resolves to the
+  separate "headless shell" build, not the regular Chromium download, so
+  installing only `chromium` fails at runtime with "Executable doesn't exist
+  at .../chromium_headless_shell-NNNN/...". `--force` matters too: Render
+  appears to cache this folder across builds, and once one build leaves an
+  incomplete download there (a failed/interrupted one, or an install that
+  didn't request this exact pair), later builds silently skip
+  re-downloading it — a folder-exists check, not a content check. `prisma
+  migrate deploy` is deliberately *not* run in Build Command: persistent
+  disks aren't mounted during the build step, only at runtime — the server
+  runs its own migration at startup instead, in `index.ts`, before it
+  starts listening):
+  `cd server && npm install --include=dev && npx playwright install --force chromium chromium-headless-shell && npx prisma generate && npm run build && cd ../web && npm install --include=dev && npm run build`
 - **Start Command**: `cd server && npm start`
 - Add a **persistent disk** mounted at `/data` (Settings → Disks — requires
   a paid plan, not Free)
