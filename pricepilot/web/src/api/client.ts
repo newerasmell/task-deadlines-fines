@@ -1,4 +1,9 @@
-export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4100/api";
+// Relative "/api" as the fallback (not a localhost URL): in production the
+// same Express process serves both the API and the built frontend on one
+// origin, so a relative path always reaches it regardless of the deployed
+// hostname. Local dev sets VITE_API_URL explicitly (see .env.example) since
+// there the frontend and backend run on different ports.
+export const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 
 export class ApiError extends Error {
   status: number;
