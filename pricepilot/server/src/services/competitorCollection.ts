@@ -127,6 +127,19 @@ function hashToBucket(id: string): number {
   return hash % ROTATION_BUCKETS;
 }
 
+// Shopify product titles usually already include the brand ("Chanel No 5
+// EDP 100ml"), so blindly prepending vendor produced garbled, doubled-up
+// queries like "Chanel Chanel No 5 EDP 100ml" — plausibly why a source with
+// literal/exact search matching (no fuzzy fallback) can come back with zero
+// results for products that clearly exist there. Only prepend the vendor
+// when the title doesn't already start with it.
+function buildSearchQuery(vendor: string | null, title: string): string {
+  const trimmedVendor = (vendor ?? "").trim();
+  if (!trimmedVendor) return title.trim();
+  const alreadyIncluded = title.trim().toLowerCase().startsWith(trimmedVendor.toLowerCase());
+  return (alreadyIncluded ? title : `${trimmedVendor} ${title}`).trim();
+}
+
 function buildSearchUrl(template: string, product: Product): string {
   // Only take the EAN path if the template actually has an {EAN}
   // placeholder to fill — otherwise (e.g. a template that only defines
@@ -137,7 +150,7 @@ function buildSearchUrl(template: string, product: Product): string {
   if (product.barcode && template.includes("{EAN}")) {
     return template.replace("{EAN}", encodeURIComponent(product.barcode));
   }
-  const query = `${product.vendor ?? ""} ${product.title}`.trim();
+  const query = buildSearchQuery(product.vendor, product.title);
   return template.replace("{QUERY}", encodeURIComponent(query)).replace("{EAN}", "");
 }
 
