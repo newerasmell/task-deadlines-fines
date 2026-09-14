@@ -1,6 +1,12 @@
 import type { Product, Source, Store } from "@prisma/client";
 import { BrowserSession } from "../lib/browserFetch";
-import { extractPriceFromHtml } from "../lib/htmlPriceParser";
+import {
+  collectJsonLdProducts,
+  extractMlFromTitle,
+  extractPriceFromHtml,
+  extractVariantPrice,
+  pickBestCandidate,
+} from "../lib/htmlPriceParser";
 import { politeDelay, politeGet } from "../lib/httpClient";
 import { prisma } from "../lib/prisma";
 import { buildFallbackMatchKey, normalizeBarcode } from "../lib/textNormalize";
@@ -176,7 +182,42 @@ async function refreshScrapeSource(store: Store, source: Source): Promise<{ matc
       const url = buildSearchUrl(source.searchUrlTemplate, product);
       try {
         const html = await browser.get(url);
-        const result = extractPriceFromHtml(html);
+        let result = extractPriceFromHtml(html);
+        let resultUrl = url;
+
+        // A search-results page usually lists several sibling products
+        // ("Spicebomb", "Spicebomb Extreme", "Spicebomb Infrared", ...).
+        // extractPriceFromHtml() above just grabbed whichever JSON-LD
+        // Product block happened to appear first, with no guarantee it's
+        // the one we actually searched for — confirmed live it can record
+        // a sibling variant's price under our product. Instead: collect
+        // every listed candidate, pick the one whose title is the closest
+        // textual match to ours, then visit THAT product's own page (which
+        // also lets us read its exact size/price variants rather than
+        // whatever the listing's default/starting price was).
+        const candidates = collectJsonLdProducts(html);
+        if (candidates.length > 0) {
+          const query = buildSearchQuery(product.vendor, product.title);
+          const best = pickBestCandidate(query, candidates);
+          if (best?.url) {
+            try {
+              const detailUrl = new URL(best.url, url).toString();
+              await politeDelay();
+              const detailHtml = await browser.get(detailUrl);
+              const targetMl = extractMlFromTitle(product.title);
+              const variantPrice = targetMl != null ? extractVariantPrice(detailHtml, targetMl) : null;
+              const detailPrice = variantPrice ?? extractPriceFromHtml(detailHtml)?.price ?? null;
+              if (detailPrice != null) {
+                result = { price: detailPrice, url: detailUrl };
+                resultUrl = detailUrl;
+              }
+            } catch {
+              // Detail page fetch/parse failed — fall back to whatever the
+              // search results page itself yielded above.
+            }
+          }
+        }
+
         if (result) {
           const matchKey = product.barcode
             ? normalizeBarcode(product.barcode)
@@ -190,7 +231,7 @@ async function refreshScrapeSource(store: Store, source: Source): Promise<{ matc
             competitorBarcode: product.barcode,
             price: result.price,
             currency: store.currency,
-            url: result.url ?? url,
+            url: result.url ?? resultUrl,
           });
           matched++;
           await upsertScrapeAttempt({
@@ -199,15 +240,27 @@ async function refreshScrapeSource(store: Store, source: Source): Promise<{ matc
             found: true,
             price: result.price,
             error: null,
-            url,
+            // The actual product page when we navigated to one, not the
+            // search results listing — lets the user click through and see
+            // exactly what was matched, rather than a results grid.
+            url: resultUrl,
           });
         } else {
-          // A confirmed "no price on this page" is meaningful evidence the
-          // product isn't listed there (right)now — unlike the catch block
-          // below (a timeout/network error proves nothing either way),
-          // clear any previously-matched price so a stale/since-corrected
-          // match doesn't linger forever feeding the suggestion engine.
-          await prisma.competitorPrice.deleteMany({ where: { sourceId: source.id, productId: product.id } });
+          // A confirmed "no price on this page" is meaningful evidence a
+          // previously-matched price is stale — but only once it's happened
+          // twice in a row. Confirmed live that requiring just one was too
+          // aggressive: a real, correct match could flicker away because a
+          // single run happened to catch the page mid-load or otherwise
+          // failed to render its structured data that one time, not because
+          // the product actually stopped being listed there. Checking the
+          // PRIOR attempt (not yet overwritten) before deciding: only clear
+          // if that one was also not-found.
+          const previous = await prisma.scrapeAttempt.findUnique({
+            where: { sourceId_productId: { sourceId: source.id, productId: product.id } },
+          });
+          if (previous && !previous.found) {
+            await prisma.competitorPrice.deleteMany({ where: { sourceId: source.id, productId: product.id } });
+          }
           await upsertScrapeAttempt({
             sourceId: source.id,
             productId: product.id,
