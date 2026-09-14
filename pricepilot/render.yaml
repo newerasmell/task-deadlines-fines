@@ -16,24 +16,27 @@ services:
     # where typescript, @types/*, prisma, and vite all live. Without this
     # flag the build fails with "Cannot find name 'console'" and similar,
     # because @types/node etc. silently never got installed.
-    # `npx playwright install --force chromium chromium-headless-shell`
-    # downloads the actual browser binaries the `playwright` npm package
-    # (installed above) needs at runtime — chromium.launch({headless:true})
-    # resolves to the separate "headless shell" build, not the regular
-    # Chromium download. --force matters: Render appears to cache this
-    # folder across builds, and an earlier deploy's install (without
-    # --force) left a broken/incomplete chromium_headless_shell folder that
-    # every later build silently skipped re-downloading (folder-exists
-    # check, not a content/integrity check) — every scrape-source refresh
-    # then failed at runtime with "Executable doesn't exist at
-    # .../chromium_headless_shell-NNNN/...". Deliberately omitting
-    # --with-deps here: it also apt-get-installs a long list of system
+    # `npx playwright install chromium chromium-headless-shell` downloads the
+    # actual browser binaries the `playwright` npm package (installed above)
+    # needs at runtime — chromium.launch({headless:true}) resolves to the
+    # separate "headless shell" build, not the regular Chromium download.
+    # Confirmed live: the build log shows both downloading to 100% and
+    # landing at /opt/render/.cache/ms-playwright/..., yet the running
+    # server still can't find them there — Render's build and runtime
+    # environments don't share that cache directory, it's build-only and
+    # gone before the app actually starts. PLAYWRIGHT_BROWSERS_PATH=0 below
+    # (also set as a runtime env var — both matter, install-time AND
+    # launch-time need to agree on the path) redirects the install into
+    # node_modules/playwright-core/.local-browsers instead, which — unlike
+    # an external cache dir — is guaranteed to carry over into the running
+    # container since it's part of the actual deployed app. Deliberately
+    # omitting --with-deps: it also apt-get-installs a long list of system
     # libraries, a much bigger/riskier build step that could fail outright
     # depending on what the build image allows — if the deploy log shows a
     # missing-shared-library error at *runtime* instead, add --with-deps and
     # accept that tradeoff.
     buildCommand: >
-      cd server && npm install --include=dev && npx playwright install --force chromium chromium-headless-shell && npx prisma generate && npm run build &&
+      cd server && npm install --include=dev && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install --force chromium chromium-headless-shell && npx prisma generate && npm run build &&
       cd ../web && npm install --include=dev && npm run build
     startCommand: cd server && npm start
     healthCheckPath: /api/health
@@ -52,6 +55,8 @@ services:
         value: file:/data/pricepilot.db
       - key: NODE_ENV
         value: production
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "0" # must match at both install time (buildCommand) and launch time (here)
       # CORS_ORIGIN intentionally left unset: in production the same Express
       # process serves both the API and the built frontend (same origin), so
       # no cross-origin requests ever happen and the setting is moot.
