@@ -58,6 +58,19 @@ export class BrowserSession {
     await context.addInitScript(
       "Object.defineProperty(Object.getPrototypeOf(navigator), 'webdriver', { get: () => undefined });"
     );
+    // Block images/fonts/media/stylesheets — we only ever read text and
+    // structured data out of the page, never how it looks. Confirmed live
+    // that the server started 502ing under real scrape load (this runs on a
+    // 512MB instance; Chromium alone commonly uses 150-300MB, and a full
+    // page load — images, web fonts, CSS — pushes both memory and time per
+    // page well past what's actually needed here). Cuts both.
+    await context.route("**/*", (route) => {
+      const type = route.request().resourceType();
+      if (type === "image" || type === "font" || type === "media" || type === "stylesheet") {
+        return route.abort();
+      }
+      return route.continue();
+    });
     try {
       const page = await context.newPage();
       const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
