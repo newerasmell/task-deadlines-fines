@@ -42,7 +42,7 @@ export class BrowserSession {
     return this.browserPromise;
   }
 
-  async get(url: string, timeoutMs = 20000): Promise<string> {
+  async get(url: string, timeoutMs = 30000): Promise<string> {
     const browser = await this.browser();
     const context: BrowserContext = await browser.newContext({
       userAgent: USER_AGENT,
@@ -60,13 +60,16 @@ export class BrowserSession {
     );
     try {
       const page = await context.newPage();
-      const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+      // "networkidle" (not "domcontentloaded") — confirmed live that most
+      // pages now load successfully (no more blocking) but the price still
+      // isn't showing up in page.content(), consistent with a search-results
+      // page that renders its listings via a follow-up XHR/fetch after the
+      // initial HTML arrives. This waits for that to settle before reading
+      // the DOM, at the cost of being slower per page.
+      const res = await page.goto(url, { waitUntil: "networkidle", timeout: timeoutMs });
       if (res && !res.ok()) {
         throw new Error(`HTTP ${res.status()} fetching ${url}`);
       }
-      // Brief settle window for any client-rendered price widgets that
-      // finish just after DOMContentLoaded.
-      await page.waitForTimeout(500);
       return await page.content();
     } finally {
       await context.close();

@@ -57,9 +57,12 @@ const CURRENCY_PATTERN = /(\d{1,6}[.,]\d{2})\s*(?:лв\.?|BGN|EUR|€|USD|\$|PLN
 function tryCurrencyScan(html: string): ParsedPrice | null {
   // Strip script/style noise and cap the scan window so we're reading near
   // the top of the page (likely the main product block), not a "related
-  // products" carousel further down.
+  // products" carousel further down. 120000 (was 40000): confirmed live
+  // against real search-results pages (nav/filters/header before the actual
+  // listings push real content well past 40KB) that this was cutting off
+  // before reaching any price at all, not just picking up the wrong one.
   const cleaned = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-  const window = cleaned.slice(0, 40000);
+  const window = cleaned.slice(0, 120000);
   const match = window.match(CURRENCY_PATTERN);
   if (!match) return null;
   const raw = match[1] ?? match[2];
