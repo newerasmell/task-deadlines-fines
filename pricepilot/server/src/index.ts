@@ -12,13 +12,29 @@ process.on("uncaughtException", (err) => {
   console.error("[uncaughtException]", err);
 });
 
-// One-time startup diagnostic for a Prisma P2021 ("table does not exist")
-// mystery in production: Pre-Deploy's `prisma migrate deploy` reports success
-// on every deploy (even printing "database created", never "already exists"),
-// yet the running server can't see the table it just created — implying the
-// two steps aren't looking at the same disk. This dumps exactly what the
-// running process sees at the DATABASE_URL path so that can be confirmed
-// from the deploy logs, without needing shell access to the instance.
+// Run migrations in THIS long-lived process rather than relying solely on
+// Render's Pre-Deploy Command. Confirmed via the startup diagnostic below:
+// Pre-Deploy's `prisma migrate deploy` reports success on every deploy (even
+// printing "database created", never "already exists"), yet the running
+// server finds a 0-byte db file at the same path a few seconds later. That's
+// consistent with the short-lived Pre-Deploy job's writes never getting
+// durably flushed to the persistent disk before its container exits — so
+// migrating from inside the process that keeps the disk mounted for the
+// service's whole lifetime sidesteps that entirely. Exits loudly on failure
+// rather than serving traffic against a database that isn't there.
+function runMigrations() {
+  try {
+    console.log("[startup] running prisma migrate deploy…");
+    execSync("npx prisma migrate deploy", { stdio: "inherit" });
+    console.log("[startup] migrations applied");
+  } catch (err) {
+    console.error("[startup] prisma migrate deploy failed:", err);
+    process.exit(1);
+  }
+}
+
+// Diagnostic left in place: confirms, from inside the running process, what
+// it actually sees on disk after the migration above.
 function logDbDiskState() {
   const match = (process.env.DATABASE_URL ?? "").match(/^file:(.+)$/);
   if (!match) return;
@@ -39,9 +55,10 @@ function logDbDiskState() {
   }
 }
 
-const app = createApp();
-
+runMigrations();
 logDbDiskState();
+
+const app = createApp();
 
 app.listen(env.port, () => {
   console.log(`[server] listening on http://localhost:${env.port}`);
