@@ -130,7 +130,8 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
   const isEdit = Boolean(store);
   const [name, setName] = useState(store?.name ?? "");
   const [domain, setDomain] = useState(store?.myshopifyDomain ?? "");
-  const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState(store?.shopifyClientId ?? "");
+  const [clientSecret, setClientSecret] = useState("");
   const [marketCode, setMarketCode] = useState(store?.marketCode ?? "");
   const [currency, setCurrency] = useState(store?.currency ?? "EUR");
   const [strategy, setStrategy] = useState<PricingStrategy>(store?.pricingStrategy ?? "undercut_min");
@@ -143,8 +144,8 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!isEdit && !token.trim()) {
-      setError("Admin API token is required.");
+    if (!isEdit && !clientSecret.trim()) {
+      setError("Client secret is required.");
       return;
     }
     setSubmitting(true);
@@ -152,6 +153,7 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
       const body: Record<string, unknown> = {
         name,
         myshopifyDomain: domain,
+        shopifyClientId: clientId.trim(),
         marketCode,
         currency,
         pricingStrategy: strategy,
@@ -159,7 +161,7 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
         priceEnding: priceEnding.trim() || null,
         minMarginPct: Number(minMarginPct),
       };
-      if (token.trim()) body.adminApiToken = token.trim();
+      if (clientSecret.trim()) body.shopifyClientSecret = clientSecret.trim();
 
       if (isEdit) await api(`/stores/${store!.id}`, { method: "PATCH", body: JSON.stringify(body) });
       else await api("/stores", { method: "POST", body: JSON.stringify(body) });
@@ -188,10 +190,25 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
           />
         </label>
       </div>
-      <label>
-        Admin API token {isEdit && <span className="muted">(leave blank to keep the current one)</span>}
-        <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="shpat_…" />
-      </label>
+      <div className="form-row">
+        <label>
+          Client ID
+          <input value={clientId} onChange={(e) => setClientId(e.target.value)} required />
+        </label>
+        <label>
+          Client secret {isEdit && <span className="muted">(leave blank to keep the current one)</span>}
+          <input
+            type="password"
+            value={clientSecret}
+            onChange={(e) => setClientSecret(e.target.value)}
+            placeholder="shpss_…"
+          />
+        </label>
+      </div>
+      <p className="muted small">
+        From your app's Dev Dashboard page (dev.shopify.com) → Settings → Credentials. Requires{" "}
+        <code>read_products</code> and <code>write_products</code> scopes, installed to this store.
+      </p>
       <div className="form-row">
         <label>
           Market code

@@ -8,11 +8,11 @@ import { testShopifyConnection } from "../services/shopifyClient";
 
 export const storesRouter = Router();
 
-// admin_api_token is encrypted at rest and NEVER sent back to the client —
-// only whether one is on file, so the Settings UI can show "configured".
+// shopifyClientSecret is encrypted at rest and NEVER sent back to the client
+// — only whether one is on file, so the Settings UI can show "configured".
 function toStoreDto(store: Store) {
-  const { adminApiToken, ...rest } = store;
-  return { ...rest, hasToken: Boolean(adminApiToken) };
+  const { shopifyClientSecret, ...rest } = store;
+  return { ...rest, hasClientSecret: Boolean(shopifyClientSecret) };
 }
 
 storesRouter.get("/", async (_req, res) => {
@@ -23,7 +23,8 @@ storesRouter.get("/", async (_req, res) => {
 const createSchema = z.object({
   name: z.string().min(1),
   myshopifyDomain: z.string().min(1),
-  adminApiToken: z.string().min(1),
+  shopifyClientId: z.string().min(1),
+  shopifyClientSecret: z.string().min(1),
   marketCode: z.string().min(1),
   currency: z.string().min(1),
   pricingStrategy: z.enum(["undercut_min", "match_min", "undercut_avg"]).default("undercut_min"),
@@ -36,26 +37,26 @@ storesRouter.post("/", async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { adminApiToken, ...rest } = parsed.data;
+  const { shopifyClientSecret, ...rest } = parsed.data;
   const store = await prisma.store.create({
-    data: { ...rest, adminApiToken: encrypt(adminApiToken) },
+    data: { ...rest, shopifyClientSecret: encrypt(shopifyClientSecret) },
   });
   res.status(201).json(toStoreDto(store));
 });
 
 const updateSchema = createSchema.partial().extend({
-  adminApiToken: z.string().min(1).optional(), // omit to leave the existing token untouched
+  shopifyClientSecret: z.string().min(1).optional(), // omit to leave the existing secret untouched
 });
 
 storesRouter.patch("/:id", async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { adminApiToken, ...rest } = parsed.data;
+  const { shopifyClientSecret, ...rest } = parsed.data;
   try {
     const store = await prisma.store.update({
       where: { id: req.params.id },
-      data: { ...rest, ...(adminApiToken ? { adminApiToken: encrypt(adminApiToken) } : {}) },
+      data: { ...rest, ...(shopifyClientSecret ? { shopifyClientSecret: encrypt(shopifyClientSecret) } : {}) },
     });
     res.json(toStoreDto(store));
   } catch {

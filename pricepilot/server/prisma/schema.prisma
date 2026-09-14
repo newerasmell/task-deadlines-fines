@@ -16,7 +16,8 @@ model Store {
   id                String   @id @default(cuid())
   name              String
   myshopifyDomain   String   @unique
-  adminApiToken     String
+  shopifyClientId     String
+  shopifyClientSecret String // encrypted at rest — exchanged for a short-lived Admin API access token via the client_credentials grant, not used directly (see shopifyClient.ts)
   marketCode        String
   currency          String
 

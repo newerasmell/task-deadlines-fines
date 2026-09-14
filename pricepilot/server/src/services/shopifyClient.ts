@@ -3,7 +3,55 @@ import { env } from "../lib/env";
 
 export interface ShopifyStoreCreds {
   myshopifyDomain: string;
-  adminApiToken: string; // encrypted, as stored in the DB
+  shopifyClientId: string;
+  shopifyClientSecret: string; // encrypted, as stored in the DB
+}
+
+interface CachedToken {
+  token: string;
+  expiresAt: number; // ms epoch
+}
+
+// Shopify apps created via the Dev Dashboard no longer expose a static Admin
+// API access token in the UI — instead you exchange the app's Client ID and
+// Client Secret for a short-lived (~24h) token via the client_credentials
+// grant, and re-request one once it's close to expiring. Cached in memory
+// per store domain so routine calls don't re-exchange on every request; lost
+// on restart, which just costs one extra exchange on the next call.
+const tokenCache = new Map<string, CachedToken>();
+const EXPIRY_SAFETY_MARGIN_MS = 2 * 60 * 1000;
+
+async function fetchAccessToken(store: ShopifyStoreCreds): Promise<string> {
+  const clientSecret = decrypt(store.shopifyClientSecret);
+  const url = `https://${store.myshopifyDomain}/admin/oauth/access_token`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: store.shopifyClientId,
+      client_secret: clientSecret,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new ShopifyApiError(`Shopify token exchange failed: ${res.status} ${text.slice(0, 300)}`);
+  }
+
+  const body = (await res.json()) as { access_token: string; expires_in: number };
+  const token: CachedToken = { token: body.access_token, expiresAt: Date.now() + body.expires_in * 1000 };
+  tokenCache.set(store.myshopifyDomain, token);
+  return token.token;
+}
+
+async function getAccessToken(store: ShopifyStoreCreds, forceRefresh = false): Promise<string> {
+  const cached = tokenCache.get(store.myshopifyDomain);
+  if (!forceRefresh && cached && cached.expiresAt - EXPIRY_SAFETY_MARGIN_MS > Date.now()) {
+    return cached.token;
+  }
+  return fetchAccessToken(store);
 }
 
 interface GraphQLError {
@@ -51,7 +99,7 @@ export async function shopifyGraphQL<T>(
   query: string,
   variables?: Record<string, unknown>
 ): Promise<T> {
-  const token = decrypt(store.adminApiToken);
+  let token = await getAccessToken(store);
   const url = `https://${store.myshopifyDomain}/admin/api/${env.shopifyApiVersion}/graphql.json`;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -63,6 +111,14 @@ export async function shopifyGraphQL<T>(
       },
       body: JSON.stringify({ query, variables }),
     });
+
+    if (res.status === 401 && attempt < MAX_RETRIES) {
+      // The cached token's actual server-side lifetime can fall short of the
+      // expires_in it reported (clock skew, early revocation) — force one
+      // fresh exchange rather than surfacing an auth error for that.
+      token = await getAccessToken(store, true);
+      continue;
+    }
 
     if (!res.ok && res.status !== 200) {
       // Shopify returns 200 even for most GraphQL-level errors; a non-200

@@ -6,13 +6,14 @@ export interface Store {
   id: string;
   name: string;
   myshopifyDomain: string;
+  shopifyClientId: string;
   marketCode: string;
   currency: string;
   pricingStrategy: PricingStrategy;
   undercutPct: number;
   priceEnding: string | null;
   minMarginPct: number;
-  hasToken: boolean;
+  hasClientSecret: boolean;
   createdAt: string;
   updatedAt: string;
 }

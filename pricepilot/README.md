@@ -37,20 +37,42 @@ npm install
 npm run dev             # http://localhost:5174
 ```
 
-Log in with `DASHBOARD_PASSWORD`. Add a store under Settings, paste a
-Shopify custom-app Admin API token, "Test connection", then "Sync now".
+Log in with `DASHBOARD_PASSWORD`. Add a store under Settings, paste the
+Shopify app's Client ID and Client secret (below), "Test connection", then
+"Sync now".
 
-## Creating a Shopify custom app
+## Creating a Shopify app for a store
 
-In the store's Shopify admin: **Settings → Apps and sales channels →
-Develop apps → Create an app.** Under **Configuration → Admin API scopes**,
-enable:
+Shopify retired the old admin-side "Develop apps" flow (the one that handed
+you a static `shpat_…` Admin API access token directly) for new apps. Every
+new custom app now goes through the **Dev Dashboard** instead, and
+authenticates via the OAuth **client_credentials** grant — PricePilot
+exchanges the Client ID/secret for a short-lived (~24h) Admin API token
+itself, automatically, and re-exchanges before it expires
+(`src/services/shopifyClient.ts`), so the fields you enter are permanent
+even though the token behind them isn't.
 
-- `read_products`
-- `write_products`
+1. Go to **dev.shopify.com/dashboard** (a different site from your store's
+   own admin) and create an app, or open an existing one.
+2. Under **Configuration** (or during app creation) → **API access** →
+   **Scopes**, add:
+   - `read_products`
+   - `write_products`
+3. Save/continue through the app's setup (App URL can be anything valid —
+   `https://` + your PricePilot URL works fine, it's never actually called
+   for this integration) until the app is created.
+4. **Install the app on your store**: from the store's own admin, go to
+   **Settings → Apps and sales channels**, find the app in the installed
+   list (it should already be there if you created/configured it for this
+   store), and confirm the scopes shown match what you set above.
+5. Back in the Dev Dashboard, open the app → **Settings** → **Credentials**.
+   Copy the **Client ID** and **Secret** (`shpss_…`) shown there — this is
+   the pair PricePilot needs, entered as **Client ID** and **Client secret**
+   when adding the store in Settings.
 
-Install the app, then copy the **Admin API access token** (shown once) into
-Settings → Stores → Admin API token in PricePilot.
+Do **not** use the **App automation token** (`atkn_…`) section on that same
+page — that's for authenticating the Shopify CLI in CI/CD pipelines
+(`shopify app deploy`), not for Admin API calls, and won't work here.
 
 ## Pricing rule fields
 
