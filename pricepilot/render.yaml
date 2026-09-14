@@ -9,9 +9,16 @@ services:
     runtime: node
     plan: starter # persistent disks require a paid plan, not Free
     rootDir: pricepilot
+    # --include=dev is required here: NODE_ENV=production is set below (for
+    # correct runtime behavior — secure cookies etc.) but that same env var
+    # is visible during the build too, and npm's default under
+    # NODE_ENV=production is to skip devDependencies — which is exactly
+    # where typescript, @types/*, prisma, and vite all live. Without this
+    # flag the build fails with "Cannot find name 'console'" and similar,
+    # because @types/node etc. silently never got installed.
     buildCommand: >
-      cd server && npm install && npx prisma generate && npx prisma migrate deploy && npm run build &&
-      cd ../web && npm install && npm run build
+      cd server && npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build &&
+      cd ../web && npm install --include=dev && npm run build
     startCommand: cd server && npm start
     healthCheckPath: /api/health
     envVars:

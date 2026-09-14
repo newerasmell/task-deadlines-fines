@@ -119,8 +119,10 @@ This repo has two apps in it, so `render.yaml` lives at
 service) — New → Web Service, point at this repo, then:
 
 - **Root Directory**: `pricepilot`
-- **Build Command**:
-  `cd server && npm install && npx prisma generate && npx prisma migrate deploy && npm run build && cd ../web && npm install && npm run build`
+- **Build Command** (the `--include=dev` flags matter: `NODE_ENV=production`
+  below is visible during the build too, and npm skips devDependencies
+  under it by default — which is where typescript/@types/prisma/vite live):
+  `cd server && npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build && cd ../web && npm install --include=dev && npm run build`
 - **Start Command**: `cd server && npm start`
 - Add a **persistent disk** mounted at `/data` (Settings → Disks — requires
   a paid plan, not Free)
