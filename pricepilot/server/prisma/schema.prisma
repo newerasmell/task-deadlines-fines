@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// One row per configured Shopify store/market. admin_api_token is stored
+// AES-256-GCM encrypted (see lib/crypto.ts) — never written or read in
+// plaintext outside that helper. Pricing rule fields are flattened onto the
+// store (1:1) rather than a separate table, since a store always has
+// exactly one active rule.
+model Store {
+  id                String   @id @default(cuid())
+  name              String
+  myshopifyDomain   String   @unique
+  adminApiToken     String
+  marketCode        String
+  currency          String
+
+  pricingStrategy   String   @default("undercut_min") // undercut_min | match_min | undercut_avg
+  undercutPct       Float    @default(1)
+  priceEnding       String?  // e.g. ".99" — null means no ending adjustment
+  minMarginPct      Float    @default(10)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  sources           Source[]
+  products          Product[]
+  costs             Cost[]
+  manualMatches     ManualMatch[]
+  publishLogs       PublishLog[]
+}
+
+// Up to 3 active competitor sources per store. Refresh health (degraded
+// flag / consecutive failure count) lives here so the UI can show a source
+// as struggling without digging through logs.
+model Source {
+  id                  String   @id @default(cuid())
+  storeId             String
+  store               Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  label               String
+  type                String   // shopify_json | scrape
+  baseUrl             String
+  searchUrlTemplate   String?  // used for type=scrape, e.g. https://x.com/search?q={EAN}
+  active              Boolean  @default(true)
+
+  lastRefreshedAt     DateTime?
+  consecutiveFailures Int      @default(0)
+  degraded            Boolean  @default(false)
+  lastError           String?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  competitorPrices    CompetitorPrice[]
+  priceHistory        CompetitorPriceHistory[]
+  manualMatches       ManualMatch[]
+}
+
+// One row per Shopify VARIANT (not per product) — a product's title/vendor/
+// handle/image are duplicated across its variant rows, matching how the
+// pricing table itself is variant-grain (each row publishes independently).
+model Product {
+  id                  String   @id @default(cuid())
+  storeId             String
+  store               Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  shopifyProductId    String
+  shopifyVariantId    String
+
+  title               String
+  vendor              String?
+  handle              String?
+  sku                 String?
+  barcode             String?
+  price               Float
+  compareAtPrice      Float?
+  inventoryQuantity   Int?
+  imageUrl            String?
+
+  // Manual "always scrape this one every run" flag; the top-N-by-inventory-
+  // value rule is computed on the fly at scrape-scheduling time, not stored.
+  priority            Boolean  @default(false)
+
+  syncedAt            DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  manualMatches       ManualMatch[]
+
+  @@unique([storeId, shopifyVariantId])
+  @@index([storeId, barcode])
+}
+
+// Imported via Settings → Import costs (CSV: sku_or_ean,cost).
+model Cost {
+  id         String   @id @default(cuid())
+  storeId    String
+  store      Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  skuOrEan   String
+  cost       Float
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([storeId, skuOrEan])
+}
+
+// Latest fetched price per (source, matchKey) — upserted every refresh so
+// there's always exactly one current row per competitor listing. matchKey
+// is the EAN when known, else a normalized brand+name+ml string, else the
+// competitor's own SKU — always computable, always the upsert identity.
+// productId is filled in once the matching engine (or a manual binding)
+// resolves it; null means it currently shows up in the Unmatched tab.
+model CompetitorPrice {
+  id                String   @id @default(cuid())
+  sourceId          String
+  source            Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  productId         String?  // resolved match, if any (not enforced as FK — Product rows get replaced on re-sync)
+
+  matchKey          String
+  competitorTitle   String?
+  competitorSku     String?
+  competitorBarcode String?
+  price             Float
+  currency          String
+  url               String?
+
+  fetchedAt         DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([sourceId, matchKey])
+  @@index([sourceId, productId])
+}
+
+// Rolling trend log — pruned to the last 30 rows per (sourceId, matchKey)
+// after each insert (see services/competitorHistory.ts).
+model CompetitorPriceHistory {
+  id        String   @id @default(cuid())
+  sourceId  String
+  source    Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  matchKey  String
+  price     Float
+  fetchedAt DateTime @default(now())
+
+  @@index([sourceId, matchKey, fetchedAt])
+}
+
+// A manually-bound competitor listing for one of our products on one
+// source — always takes priority over the automatic EAN/string matcher.
+model ManualMatch {
+  id                   String   @id @default(cuid())
+  storeId              String
+  store                Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sourceId             String
+  source               Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  productId            String
+  product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  competitorUrlOrEan   String   // whatever the operator pasted
+  resolvedMatchKey     String   // EAN if extractable/confirmed, else a synthetic key tied to this binding
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([sourceId, productId])
+}
+
+model PublishLog {
+  id             String   @id @default(cuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  variantId      String   // Shopify variant GID
+  productTitle   String?
+
+  oldPrice       Float
+  newPrice       Float
+  oldCompareAt   Float?
+  newCompareAt   Float?
+
+  status         String   // SUCCESS | ERROR
+  errorMessage   String?
+  source         String   // single | bulk
+
+  createdAt      DateTime @default(now())
+
+  @@index([storeId, createdAt])
+}

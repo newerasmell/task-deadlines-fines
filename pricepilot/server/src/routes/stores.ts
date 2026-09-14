@@ -1,0 +1,93 @@
+import type { Store } from "@prisma/client";
+import { Router } from "express";
+import { z } from "zod";
+import { encrypt } from "../lib/crypto";
+import { prisma } from "../lib/prisma";
+import { syncCatalog } from "../services/catalogSync";
+import { testShopifyConnection } from "../services/shopifyClient";
+
+export const storesRouter = Router();
+
+// admin_api_token is encrypted at rest and NEVER sent back to the client —
+// only whether one is on file, so the Settings UI can show "configured".
+function toStoreDto(store: Store) {
+  const { adminApiToken, ...rest } = store;
+  return { ...rest, hasToken: Boolean(adminApiToken) };
+}
+
+storesRouter.get("/", async (_req, res) => {
+  const stores = await prisma.store.findMany({ orderBy: { name: "asc" } });
+  res.json(stores.map(toStoreDto));
+});
+
+const createSchema = z.object({
+  name: z.string().min(1),
+  myshopifyDomain: z.string().min(1),
+  adminApiToken: z.string().min(1),
+  marketCode: z.string().min(1),
+  currency: z.string().min(1),
+  pricingStrategy: z.enum(["undercut_min", "match_min", "undercut_avg"]).default("undercut_min"),
+  undercutPct: z.number().nonnegative().default(1),
+  priceEnding: z.string().nullable().optional(),
+  minMarginPct: z.number().nonnegative().default(10),
+});
+
+storesRouter.post("/", async (req, res) => {
+  const parsed = createSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { adminApiToken, ...rest } = parsed.data;
+  const store = await prisma.store.create({
+    data: { ...rest, adminApiToken: encrypt(adminApiToken) },
+  });
+  res.status(201).json(toStoreDto(store));
+});
+
+const updateSchema = createSchema.partial().extend({
+  adminApiToken: z.string().min(1).optional(), // omit to leave the existing token untouched
+});
+
+storesRouter.patch("/:id", async (req, res) => {
+  const parsed = updateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { adminApiToken, ...rest } = parsed.data;
+  try {
+    const store = await prisma.store.update({
+      where: { id: req.params.id },
+      data: { ...rest, ...(adminApiToken ? { adminApiToken: encrypt(adminApiToken) } : {}) },
+    });
+    res.json(toStoreDto(store));
+  } catch {
+    res.status(404).json({ error: "Store not found" });
+  }
+});
+
+storesRouter.delete("/:id", async (req, res) => {
+  try {
+    await prisma.store.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  } catch {
+    res.status(404).json({ error: "Store not found" });
+  }
+});
+
+storesRouter.post("/:id/test-connection", async (req, res) => {
+  const store = await prisma.store.findUnique({ where: { id: req.params.id } });
+  if (!store) return res.status(404).json({ error: "Store not found" });
+
+  const result = await testShopifyConnection(store);
+  res.json(result);
+});
+
+storesRouter.post("/:id/sync-now", async (req, res) => {
+  const store = await prisma.store.findUnique({ where: { id: req.params.id } });
+  if (!store) return res.status(404).json({ error: "Store not found" });
+
+  try {
+    const result = await syncCatalog(store.id);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err instanceof Error ? err.message : "Sync failed" });
+  }
+});

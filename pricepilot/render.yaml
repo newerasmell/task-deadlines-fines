@@ -1,0 +1,38 @@
+# Render Blueprint for PricePilot. This repo also hosts an unrelated app
+# (TODF) at its root, so this file lives at pricepilot/render.yaml rather
+# than the repo root — when creating the Blueprint in the Render dashboard,
+# point it at this path explicitly (Manual setup in the README is simpler
+# for a single service and doesn't require that step at all).
+services:
+  - type: web
+    name: pricepilot
+    runtime: node
+    plan: starter # persistent disks require a paid plan, not Free
+    rootDir: pricepilot
+    buildCommand: >
+      cd server && npm install && npx prisma generate && npx prisma migrate deploy && npm run build &&
+      cd ../web && npm install && npm run build
+    startCommand: cd server && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: NO_COST_FLOOR_PCT
+        value: "0.7"
+      - key: SHOPIFY_API_VERSION
+        value: "2025-01"
+      - key: DATABASE_URL
+        value: file:/data/pricepilot.db
+      - key: NODE_ENV
+        value: production
+      # CORS_ORIGIN intentionally left unset: in production the same Express
+      # process serves both the API and the built frontend (same origin), so
+      # no cross-origin requests ever happen and the setting is moot.
+    disk:
+      name: pricepilot-data
+      mountPath: /data
+      sizeGB: 1

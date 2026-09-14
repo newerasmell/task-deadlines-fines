@@ -3,7 +3,24 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { Avatar } from "./Avatar";
-import { IconBell, IconBoard, IconCalendar, IconFines, IconLog, IconMe, IconPeople, IconRepeat, IconSettings, IconTasks } from "./icons";
+import {
+  IconBell,
+  IconBoard,
+  IconCalendar,
+  IconFines,
+  IconGlobe,
+  IconLog,
+  IconMe,
+  IconPeople,
+  IconRepeat,
+  IconSettings,
+  IconTasks,
+} from "./icons";
+
+// PricePilot is a separate app (own login, own database) — see
+// pricepilot/README.md — reachable from here by an external link once
+// it's deployed as its own Render Web Service. Unset until then.
+const PRICEPILOT_URL = import.meta.env.VITE_PRICEPILOT_URL as string | undefined;
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -71,6 +88,11 @@ export function Layout() {
             <NavLink to="/audit-log">
               <IconLog /> {t("Дневник")}
             </NavLink>
+          )}
+          {isAdmin && PRICEPILOT_URL && (
+            <a href={PRICEPILOT_URL} target="_blank" rel="noreferrer">
+              <IconGlobe /> PricePilot ↗
+            </a>
           )}
         </nav>
         <div className="sidebar-footer">
