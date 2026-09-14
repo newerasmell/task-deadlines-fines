@@ -60,16 +60,20 @@ export class BrowserSession {
     );
     try {
       const page = await context.newPage();
-      // "networkidle" (not "domcontentloaded") — confirmed live that most
-      // pages now load successfully (no more blocking) but the price still
-      // isn't showing up in page.content(), consistent with a search-results
-      // page that renders its listings via a follow-up XHR/fetch after the
-      // initial HTML arrives. This waits for that to settle before reading
-      // the DOM, at the cost of being slower per page.
-      const res = await page.goto(url, { waitUntil: "networkidle", timeout: timeoutMs });
+      const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
       if (res && !res.ok()) {
         throw new Error(`HTTP ${res.status()} fetching ${url}`);
       }
+      // Best-effort wait for any follow-up XHR/fetch-rendered content (a
+      // search-results page commonly loads its listings this way) — NOT a
+      // hard requirement: waitUntil: "networkidle" on goto() itself was
+      // tried and confirmed live to time out entirely on real sites with
+      // persistent background connections (analytics, ads) that never go
+      // fully idle, failing the whole fetch even though the actual content
+      // had rendered long before. Capped short and swallowed on timeout so
+      // a page that never idles just falls through to whatever's already
+      // in the DOM instead of failing the attempt.
+      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
       return await page.content();
     } finally {
       await context.close();
