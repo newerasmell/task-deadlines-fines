@@ -377,10 +377,23 @@ function SourcesSection({ storeId }: { storeId: string }) {
         ))}
         {sources.length === 0 && <p className="muted">No sources yet.</p>}
       </div>
-      {!showForm && !editing && sources.length < MAX_SOURCES_PER_STORE && (
-        <button onClick={() => setShowForm(true)}>+ Add source</button>
+      {!showForm && sources.length < MAX_SOURCES_PER_STORE && (
+        // Always available, even while an Edit form is open below — previously
+        // this button disappeared the moment you clicked Edit on an existing
+        // source, with no other visible way to start a genuinely new one. That
+        // made it easy to mistake the still-open Edit form for an "add" form
+        // and overwrite an existing source's URL/label instead of creating a
+        // second one (exactly what happened to jeftinije.hr -> zivada.hr).
+        <button
+          onClick={() => {
+            setEditing(null);
+            setShowForm(true);
+          }}
+        >
+          + Add source
+        </button>
       )}
-      {sources.length >= MAX_SOURCES_PER_STORE && !editing && (
+      {sources.length >= MAX_SOURCES_PER_STORE && !editing && !showForm && (
         <p className="muted small">Maximum of {MAX_SOURCES_PER_STORE} sources per store.</p>
       )}
       {(showForm || editing) && (
@@ -508,6 +521,16 @@ function SourceForm({
 
   return (
     <form className="card form" onSubmit={handleSubmit}>
+      <p className="small" style={{ margin: "0 0 4px" }}>
+        {isEdit ? (
+          <>
+            Editing <strong>{source!.label}</strong> — changing its URL/type replaces this source's identity, not
+            adds a new one. Use "+ Add source" instead if you meant to track another site.
+          </>
+        ) : (
+          <strong>New source</strong>
+        )}
+      </p>
       <div className="form-row">
         <label>
           Label

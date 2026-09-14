@@ -41,12 +41,44 @@ sourcesRouter.post("/", async (req, res) => {
 
 const updateSchema = createSchema.partial();
 
+// Changing where/how a source fetches prices makes it a functionally
+// different source, even though it keeps the same row/id — everything
+// collected under the old identity (which competitor site actually
+// answered, at what URL) no longer describes reality. Editing type/baseUrl/
+// searchUrlTemplate without clearing this out left exactly that: a source
+// relabeled from jeftinije.hr to zivada.hr while its results panel kept
+// showing old jeftinije.hr URLs under the new name.
+const IDENTITY_FIELDS = ["type", "baseUrl", "searchUrlTemplate"] as const;
+
 sourcesRouter.patch("/:id", async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const existing = await prisma.source.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "Source not found" });
+
+  const identityChanged = IDENTITY_FIELDS.some(
+    (field) => field in parsed.data && parsed.data[field] !== existing[field]
+  );
+
   try {
-    const source = await prisma.source.update({ where: { id: req.params.id }, data: parsed.data });
+    const source = await prisma.$transaction(async (tx) => {
+      if (identityChanged) {
+        await tx.scrapeAttempt.deleteMany({ where: { sourceId: existing.id } });
+        await tx.competitorPrice.deleteMany({ where: { sourceId: existing.id } });
+        await tx.competitorPriceHistory.deleteMany({ where: { sourceId: existing.id } });
+        await tx.manualMatch.deleteMany({ where: { sourceId: existing.id } });
+      }
+      return tx.source.update({
+        where: { id: existing.id },
+        data: {
+          ...parsed.data,
+          ...(identityChanged
+            ? { lastRefreshedAt: null, lastMatchedCount: null, consecutiveFailures: 0, degraded: false, lastError: null }
+            : {}),
+        },
+      });
+    });
     res.json(source);
   } catch {
     res.status(404).json({ error: "Source not found" });
