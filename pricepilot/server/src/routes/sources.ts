@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
-import { refreshSource } from "../services/competitorCollection";
+import { isSourceRefreshing, refreshSource } from "../services/competitorCollection";
 
 export const sourcesRouter = Router();
 
@@ -63,10 +63,23 @@ sourcesRouter.delete("/:id", async (req, res) => {
 });
 
 sourcesRouter.post("/:id/refresh", async (req, res) => {
-  try {
-    const result = await refreshSource(req.params.id);
-    res.json(result);
-  } catch {
-    res.status(404).json({ error: "Source not found" });
+  const sourceId = req.params.id;
+  const source = await prisma.source.findUnique({ where: { id: sourceId } });
+  if (!source) return res.status(404).json({ error: "Source not found" });
+
+  if (isSourceRefreshing(sourceId)) {
+    return res.json({ ok: true, started: false, alreadyRunning: true });
   }
+
+  // Fire-and-forget: a scrape refresh can run for several minutes (polite
+  // ~2-3s delay per product, up to ~140 targets), far too long to hold an
+  // HTTP request/proxy connection open for. refreshSource() persists its
+  // result to the source row regardless of outcome — the client polls
+  // GET /sources and reads lastRefreshedAt/lastMatchedCount/lastError from
+  // there instead of waiting on this response.
+  void refreshSource(sourceId).catch((err) => {
+    console.error(`[sources] background refresh failed for ${sourceId}:`, err);
+  });
+
+  res.json({ ok: true, started: true });
 });

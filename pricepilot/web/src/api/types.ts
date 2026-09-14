@@ -27,6 +27,7 @@ export interface Source {
   searchUrlTemplate: string | null;
   active: boolean;
   lastRefreshedAt: string | null;
+  lastMatchedCount: number | null;
   consecutiveFailures: number;
   degraded: boolean;
   lastError: string | null;

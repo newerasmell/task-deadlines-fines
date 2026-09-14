@@ -51,6 +51,7 @@ model Source {
   active              Boolean  @default(true)
 
   lastRefreshedAt     DateTime?
+  lastMatchedCount    Int?     // prices fetched on the most recent refresh, null = never refreshed
   consecutiveFailures Int      @default(0)
   degraded            Boolean  @default(false)
   lastError           String?

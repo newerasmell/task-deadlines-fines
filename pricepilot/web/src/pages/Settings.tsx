@@ -265,9 +265,10 @@ function SourcesSection({ storeId }: { storeId: string }) {
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<Record<string, string>>({});
 
-  async function refresh() {
+  async function refresh(): Promise<Source[]> {
     const list = await api<Source[]>(`/sources?storeId=${storeId}`);
     setSources(list);
+    return list;
   }
 
   useEffect(() => {
@@ -275,15 +276,54 @@ function SourcesSection({ storeId }: { storeId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
 
+  // A scrape refresh walks the catalog with a polite ~2-3s delay per
+  // product — several minutes for ~140 targets — so the server runs it in
+  // the background and responds immediately rather than holding the
+  // request open (which Render's proxy would eventually kill anyway). Poll
+  // GET /sources until this source's lastRefreshedAt moves past the moment
+  // we kicked it off, then read the result off lastMatchedCount/lastError.
   async function refreshSource(id: string) {
     setRefreshing(id);
+    setRefreshResult((cur) => ({ ...cur, [id]: "Started — scrape sources can take several minutes…" }));
+    const requestedAt = Date.now();
     try {
-      const res = await api<{ ok: boolean; matched: number; error?: string }>(`/sources/${id}/refresh`, { method: "POST" });
-      setRefreshResult((cur) => ({ ...cur, [id]: res.ok ? `✓ ${res.matched} prices fetched` : `✕ ${res.error}` }));
-      refresh();
+      const res = await api<{ ok: boolean; started?: boolean; alreadyRunning?: boolean; error?: string }>(
+        `/sources/${id}/refresh`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        setRefreshResult((cur) => ({ ...cur, [id]: `✕ ${res.error ?? "Error"}` }));
+        return;
+      }
+      if (res.alreadyRunning) {
+        setRefreshResult((cur) => ({ ...cur, [id]: "Already refreshing — check back shortly." }));
+        return;
+      }
+      await pollUntilRefreshed(id, requestedAt);
+    } catch (err) {
+      setRefreshResult((cur) => ({ ...cur, [id]: err instanceof Error ? `✕ ${err.message}` : "✕ Error" }));
     } finally {
       setRefreshing(null);
     }
+  }
+
+  async function pollUntilRefreshed(id: string, requestedAt: number) {
+    const POLL_MS = 4000;
+    const MAX_MS = 15 * 60 * 1000; // generous — the largest scrape runs can legitimately take this long
+    const deadline = Date.now() + MAX_MS;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+      const list = await refresh();
+      const source = list.find((s) => s.id === id);
+      if (source?.lastRefreshedAt && new Date(source.lastRefreshedAt).getTime() >= requestedAt) {
+        setRefreshResult((cur) => ({
+          ...cur,
+          [id]: source.lastError ? `✕ ${source.lastError}` : `✓ ${source.lastMatchedCount ?? 0} prices fetched`,
+        }));
+        return;
+      }
+    }
+    setRefreshResult((cur) => ({ ...cur, [id]: "Still running — check back later." }));
   }
 
   async function remove(id: string) {

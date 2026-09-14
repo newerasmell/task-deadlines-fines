@@ -155,34 +155,60 @@ async function refreshScrapeSource(store: Store, source: Source): Promise<{ matc
   return { matched, attempted: targets.length };
 }
 
+// A scrape refresh can walk ~140 products at a polite ~2-3s each — several
+// minutes, far longer than an HTTP request/proxy should be held open for.
+// Callers that need "fire and forget" behavior (the /refresh route) check
+// this instead of awaiting refreshSource() directly; the DB row (updated
+// below regardless of outcome) is the actual source of truth a client polls.
+const inFlight = new Set<string>();
+
+export function isSourceRefreshing(sourceId: string): boolean {
+  return inFlight.has(sourceId);
+}
+
 export async function refreshSource(sourceId: string): Promise<{ ok: boolean; matched: number; error?: string }> {
-  const source = await prisma.source.findUniqueOrThrow({ where: { id: sourceId }, include: { store: true } });
-
+  if (inFlight.has(sourceId)) {
+    return { ok: false, matched: 0, error: "Already refreshing" };
+  }
+  inFlight.add(sourceId);
   try {
-    const matched =
-      source.type === "shopify_json"
-        ? await refreshShopifyJsonSource(source.store, source)
-        : (await refreshScrapeSource(source.store, source)).matched;
+    const source = await prisma.source.findUniqueOrThrow({ where: { id: sourceId }, include: { store: true } });
 
-    await prisma.source.update({
-      where: { id: sourceId },
-      data: { lastRefreshedAt: new Date(), consecutiveFailures: 0, degraded: false, lastError: null },
-    });
-    await resolveMatchesForStore(source.storeId);
-    return { ok: true, matched };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    const failures = source.consecutiveFailures + 1;
-    await prisma.source.update({
-      where: { id: sourceId },
-      data: {
-        lastRefreshedAt: new Date(),
-        consecutiveFailures: failures,
-        degraded: failures >= DEGRADE_AFTER_FAILURES,
-        lastError: message,
-      },
-    });
-    return { ok: false, matched: 0, error: message };
+    try {
+      const matched =
+        source.type === "shopify_json"
+          ? await refreshShopifyJsonSource(source.store, source)
+          : (await refreshScrapeSource(source.store, source)).matched;
+
+      await prisma.source.update({
+        where: { id: sourceId },
+        data: {
+          lastRefreshedAt: new Date(),
+          lastMatchedCount: matched,
+          consecutiveFailures: 0,
+          degraded: false,
+          lastError: null,
+        },
+      });
+      await resolveMatchesForStore(source.storeId);
+      return { ok: true, matched };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      const failures = source.consecutiveFailures + 1;
+      await prisma.source.update({
+        where: { id: sourceId },
+        data: {
+          lastRefreshedAt: new Date(),
+          lastMatchedCount: 0,
+          consecutiveFailures: failures,
+          degraded: failures >= DEGRADE_AFTER_FAILURES,
+          lastError: message,
+        },
+      });
+      return { ok: false, matched: 0, error: message };
+    }
+  } finally {
+    inFlight.delete(sourceId);
   }
 }
 
