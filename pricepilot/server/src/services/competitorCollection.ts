@@ -128,7 +128,15 @@ function hashToBucket(id: string): number {
 }
 
 function buildSearchUrl(template: string, product: Product): string {
-  if (product.barcode) return template.replace("{EAN}", encodeURIComponent(product.barcode));
+  // Only take the EAN path if the template actually has an {EAN}
+  // placeholder to fill — otherwise (e.g. a template that only defines
+  // {QUERY}, which every source added so far uses) this used to leave
+  // {QUERY} sitting in the URL completely unreplaced for any product that
+  // happened to have a barcode, since .replace("{EAN}", …) is a silent
+  // no-op when there's nothing to match.
+  if (product.barcode && template.includes("{EAN}")) {
+    return template.replace("{EAN}", encodeURIComponent(product.barcode));
+  }
   const query = `${product.vendor ?? ""} ${product.title}`.trim();
   return template.replace("{QUERY}", encodeURIComponent(query)).replace("{EAN}", "");
 }
