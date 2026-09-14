@@ -1,3 +1,8 @@
+// Must be imported before any router: patches Express 4's routing so a
+// thrown/rejected error from an `async` route handler reaches the error
+// middleware below via next(err), instead of hanging the request forever
+// with no response (Express 4 doesn't do this on its own — Express 5 does).
+import "express-async-errors";
 import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import session from "express-session";
