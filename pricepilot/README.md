@@ -89,7 +89,7 @@ page — that's for authenticating the Shopify CLI in CI/CD pipelines
 
 ## Sources
 
-Up to 3 per store.
+Up to 4 per store.
 
 - **`shopify_json`** — the competitor runs Shopify too: paginates their
   public `/products.json` endpoint (no auth needed, no admin token). Fast,

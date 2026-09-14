@@ -5,6 +5,9 @@ import { refreshSource } from "../services/competitorCollection";
 
 export const sourcesRouter = Router();
 
+// Was 3 per the original brief; raised to 4 at the user's request.
+const MAX_SOURCES_PER_STORE = 4;
+
 sourcesRouter.get("/", async (req, res) => {
   const storeId = typeof req.query.storeId === "string" ? req.query.storeId : undefined;
   const sources = await prisma.source.findMany({
@@ -28,8 +31,8 @@ sourcesRouter.post("/", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const existingCount = await prisma.source.count({ where: { storeId: parsed.data.storeId } });
-  if (existingCount >= 3) {
-    return res.status(400).json({ error: "A store can have at most 3 sources" });
+  if (existingCount >= MAX_SOURCES_PER_STORE) {
+    return res.status(400).json({ error: `A store can have at most ${MAX_SOURCES_PER_STORE} sources` });
   }
 
   const source = await prisma.source.create({ data: parsed.data });

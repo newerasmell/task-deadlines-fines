@@ -256,6 +256,8 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
   );
 }
 
+const MAX_SOURCES_PER_STORE = 4; // was 3 per the original brief; raised at the user's request
+
 function SourcesSection({ storeId }: { storeId: string }) {
   const [sources, setSources] = useState<Source[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -322,8 +324,12 @@ function SourcesSection({ storeId }: { storeId: string }) {
         ))}
         {sources.length === 0 && <p className="muted">No sources yet.</p>}
       </div>
-      {!showForm && !editing && sources.length < 3 && <button onClick={() => setShowForm(true)}>+ Add source</button>}
-      {sources.length >= 3 && !editing && <p className="muted small">Maximum of 3 sources per store.</p>}
+      {!showForm && !editing && sources.length < MAX_SOURCES_PER_STORE && (
+        <button onClick={() => setShowForm(true)}>+ Add source</button>
+      )}
+      {sources.length >= MAX_SOURCES_PER_STORE && !editing && (
+        <p className="muted small">Maximum of {MAX_SOURCES_PER_STORE} sources per store.</p>
+      )}
       {(showForm || editing) && (
         <SourceForm
           storeId={storeId}
