@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { api } from "../api/client";
-import type { PricingStrategy, Source, SourceType, Store } from "../api/types";
+import type { PricingStrategy, ScrapeAttempt, Source, SourceType, Store } from "../api/types";
 import { useStores } from "../context/StoreContext";
 
 export function Settings() {
@@ -264,6 +264,7 @@ function SourcesSection({ storeId }: { storeId: string }) {
   const [editing, setEditing] = useState<Source | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<Record<string, string>>({});
+  const [showAttempts, setShowAttempts] = useState<string | null>(null);
 
   async function refresh(): Promise<Source[]> {
     const list = await api<Source[]>(`/sources?storeId=${storeId}`);
@@ -336,30 +337,42 @@ function SourcesSection({ storeId }: { storeId: string }) {
     <div>
       <div className="entity-list">
         {sources.map((s) => (
-          <div key={s.id} className="entity-row">
-            <div>
-              <strong>{s.label}</strong> <span className="muted small">({s.type})</span>
-              {s.degraded && <span className="tag">degraded</span>}
-              {!s.active && <span className="tag">inactive</span>}
-              <div className="small muted">{s.baseUrl}</div>
-              {s.searchUrlTemplate && <div className="small muted">{s.searchUrlTemplate}</div>}
-              <div className="small muted">
-                Last refreshed: {s.lastRefreshedAt ? new Date(s.lastRefreshedAt).toLocaleString() : "never"}
+          <div key={s.id}>
+            <div className="entity-row">
+              <div>
+                <strong>{s.label}</strong> <span className="muted small">({s.type})</span>
+                {s.degraded && <span className="tag">degraded</span>}
+                {!s.active && <span className="tag">inactive</span>}
+                <div className="small muted">{s.baseUrl}</div>
+                {s.searchUrlTemplate && <div className="small muted">{s.searchUrlTemplate}</div>}
+                <div className="small muted">
+                  Last refreshed: {s.lastRefreshedAt ? new Date(s.lastRefreshedAt).toLocaleString() : "never"}
+                  {s.lastMatchedCount !== null && ` (${s.lastMatchedCount} prices)`}
+                </div>
+                {s.lastError && <div className="small error-text">{s.lastError}</div>}
+                {refreshResult[s.id] && <div className="small">{refreshResult[s.id]}</div>}
               </div>
-              {s.lastError && <div className="small error-text">{s.lastError}</div>}
-              {refreshResult[s.id] && <div className="small">{refreshResult[s.id]}</div>}
+              <div className="entity-row-actions">
+                <button className="small-btn secondary" onClick={() => refreshSource(s.id)} disabled={refreshing === s.id}>
+                  {refreshing === s.id ? "Refreshing…" : "Refresh now"}
+                </button>
+                {s.type === "scrape" && (
+                  <button
+                    className="small-btn secondary"
+                    onClick={() => setShowAttempts(showAttempts === s.id ? null : s.id)}
+                  >
+                    {showAttempts === s.id ? "Hide results" : "View results"}
+                  </button>
+                )}
+                <button className="small-btn secondary" onClick={() => setEditing(s)}>
+                  Edit
+                </button>
+                <button className="small-btn secondary" onClick={() => remove(s.id)}>
+                  Delete
+                </button>
+              </div>
             </div>
-            <div className="entity-row-actions">
-              <button className="small-btn secondary" onClick={() => refreshSource(s.id)} disabled={refreshing === s.id}>
-                {refreshing === s.id ? "Refreshing…" : "Refresh now"}
-              </button>
-              <button className="small-btn secondary" onClick={() => setEditing(s)}>
-                Edit
-              </button>
-              <button className="small-btn secondary" onClick={() => remove(s.id)}>
-                Delete
-              </button>
-            </div>
+            {showAttempts === s.id && <ScrapeAttemptsPanel sourceId={s.id} />}
           </div>
         ))}
         {sources.length === 0 && <p className="muted">No sources yet.</p>}
@@ -385,6 +398,67 @@ function SourcesSection({ storeId }: { storeId: string }) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function ScrapeAttemptsPanel({ sourceId }: { sourceId: string }) {
+  const [attempts, setAttempts] = useState<ScrapeAttempt[] | null>(null);
+
+  useEffect(() => {
+    api<ScrapeAttempt[]>(`/sources/${sourceId}/attempts`).then(setAttempts);
+  }, [sourceId]);
+
+  if (attempts === null) return <p className="muted small">Loading…</p>;
+  if (attempts.length === 0) {
+    return <p className="muted small">No products searched yet — click "Refresh now" first.</p>;
+  }
+
+  const foundCount = attempts.filter((a) => a.found).length;
+
+  return (
+    <div className="card" style={{ marginTop: 4, marginBottom: 12 }}>
+      <p className="muted small">
+        {foundCount} of {attempts.length} searched products currently have a price from this source. Only the most
+        recent attempt per product is kept — not every product is searched every run (see the priority/rotation
+        note above).
+      </p>
+      <div style={{ overflowX: "auto" }}>
+        <table className="pricing-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Result</th>
+              <th>Price</th>
+              <th>When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {attempts.map((a) => (
+              <tr key={a.id}>
+                <td>
+                  {a.productVendor ? `${a.productVendor} — ` : ""}
+                  {a.productTitle}
+                  {a.productSku && <span className="muted small"> ({a.productSku})</span>}
+                </td>
+                <td>
+                  {a.found ? (
+                    <a href={a.url} target="_blank" rel="noreferrer">
+                      ✓ found
+                    </a>
+                  ) : (
+                    <span className="error-text" title={a.error ?? undefined}>
+                      ✕ {a.error ?? "not found"}
+                    </span>
+                  )}
+                </td>
+                <td>{a.price !== null ? a.price.toFixed(2) : "—"}</td>
+                <td>{new Date(a.attemptedAt).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

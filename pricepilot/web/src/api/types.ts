@@ -107,6 +107,19 @@ export interface UnmatchedRow {
   fetchedAt: string;
 }
 
+export interface ScrapeAttempt {
+  id: string;
+  productId: string;
+  productTitle: string;
+  productVendor: string | null;
+  productSku: string | null;
+  found: boolean;
+  price: number | null;
+  error: string | null;
+  url: string;
+  attemptedAt: string;
+}
+
 export interface Cost {
   id: string;
   storeId: string;

@@ -83,3 +83,29 @@ sourcesRouter.post("/:id/refresh", async (req, res) => {
 
   res.json({ ok: true, started: true });
 });
+
+// Per-product results for a scrape source — always the latest attempt per
+// product (see ScrapeAttempt in schema.prisma), not a full historical log.
+// Lets Settings show which specific products were actually searched and
+// whether a price was found, not just an aggregate count.
+sourcesRouter.get("/:id/attempts", async (req, res) => {
+  const attempts = await prisma.scrapeAttempt.findMany({
+    where: { sourceId: req.params.id },
+    orderBy: { attemptedAt: "desc" },
+    include: { product: { select: { title: true, vendor: true, sku: true } } },
+  });
+  res.json(
+    attempts.map((a) => ({
+      id: a.id,
+      productId: a.productId,
+      productTitle: a.product.title,
+      productVendor: a.product.vendor,
+      productSku: a.product.sku,
+      found: a.found,
+      price: a.price,
+      error: a.error,
+      url: a.url,
+      attemptedAt: a.attemptedAt,
+    }))
+  );
+});

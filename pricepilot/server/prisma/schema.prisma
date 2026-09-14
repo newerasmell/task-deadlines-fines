@@ -62,6 +62,7 @@ model Source {
   competitorPrices    CompetitorPrice[]
   priceHistory        CompetitorPriceHistory[]
   manualMatches       ManualMatch[]
+  scrapeAttempts      ScrapeAttempt[]
 }
 
 // One row per Shopify VARIANT (not per product) — a product's title/vendor/
@@ -94,6 +95,7 @@ model Product {
   updatedAt           DateTime @updatedAt
 
   manualMatches       ManualMatch[]
+  scrapeAttempts      ScrapeAttempt[]
 
   @@unique([storeId, shopifyVariantId])
   @@index([storeId, barcode])
@@ -155,6 +157,31 @@ model CompetitorPriceHistory {
   fetchedAt DateTime @default(now())
 
   @@index([sourceId, matchKey, fetchedAt])
+}
+
+// One row per (source, product) for scrape-type sources — always the LATEST
+// attempt, upserted every time a refresh includes that product (not every
+// product every run, per the priority/rotation schedule). Lets Settings show
+// "did source X actually find a price for product Y last time we checked"
+// per product, not just an aggregate count — CompetitorPrice alone only
+// shows successes, so a product that's been searched-but-never-found would
+// otherwise look identical to one that's never been searched at all.
+model ScrapeAttempt {
+  id          String   @id @default(cuid())
+  sourceId    String
+  source      Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  found       Boolean
+  price       Float?
+  error       String?
+  url         String
+
+  attemptedAt DateTime @default(now())
+
+  @@unique([sourceId, productId])
+  @@index([sourceId, attemptedAt])
 }
 
 // A manually-bound competitor listing for one of our products on one

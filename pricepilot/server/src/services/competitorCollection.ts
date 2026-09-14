@@ -41,6 +41,22 @@ async function upsertCompetitorPrice(params: {
   }
 }
 
+async function upsertScrapeAttempt(params: {
+  sourceId: string;
+  productId: string;
+  found: boolean;
+  price: number | null;
+  error: string | null;
+  url: string;
+}) {
+  const { sourceId, productId, ...rest } = params;
+  await prisma.scrapeAttempt.upsert({
+    where: { sourceId_productId: { sourceId, productId } },
+    create: { sourceId, productId, ...rest, attemptedAt: new Date() },
+    update: { ...rest, attemptedAt: new Date() },
+  });
+}
+
 interface ShopifyJsonVariant {
   id: number;
   sku: string | null;
@@ -145,10 +161,35 @@ async function refreshScrapeSource(store: Store, source: Source): Promise<{ matc
           url: result.url ?? url,
         });
         matched++;
+        await upsertScrapeAttempt({
+          sourceId: source.id,
+          productId: product.id,
+          found: true,
+          price: result.price,
+          error: null,
+          url,
+        });
+      } else {
+        await upsertScrapeAttempt({
+          sourceId: source.id,
+          productId: product.id,
+          found: false,
+          price: null,
+          error: "No price found on the page",
+          url,
+        });
       }
-    } catch {
+    } catch (err) {
       // One failed target shouldn't abort the whole run — the source-level
       // degraded flag is driven by refreshSource's own try/catch below.
+      await upsertScrapeAttempt({
+        sourceId: source.id,
+        productId: product.id,
+        found: false,
+        price: null,
+        error: err instanceof Error ? err.message : "Unknown error",
+        url,
+      });
     }
     await politeDelay();
   }
