@@ -23,7 +23,15 @@ export class BrowserSession {
     if (!this.browserPromise) {
       this.browserPromise = chromium.launch({
         headless: true,
-        args: ["--no-sandbox", "--disable-dev-shm-usage"],
+        // --disable-blink-features=AutomationControlled removes the most
+        // widely-checked-for Chromium automation flag; confirmed live that
+        // douglas.hr specifically 403s a plain headless launch (as opposed
+        // to the "Executable doesn't exist" infra error from before, which
+        // this fix didn't touch) — this and the navigator.webdriver
+        // override below in get() are the standard, honest fix for that:
+        // just not announcing this is an automated browser, nothing beyond
+        // that (no proxies, no CAPTCHA-solving).
+        args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
         // Unset in production — Playwright resolves its own downloaded
         // browser there. Only used for local/sandbox dev environments where
         // the installed browser build doesn't match this playwright
@@ -42,6 +50,14 @@ export class BrowserSession {
       viewport: { width: 1280, height: 800 },
       extraHTTPHeaders: { "Accept-Language": "hr-HR,hr;q=0.9,en-US;q=0.8,en;q=0.7" },
     });
+    // navigator.webdriver is `true` by default in every automated Chromium
+    // session and is the single most common signal sites check for — flip
+    // it back to how a real browser reports it, before any page script runs.
+    // Passed as a string (not a TS function) since this server's tsconfig
+    // has no DOM lib — the script itself still runs entirely in-browser.
+    await context.addInitScript(
+      "Object.defineProperty(Object.getPrototypeOf(navigator), 'webdriver', { get: () => undefined });"
+    );
     try {
       const page = await context.newPage();
       const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
