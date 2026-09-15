@@ -11,10 +11,17 @@ export interface TranscribeInput {
   source: VoiceSource;
   createdById: string | null;
   meetRecordingId?: string | null;
+  // Meet auto-generates its own transcript Doc alongside the recording —
+  // when that text is already in hand, skip Whisper entirely rather than
+  // re-transcribing audio that's already been transcribed once for free.
+  pregivenTranscriptText?: string | null;
 }
 
 export async function transcribeAndStore(input: TranscribeInput): Promise<string> {
-  const result = await transcribeAudio(input.buffer, input.filename, input.mimeType);
+  const result = input.pregivenTranscriptText
+    ? { text: input.pregivenTranscriptText, language: undefined, durationSeconds: undefined }
+    : await transcribeAudio(input.buffer, input.filename, input.mimeType);
+
   const transcript = await prisma.voiceTranscript.create({
     data: {
       source: input.source,
@@ -24,7 +31,7 @@ export async function transcribeAndStore(input: TranscribeInput): Promise<string
       durationSeconds: result.durationSeconds ?? null,
       languageDetected: result.language ?? null,
       createdById: input.createdById,
-      whisperCostUsd: estimateWhisperCostUsd(result.durationSeconds),
+      whisperCostUsd: input.pregivenTranscriptText ? null : estimateWhisperCostUsd(result.durationSeconds),
     },
   });
   return transcript.id;

@@ -323,3 +323,19 @@ export const VOICE_JOB_STATUS_LABELS: Record<VoiceJobStatus, string> = {
   DONE: "Готово",
   FAILED: "Грешка",
 };
+
+export interface GoogleMeetSyncResult {
+  folderFound: boolean;
+  seen: number;
+  processed: number;
+  skipped: number;
+  lastError: string | null;
+}
+
+export interface GoogleMeetStatus {
+  configured: boolean;
+  folderName: string;
+  inProgress: boolean;
+  lastRunAt: string | null;
+  lastResult: GoogleMeetSyncResult | null;
+}

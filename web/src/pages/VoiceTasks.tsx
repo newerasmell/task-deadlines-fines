@@ -3,8 +3,88 @@ import type { ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, apiUpload } from "../api/client";
 import { VOICE_JOB_STATUS_LABELS } from "../api/types";
-import type { VoiceJobStatus } from "../api/types";
+import type { GoogleMeetStatus, VoiceJobStatus } from "../api/types";
 import { useI18n } from "../i18n/I18nContext";
+
+function GoogleMeetPanel() {
+  const { t } = useI18n();
+  const [status, setStatus] = useState<GoogleMeetStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadStatus() {
+    try {
+      setStatus(await api<GoogleMeetStatus>("/voice/meet/status"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Грешка при зареждане на статуса."));
+    }
+  }
+
+  useEffect(() => {
+    void loadStatus();
+  }, []);
+
+  async function syncNow() {
+    setSyncing(true);
+    setError(null);
+    try {
+      await api("/voice/meet/poll-now", { method: "POST" });
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Грешка при синхронизация."));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  if (!status) return null;
+
+  if (!status.configured) {
+    return (
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Google Meet</h3>
+        <p className="muted small">
+          {t(
+            "Не е конфигуриран — за автоматично внасяне на записи от Google Meet трябва да зададеш GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET и GOOGLE_REFRESH_TOKEN."
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  const result = status.lastResult;
+
+  return (
+    <div className="card" style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ margin: 0 }}>Google Meet</h3>
+        <button onClick={syncNow} disabled={syncing || status.inProgress}>
+          {syncing || status.inProgress ? t("Синхронизира се…") : t("Синхронизирай сега")}
+        </button>
+      </div>
+      <p className="muted small" style={{ margin: 0 }}>
+        {t("Папка в Drive")}: <strong>{status.folderName}</strong>
+      </p>
+      {status.lastRunAt && (
+        <p className="muted small" style={{ margin: 0 }}>
+          {t("Последна проверка")}: {new Date(status.lastRunAt).toLocaleString()}
+        </p>
+      )}
+      {result && (
+        <p className="small" style={{ margin: 0 }}>
+          {result.folderFound
+            ? t("Намерени: {seen}, обработени: {processed}, пропуснати: {skipped}", {
+                seen: result.seen,
+                processed: result.processed,
+                skipped: result.skipped,
+              })
+            : t("Папката не е намерена в Google Drive.")}
+        </p>
+      )}
+      {(result?.lastError || error) && <div className="error-text small">✕ {result?.lastError ?? error}</div>}
+    </div>
+  );
+}
 
 // Tried in order — the browser picks the first it actually supports.
 // Safari (desktop + iOS) never supports webm, only mp4/aac; Chrome is the
@@ -141,6 +221,8 @@ export function VoiceTasks() {
           "Качи запис или го направи направо тук — системата ще го разпознае и ще извлече задачите като чернови за одобрение."
         )}
       </p>
+
+      <GoogleMeetPanel />
 
       <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

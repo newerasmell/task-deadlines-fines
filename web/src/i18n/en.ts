@@ -408,4 +408,16 @@ export const en: Record<string, string> = {
     "e.g. design work, posting schedule, visual content — the more specific, the more accurately the AI will route unnamed tasks to them",
   "Използва се само при „Задачи от разговор“ — помага на AI-то да познае на кого да възложи задача, която не назовава конкретен човек.":
     "Only used by \"Tasks from a recording\" — helps the AI guess who a task should go to when it doesn't name anyone explicitly.",
+
+  // Voice-to-tasks: Google Meet panel
+  "Не е конфигуриран — за автоматично внасяне на записи от Google Meet трябва да зададеш GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET и GOOGLE_REFRESH_TOKEN.":
+    "Not configured — automatic import of Google Meet recordings requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN to be set.",
+  "Синхронизира се…": "Syncing…",
+  "Синхронизирай сега": "Sync now",
+  "Папка в Drive": "Drive folder",
+  "Последна проверка": "Last checked",
+  "Намерени: {seen}, обработени: {processed}, пропуснати: {skipped}": "Found: {seen}, processed: {processed}, skipped: {skipped}",
+  "Папката не е намерена в Google Drive.": "Folder not found in Google Drive.",
+  "Грешка при зареждане на статуса.": "Error loading status.",
+  "Грешка при синхронизация.": "Sync error.",
 };

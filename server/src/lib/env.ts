@@ -57,6 +57,17 @@ export const env = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? "",
   googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN ?? "",
+  // Override points for local/CI testing against a mock server — never set
+  // in production, where these just default to the real Google endpoints.
+  googleOauthBaseUrl: process.env.GOOGLE_OAUTH_BASE_URL ?? "https://oauth2.googleapis.com",
+  googleDriveApiBaseUrl: process.env.GOOGLE_DRIVE_API_BASE_URL ?? "https://www.googleapis.com",
+  // Drive folder Meet auto-saves its recordings/transcripts into — must
+  // match the folder name exactly as it appears in the account's Drive.
+  googleMeetFolderName: process.env.GOOGLE_MEET_FOLDER_NAME ?? "Meet Recordings",
+  // How often to poll that folder for new files, and how many to process
+  // (transcribe + extract) in a single poll cycle.
+  googleMeetPollCron: process.env.GOOGLE_MEET_POLL_CRON ?? "*/10 * * * *",
+  googleMeetMaxPerPoll: Number(process.env.GOOGLE_MEET_MAX_PER_POLL ?? 5),
 
   // Voice-to-tasks (see src/lib/whisper.ts, src/lib/taskExtraction.ts).
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",

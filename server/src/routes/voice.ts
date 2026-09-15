@@ -14,6 +14,7 @@ import {
   type VoiceSource,
 } from "../services/voiceProcessing";
 import { env } from "../lib/env";
+import { getLastGoogleMeetSyncResult, runGoogleMeetSync } from "../jobs/googleMeetSync";
 
 export const voiceRouter = Router();
 
@@ -243,4 +244,52 @@ voiceRouter.post("/transcripts/:id/approve-all", async (req, res) => {
   }
 
   res.json({ approved, skipped });
+});
+
+// Read-only status for the frontend's Google Meet settings panel: whether
+// the integration is configured at all, and what the last poll (scheduled
+// or manual) found.
+voiceRouter.get("/meet/status", (_req, res) => {
+  const configured = Boolean(env.googleClientId && env.googleClientSecret && env.googleRefreshToken);
+  const { result, ranAt, inProgress } = getLastGoogleMeetSyncResult();
+  res.json({
+    configured,
+    folderName: env.googleMeetFolderName,
+    inProgress,
+    lastRunAt: ranAt,
+    lastResult: result,
+  });
+});
+
+// Triggers an out-of-cycle sync (e.g. "I just finished a meeting, pull it
+// now" instead of waiting for the next cron tick). Runs the same
+// runGoogleMeetSync() the scheduler calls, awaited so the response reflects
+// what actually happened rather than firing-and-forgetting a poll the admin
+// can't see the result of.
+voiceRouter.post("/meet/poll-now", async (_req, res) => {
+  try {
+    const result = await runGoogleMeetSync();
+    res.json({ ok: true, result });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err instanceof Error ? err.message : "Грешка при синхронизация" });
+  }
+});
+
+// Re-runs Claude extraction on an already-stored transcript — useful when
+// the first extraction failed (ExtractionParseError) or the admin just
+// wants a fresh pass. Any still-pending drafts from the previous run are
+// cleared first so this doesn't pile up duplicates; already-approved or
+// -rejected drafts are left alone as history.
+voiceRouter.post("/transcripts/:id/reextract", async (req, res) => {
+  const transcript = await prisma.voiceTranscript.findUnique({ where: { id: req.params.id } });
+  if (!transcript) return res.status(404).json({ error: "Not found" });
+
+  await prisma.voiceTaskDraft.deleteMany({ where: { transcriptId: transcript.id, status: "DRAFT" } });
+
+  try {
+    const draftsCreated = await extractAndCreateDrafts(transcript.id);
+    res.json({ ok: true, draftsCreated });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: errorMessageFor(err) });
+  }
 });
