@@ -188,25 +188,33 @@ export function Meeting() {
       </p>
 
       <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {!roomName ? (
+        {!roomName && (
           <div>
             <button onClick={startMeeting}>{t("Започни среща")}</button>
             {scriptError && <div className="error-text small" style={{ marginTop: 8 }}>{scriptError}</div>}
           </div>
-        ) : (
+        )}
+
+        {roomName && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <p className="muted small" style={{ margin: 0 }}>
+              {t("Покани колеги с връзка")}:{" "}
+              <code>{`https://${JITSI_DOMAIN}/${roomName}`}</code>
+            </p>
+            <button style={{ background: "#e53935" }} onClick={endMeeting}>
+              {t("Приключи срещата")}
+            </button>
+          </div>
+        )}
+
+        {/* Always mounted (not just once roomName is set) — startMeeting()
+            needs this container to already exist in the DOM before it can
+            create the embed and set roomName, so it can't be conditional on
+            roomName itself without a chicken-and-egg deadlock. */}
+        <div ref={containerRef} style={{ borderRadius: 8, overflow: "hidden", display: roomName ? "block" : "none" }} />
+
+        {roomName && (
           <>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-              <p className="muted small" style={{ margin: 0 }}>
-                {t("Покани колеги с връзка")}:{" "}
-                <code>{`https://${JITSI_DOMAIN}/${roomName}`}</code>
-              </p>
-              <button style={{ background: "#e53935" }} onClick={endMeeting}>
-                {t("Приключи срещата")}
-              </button>
-            </div>
-
-            <div ref={containerRef} style={{ borderRadius: 8, overflow: "hidden" }} />
-
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               {!recording ? (
                 <button onClick={startRecording} disabled={busy}>
