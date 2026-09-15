@@ -25,9 +25,12 @@ function isDueOn(template: { frequency: string; daysOfWeek: string; dayOfMonth: 
 }
 
 /**
- * For every active RecurringTaskTemplate, looks ahead `RECURRING_LOOKAHEAD_DAYS`
- * days (today included) and creates a Task occurrence for each matching day
- * that doesn't already have one — so occurrences are visible to the assignee
+ * For every active RecurringTaskTemplate, looks ahead (WEEKLY templates use
+ * `RECURRING_LOOKAHEAD_DAYS_WEEKLY`, MONTHLY ones use
+ * `RECURRING_LOOKAHEAD_DAYS_MONTHLY` — a monthly task is easy to forget over
+ * a longer gap and so warrants more lead time than a weekly one) days
+ * (today included) and creates a Task occurrence for each matching day that
+ * doesn't already have one — so occurrences are visible to the assignee
  * (and eligible for the normal pre-deadline reminder) well before their own
  * deadline, instead of only appearing the day they're due. A template with no
  * end date just keeps producing new occurrences forever, one lookahead window
@@ -70,8 +73,10 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
 
   for (const template of templates) {
     const [hh, mm] = template.timeOfDay.split(":").map(Number);
+    const lookaheadDays =
+      template.frequency === "MONTHLY" ? env.recurringLookaheadDaysMonthly : env.recurringLookaheadDaysWeekly;
 
-    for (let offset = 0; offset <= env.recurringLookaheadDays; offset++) {
+    for (let offset = 0; offset <= lookaheadDays; offset++) {
       const dayStart = new Date(today.getTime() + offset * 24 * 60 * 60 * 1000);
       if (!isDueOn(template, dayStart)) continue;
 

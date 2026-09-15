@@ -25,7 +25,12 @@ export const env = {
   // and how long before reviewDueAt to send the last "about to be fined" heads-up.
   reviewReminderPeriodicHours: Number(process.env.REVIEW_REMINDER_PERIODIC_HOURS ?? 4),
   reviewReminderFinalHoursBefore: Number(process.env.REVIEW_REMINDER_FINAL_HOURS_BEFORE ?? 1),
-  recurringLookaheadDays: Number(process.env.RECURRING_LOOKAHEAD_DAYS ?? 5),
+  // Weekly and monthly templates warrant different advance notice — a
+  // monthly task is easy to forget over a longer gap, a weekly one doesn't
+  // need as much lead time — so these are separate knobs, not one shared
+  // default applied to both.
+  recurringLookaheadDaysWeekly: Number(process.env.RECURRING_LOOKAHEAD_DAYS_WEEKLY ?? 3),
+  recurringLookaheadDaysMonthly: Number(process.env.RECURRING_LOOKAHEAD_DAYS_MONTHLY ?? 10),
   uploadsDir: process.env.UPLOADS_DIR ?? "uploads",
 
   adminTelegramChatId: process.env.ADMIN_TELEGRAM_CHAT_ID ?? "",
