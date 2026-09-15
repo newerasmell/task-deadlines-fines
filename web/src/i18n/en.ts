@@ -401,4 +401,11 @@ export const en: Record<string, string> = {
   "Възложена": "Assigned",
   "Качен файл": "Uploaded file",
   "Диктовка": "Dictation",
+
+  // Employee expertise notes (used for voice-to-tasks assignee matching)
+  "Отговорности / експертиза (за разпределяне на гласови задачи)": "Responsibilities / expertise (for voice-task assignment)",
+  "напр. дизайни, план за постване, визуално съдържание — колкото по-конкретно, толкова по-точно AI-то ще му възложи неназовани задачи":
+    "e.g. design work, posting schedule, visual content — the more specific, the more accurately the AI will route unnamed tasks to them",
+  "Използва се само при „Задачи от разговор“ — помага на AI-то да познае на кого да възложи задача, която не назовава конкретен човек.":
+    "Only used by \"Tasks from a recording\" — helps the AI guess who a task should go to when it doesn't name anyone explicitly.",
 };

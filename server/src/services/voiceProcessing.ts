@@ -1,6 +1,5 @@
 import { prisma } from "../lib/prisma";
 import { ExtractionParseError, extractTasks, priorityToTaskPriority, resolveDeadline } from "../lib/taskExtraction";
-import { findRoleByKey, loadTeamRoles } from "../lib/teamRoles";
 import { estimateWhisperCostUsd, transcribeAudio } from "../lib/whisper";
 
 export type VoiceSource = "UPLOAD" | "MEET" | "DICTATION";
@@ -31,16 +30,14 @@ export async function transcribeAndStore(input: TranscribeInput): Promise<string
   return transcript.id;
 }
 
-// Resolves an extracted assignee_key to a real User via team-roles.json's
-// email field — best-effort only; a miss (no config entry, no email set, no
-// matching account) just leaves the draft unassigned for the admin to pick
-// on the review screen, never blocks draft creation.
-async function resolveAssignee(key: string | null | undefined): Promise<string | null> {
-  if (!key || key === "unassigned") return null;
-  const config = loadTeamRoles();
-  const role = findRoleByKey(config, key);
-  if (!role?.email) return null;
-  const user = await prisma.user.findFirst({ where: { email: role.email, active: true } });
+// Confirms an extracted assignee_id is actually a real, still-active user —
+// Claude was given the live roster and told to echo back one of those ids
+// verbatim, but never trust that blindly (a stale/hallucinated id, or the
+// literal "unassigned", both just leave the draft unassigned for the admin
+// to pick on the review screen; never blocks draft creation either way).
+async function resolveAssignee(id: string | null | undefined): Promise<string | null> {
+  if (!id || id === "unassigned") return null;
+  const user = await prisma.user.findFirst({ where: { id, active: true } });
   return user?.id ?? null;
 }
 
@@ -62,13 +59,13 @@ export async function extractAndCreateDrafts(transcriptId: string): Promise<numb
 
   let created = 0;
   for (const item of extraction.tasks) {
-    const resolvedAssigneeId = await resolveAssignee(item.assignee_key);
+    const resolvedAssigneeId = await resolveAssignee(item.assignee_id);
     await prisma.voiceTaskDraft.create({
       data: {
         transcriptId,
         title: item.title.slice(0, 200),
         description: item.description ?? null,
-        assigneeKey: item.assignee_key,
+        assigneeKey: item.assignee_id,
         resolvedAssigneeId,
         deadline: resolveDeadline(item.deadline),
         priority: priorityToTaskPriority(item.priority),

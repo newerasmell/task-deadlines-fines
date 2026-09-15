@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { addWorkingDays } from "./bulgarianDeadlines";
 import { env } from "./env";
-import { loadTeamRoles } from "./teamRoles";
+import { prisma } from "./prisma";
 
 // Kept as an env override (not hardcoded) since model ids change over time
 // and this shouldn't need a code change to bump.
@@ -10,7 +10,7 @@ const DEFAULT_MODEL = "claude-sonnet-5";
 const extractedTaskSchema = z.object({
   title: z.string().min(1),
   description: z.string().nullable().optional(),
-  assignee_key: z.string().min(1),
+  assignee_id: z.string().min(1),
   deadline: z.string().nullable().optional(),
   priority: z.enum(["low", "normal", "high"]).default("normal"),
   source_quote: z.string().min(1),
@@ -42,22 +42,32 @@ function todayIso(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-function buildSystemPrompt(): string {
-  const config = loadTeamRoles();
-  const roster = config.team
-    .map((t) => `- key="${t.key}", name="${t.name}", отговорности: ${t.responsibilities}`)
+// The roster Claude picks an assignee from is the live Employees list, not
+// a separate hand-maintained file — every active account's own real id, so
+// resolution back to a real User is exact (no email/key matching step that
+// could silently miss). voiceAssignmentNotes is what actually lets it guess
+// well for a task that doesn't name anyone: without it, the roster is just
+// names with no signal to match against.
+async function buildSystemPrompt(): Promise<string> {
+  const users = await prisma.user.findMany({
+    where: { active: true },
+    select: { id: true, name: true, voiceAssignmentNotes: true },
+    orderBy: { name: "asc" },
+  });
+  const roster = users
+    .map((u) => `- id="${u.id}", name="${u.name}", описание: ${u.voiceAssignmentNotes?.trim() || "(няма описание — виж в Служители)"}`)
     .join("\n");
 
   return `Ти извличаш конкретни задачи от транскрипт на говорен български (понякога смесен с английски) — записан разговор, среща или диктовка. Днешната дата е ${todayIso()}.
 
-Екип (assignee_key → отговорности):
+Екип (assignee_id → описание на отговорностите/експертизата):
 ${roster}
-- key="unassigned" — използвай този key САМО ако наистина не е ясно на кого принадлежи задачата; никога не познавай на случаен принцип.
+- id="unassigned" — използвай това САМО ако наистина не е ясно на кого принадлежи задачата, дори след като си преценил по описанията по-горе; никога не познавай на случаен принцип.
 
 За всяко конкретно, действимо нещо, което трябва да се свърши, върни един обект с точно тези полета:
 - "title": кратко заглавие (до ~120 символа)
 - "description": по-подробно описание, ако има нужда от повече контекст (или null)
-- "assignee_key": най-подходящият key от екипа по-горе според отговорностите, или "unassigned"
+- "assignee_id": ако задачата назовава конкретен човек по име — използвай неговия id. Ако не назовава никого изрично, прецени по описанията на отговорностите/експертизата по-горе кой е най-подходящ и върни неговия id. Използвай "unassigned" само ако наистина никое описание не пасва достатъчно добре.
 - "deadline": ISO дата (YYYY-MM-DD), изчислена спрямо днешната дата (${todayIso()}). Примери: "до петък" → следващия петък; "утре" → утрешната дата; "до края на седмицата" → тази или следващата петък (в зависимост от контекста); "до края на месеца" → последният ден на текущия месец; "спешно"/"днес" → днешната дата. Ако в записа изобщо не е спомената дата, върни null (сървърът ще сложи разумен срок по подразбиране).
 - "priority": "low" | "normal" | "high" — по подразбиране "normal"; "high" при спешност/спомената дума като "спешно", "днес", "веднага".
 - "source_quote": точният цитат (изречение/изречения) от транскрипта, от който произлиза тази задача — задължително поле, нужно е да се провери, че AI-то е разбрало правилно.
@@ -132,7 +142,7 @@ function tryParse(text: string): ExtractedTask[] | null {
  * raw text) if the retry also fails, rather than guessing.
  */
 export async function extractTasks(transcriptText: string): Promise<ExtractionResult> {
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt();
   const first = await callClaude(systemPrompt, transcriptText);
   const firstParsed = tryParse(first.text);
   if (firstParsed) {
@@ -158,12 +168,11 @@ export async function extractTasks(transcriptText: string): Promise<ExtractionRe
 /**
  * Resolves an extracted task's deadline string into a real Date, 18:00
  * local (end-of-workday) on that day. Falls back to today +
- * default_deadline_working_days (skipping weekends/BG holidays) when the
- * model didn't return a date, or returned something unparseable/in the
+ * VOICE_DEFAULT_DEADLINE_WORKING_DAYS (skipping weekends/BG holidays) when
+ * the model didn't return a date, or returned something unparseable/in the
  * past — a bad date from the model shouldn't silently become "yesterday".
  */
 export function resolveDeadline(rawDeadline: string | null | undefined, now: Date = new Date()): Date {
-  const config = loadTeamRoles();
   if (rawDeadline) {
     const match = rawDeadline.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (match) {
@@ -175,7 +184,7 @@ export function resolveDeadline(rawDeadline: string | null | undefined, now: Dat
       }
     }
   }
-  const fallbackDay = addWorkingDays(now, config.default_deadline_working_days);
+  const fallbackDay = addWorkingDays(now, env.voiceDefaultDeadlineWorkingDays);
   return new Date(fallbackDay.getFullYear(), fallbackDay.getMonth(), fallbackDay.getDate(), 18, 0, 0, 0);
 }
 

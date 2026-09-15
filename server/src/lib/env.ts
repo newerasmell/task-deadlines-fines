@@ -68,4 +68,7 @@ export const env = {
   // Files under this size are transcribed synchronously within the request;
   // larger ones go through the VoiceProcessingJob background path instead.
   voiceSyncMaxBytes: Number(process.env.VOICE_SYNC_MAX_BYTES ?? 10 * 1024 * 1024),
+  // Fallback deadline (working days out, weekends/BG holidays skipped) when
+  // Claude's extraction doesn't return a usable date for a task.
+  voiceDefaultDeadlineWorkingDays: Number(process.env.VOICE_DEFAULT_DEADLINE_WORKING_DAYS ?? 3),
 };

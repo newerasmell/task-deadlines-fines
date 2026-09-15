@@ -27,6 +27,7 @@ export interface User {
   whatsappPhone: string | null;
   viberUserId: string | null;
   googleCalendarId: string | null;
+  voiceAssignmentNotes: string | null;
   createdAt: string;
 }
 

@@ -215,6 +215,7 @@ function EmployeeForm({
   const [slackMemberId, setSlackMemberId] = useState(user?.slackMemberId ?? "");
   const [whatsappPhone, setWhatsappPhone] = useState(user?.whatsappPhone ?? "");
   const [viberUserId, setViberUserId] = useState(user?.viberUserId ?? "");
+  const [voiceAssignmentNotes, setVoiceAssignmentNotes] = useState(user?.voiceAssignmentNotes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -243,6 +244,7 @@ function EmployeeForm({
             name,
             email: email !== user.email ? email : undefined,
             password: password || undefined,
+            voiceAssignmentNotes: voiceAssignmentNotes || null,
             ...permissions,
             ...channels,
           }),
@@ -250,7 +252,15 @@ function EmployeeForm({
       } else {
         const created = await api<User>("/users", {
           method: "POST",
-          body: JSON.stringify({ name, email, password, role: isSuperAdmin ? role : "EMPLOYEE", ...permissions, ...channels }),
+          body: JSON.stringify({
+            name,
+            email,
+            password,
+            role: isSuperAdmin ? role : "EMPLOYEE",
+            voiceAssignmentNotes: voiceAssignmentNotes || undefined,
+            ...permissions,
+            ...channels,
+          }),
         });
         savedId = created.id;
       }
@@ -302,6 +312,19 @@ function EmployeeForm({
           />
         </label>
       </div>
+
+      <label>
+        {t("Отговорности / експертиза (за разпределяне на гласови задачи)")}
+        <textarea
+          value={voiceAssignmentNotes}
+          onChange={(e) => setVoiceAssignmentNotes(e.target.value)}
+          rows={2}
+          placeholder={t("напр. дизайни, план за постване, визуално съдържание — колкото по-конкретно, толкова по-точно AI-то ще му възложи неназовани задачи")}
+        />
+      </label>
+      <p className="muted small" style={{ marginTop: -8 }}>
+        {t("Използва се само при „Задачи от разговор“ — помага на AI-то да познае на кого да възложи задача, която не назовава конкретен човек.")}
+      </p>
 
       {isSuperAdmin && (
         <>

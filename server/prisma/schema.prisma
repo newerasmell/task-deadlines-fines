@@ -52,6 +52,13 @@ model User {
   viberUserId      String?
   googleCalendarId String?
 
+  // Free-text description of what this person does / their expertise —
+  // shown to Claude when extracting tasks from a voice recording, so it can
+  // pick the best-fit assignee for a task that doesn't name anyone
+  // explicitly (see src/lib/taskExtraction.ts). Purely descriptive, not a
+  // permission; any Admin can edit it, not just a super admin.
+  voiceAssignmentNotes String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -479,14 +486,16 @@ model VoiceTaskDraft {
 
   title              String
   description        String?
-  // The raw key Claude picked from team-roles.json (e.g. "mirela", or
-  // "unassigned" if genuinely ambiguous) — kept as a record of what the AI
-  // actually said, independent of resolvedAssigneeId below.
+  // The raw assignee id Claude picked from the live User roster it was
+  // given (see buildSystemPrompt in taskExtraction.ts), or the literal
+  // "unassigned" if genuinely ambiguous — kept as a record of what the AI
+  // actually said, independent of resolvedAssigneeId below (null if that id
+  // didn't resolve to a real active user, e.g. "unassigned" or a stale id).
   assigneeKey        String?
-  // Best-guess real User resolved from assigneeKey via team-roles.json's
-  // email field — only a pre-fill for the admin's dropdown; approval always
-  // requires a real, explicitly confirmed assigneeId regardless of whether
-  // this resolved to anyone (see POST /voice/drafts/:id/approve).
+  // Best-guess real User resolved from assigneeKey — only a pre-fill for
+  // the admin's dropdown; approval always requires a real, explicitly
+  // confirmed assigneeId regardless of whether this resolved to anyone
+  // (see POST /voice/drafts/:id/approve).
   resolvedAssigneeId String?
   resolvedAssignee   User?   @relation("VoiceDraftResolvedAssignee", fields: [resolvedAssigneeId], references: [id])
 
