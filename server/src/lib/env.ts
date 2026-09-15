@@ -25,7 +25,7 @@ export const env = {
   // and how long before reviewDueAt to send the last "about to be fined" heads-up.
   reviewReminderPeriodicHours: Number(process.env.REVIEW_REMINDER_PERIODIC_HOURS ?? 4),
   reviewReminderFinalHoursBefore: Number(process.env.REVIEW_REMINDER_FINAL_HOURS_BEFORE ?? 1),
-  recurringLookaheadDays: Number(process.env.RECURRING_LOOKAHEAD_DAYS ?? 3),
+  recurringLookaheadDays: Number(process.env.RECURRING_LOOKAHEAD_DAYS ?? 5),
   uploadsDir: process.env.UPLOADS_DIR ?? "uploads",
 
   adminTelegramChatId: process.env.ADMIN_TELEGRAM_CHAT_ID ?? "",
