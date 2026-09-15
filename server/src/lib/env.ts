@@ -57,4 +57,15 @@ export const env = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? "",
   googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN ?? "",
+
+  // Voice-to-tasks (see src/lib/whisper.ts, src/lib/taskExtraction.ts).
+  openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  // Override points for local/CI testing against a mock server — never set
+  // in production, where these just default to the real APIs.
+  openaiApiBaseUrl: process.env.OPENAI_API_BASE_URL ?? "https://api.openai.com",
+  anthropicApiBaseUrl: process.env.ANTHROPIC_API_BASE_URL ?? "https://api.anthropic.com",
+  // Files under this size are transcribed synchronously within the request;
+  // larger ones go through the VoiceProcessingJob background path instead.
+  voiceSyncMaxBytes: Number(process.env.VOICE_SYNC_MAX_BYTES ?? 10 * 1024 * 1024),
 };

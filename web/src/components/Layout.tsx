@@ -9,8 +9,10 @@ import {
   IconCalendar,
   IconFines,
   IconGlobe,
+  IconInbox,
   IconLog,
   IconMe,
+  IconMic,
   IconPeople,
   IconRepeat,
   IconSettings,
@@ -66,6 +68,16 @@ export function Layout() {
           <NavLink to="/leave">
             <IconCalendar /> {t("Отпуска")}
           </NavLink>
+          {isAdmin && (
+            <NavLink to="/voice-tasks">
+              <IconMic /> {t("Задачи от разговор")}
+            </NavLink>
+          )}
+          {isAdmin && (
+            <NavLink to="/voice-review">
+              <IconInbox /> {t("Чакащи одобрение")}
+            </NavLink>
+          )}
           {(user?.canAccessSubscriptions || user?.isSuperAdmin) && (
             <NavLink to="/subscriptions">
               <IconBell /> {t("Абонаменти")}

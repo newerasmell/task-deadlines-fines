@@ -111,3 +111,22 @@ export function IconBell({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+export function IconMic({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7" />
+    </svg>
+  );
+}
+
+export function IconInbox({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M4 12h4.5l1.5 3h4l1.5-3H20" />
+      <rect x="4" y="12" width="16" height="8" rx="1.5" />
+      <path d="M6 12 8 5h8l2 7" />
+    </svg>
+  );
+}

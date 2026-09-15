@@ -14,6 +14,8 @@ import { MyTasks } from "./pages/MyTasks";
 import { RecurringTasks } from "./pages/RecurringTasks";
 import { Settings } from "./pages/Settings";
 import { Tasks } from "./pages/Tasks";
+import { VoiceReview } from "./pages/VoiceReview";
+import { VoiceTasks } from "./pages/VoiceTasks";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { user, loading } = useAuth();
@@ -50,6 +52,22 @@ function AppRoutes() {
         <Route path="/my-tasks" element={<MyTasks />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/recurring" element={<RecurringTasks />} />
+        <Route
+          path="/voice-tasks"
+          element={
+            <RequireAdmin>
+              <VoiceTasks />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/voice-review"
+          element={
+            <RequireAdmin>
+              <VoiceReview />
+            </RequireAdmin>
+          }
+        />
         <Route path="/leave" element={<Leave />} />
         <Route
           path="/subscriptions"

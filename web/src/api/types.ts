@@ -264,3 +264,61 @@ export const FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
   WEEKLY: "Седмично",
   MONTHLY: "Месечно",
 };
+
+export type VoiceSource = "UPLOAD" | "MEET" | "DICTATION";
+export type VoiceJobStatus = "PENDING" | "TRANSCRIBING" | "EXTRACTING" | "DONE" | "FAILED";
+export type VoiceDraftStatus = "DRAFT" | "APPROVED" | "REJECTED";
+
+export interface VoiceProcessingJob {
+  id: string;
+  transcriptId: string | null;
+  source: VoiceSource;
+  status: VoiceJobStatus;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VoiceTranscriptRef {
+  id: string;
+  source: VoiceSource;
+  originalFilename: string | null;
+  createdAt: string;
+}
+
+export interface VoiceTranscript extends VoiceTranscriptRef {
+  transcriptText: string;
+  durationSeconds: number | null;
+  languageDetected: string | null;
+  whisperCostUsd: number | null;
+  claudeInputTokens: number | null;
+  claudeOutputTokens: number | null;
+}
+
+export interface VoiceTaskDraft {
+  id: string;
+  transcriptId: string | null;
+  transcript: VoiceTranscriptRef | null;
+  title: string;
+  description: string | null;
+  assigneeKey: string | null;
+  resolvedAssigneeId: string | null;
+  resolvedAssignee: UserRef | null;
+  deadline: string;
+  priority: Priority;
+  status: VoiceDraftStatus;
+  sourceQuote: string;
+  createdByAi: boolean;
+  approvedAt: string | null;
+  approvedTaskId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const VOICE_JOB_STATUS_LABELS: Record<VoiceJobStatus, string> = {
+  PENDING: "Изчаква…",
+  TRANSCRIBING: "Разпознаване на реч…",
+  EXTRACTING: "Извличане на задачи…",
+  DONE: "Готово",
+  FAILED: "Грешка",
+};

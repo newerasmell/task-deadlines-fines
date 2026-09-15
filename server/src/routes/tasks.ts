@@ -11,6 +11,7 @@ import { requireAdmin, requireAuth } from "../middleware/auth";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
 import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
 import { spawnRecurringOccurrencesThrottled } from "../jobs/recurringTasks";
+import { createTaskAndNotify } from "../services/taskCreation";
 
 export const tasksRouter = Router();
 
@@ -27,21 +28,6 @@ const taskInclude = {
 function isLockedFromAdmin(task: { createdBy: { isSuperAdmin: boolean } }, actorIsSuperAdmin: boolean) {
   return task.createdBy.isSuperAdmin && !actorIsSuperAdmin;
 }
-
-// What a task's assignee/owner relation is allowed to carry back to the
-// client — enough for the UI and for toNotificationTarget(), never the
-// password hash.
-const notifiableUserSelect = {
-  id: true,
-  name: true,
-  email: true,
-  phone: true,
-  telegramChatId: true,
-  slackMemberId: true,
-  whatsappPhone: true,
-  viberUserId: true,
-  googleCalendarId: true,
-} as const;
 
 function visibleToUser(
   task: { assigneeId: string; ownerId: string | null; createdById: string },
@@ -188,37 +174,7 @@ tasksRouter.post("/", async (req, res) => {
     if (!owner) return res.status(400).json({ error: "Owner not found" });
   }
 
-  const task = await prisma.task.create({
-    data: { ...parsed.data, createdById: req.user!.sub },
-    include: { assignee: { select: notifiableUserSelect }, owner: { select: notifiableUserSelect } },
-  });
-
-  const target = toNotificationTarget(assignee);
-  await dispatchToAllChannels(
-    target,
-    {
-      subject: `Нова задача: ${task.title}`,
-      body: `Получи нова задача със срок ${formatDateTime(task.deadline)}.\n\n${task.description ?? ""}\n\nЗакъснението без основателна причина води до автоматична глоба.`,
-      deadline: task.deadline,
-    },
-    { taskId: task.id }
-  );
-  if (task.owner) {
-    await dispatchToAllChannels(
-      toNotificationTarget(task.owner),
-      {
-        subject: `Назначен си като преглеждащ: ${task.title}`,
-        body: `Ти си Owner (преглеждащ) на задача "${task.title}" (изпълнител: ${assignee.name}, срок ${formatDateTime(task.deadline)}). Ще трябва да прегледаш работата, след като бъде подадена.`,
-        deadline: task.deadline,
-      },
-      { taskId: task.id }
-    );
-  }
-  await broadcastToAdmins({
-    subject: "Нова задача създадена",
-    body: `"${task.title}" → ${assignee.name}, срок ${formatDateTime(task.deadline)}.`,
-  });
-  await logAction(req.user!.sub, "TASK_CREATED", "Task", task.id, `Създадена задача "${task.title}" → ${assignee.name}`);
+  const task = await createTaskAndNotify({ ...parsed.data, createdById: req.user!.sub });
 
   res.status(201).json(task);
 });

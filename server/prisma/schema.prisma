@@ -18,67 +18,73 @@ datasource db {
 //   NotificationStatus:  SENT | FAILED | SKIPPED
 //   ReviewStatus:        PENDING | APPROVED | REJECTED
 //   AttachmentKind:      SUBMISSION | REVIEW
+//   VoiceSource:         UPLOAD | MEET | DICTATION
+//   VoiceJobStatus:      PENDING | TRANSCRIBING | EXTRACTING | DONE | FAILED
+//   VoiceDraftStatus:    DRAFT | APPROVED | REJECTED
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  passwordHash  String
-  name          String
-  role          String   @default("EMPLOYEE")
-  active        Boolean  @default(true)
+  id                     String  @id @default(cuid())
+  email                  String  @unique
+  passwordHash           String
+  name                   String
+  role                   String  @default("EMPLOYEE")
+  active                 Boolean @default(true)
   // The one (or few) accounts allowed to grant/revoke ADMIN role, the
   // canAssignTasks ("Отговорник"/Lead) permission, and other Leads'
   // assignment scopes. Regular Admins cannot touch these.
-  isSuperAdmin  Boolean  @default(false)
+  isSuperAdmin           Boolean @default(false)
   // "Отговорник"/Lead: allowed to create tasks for other employees (within
   // their assignmentScope below), not just for themselves. Everyone —
   // Leads and regular employees alike — can always create a task for
   // themselves; see AssignmentScope and the self-assignment rule in
   // POST /tasks (a self-assigned task's Owner must be an Admin).
-  canAssignTasks Boolean @default(false)
+  canAssignTasks         Boolean @default(false)
   // Grants access to the separate "Абонаменти" page (domains, phone
   // numbers, recurring subscriptions — things with a payment due date, no
   // fines involved). Off by default; toggled per-account only by a super
   // admin, same as canAssignTasks above.
   canAccessSubscriptions Boolean @default(false)
 
-  phone         String?
-  telegramChatId String?
-  slackMemberId  String?
-  whatsappPhone  String?
-  viberUserId    String?
+  phone            String?
+  telegramChatId   String?
+  slackMemberId    String?
+  whatsappPhone    String?
+  viberUserId      String?
   googleCalendarId String?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tasksAssigned Task[]   @relation("AssignedTasks")
-  tasksCreated  Task[]   @relation("CreatedTasks")
-  tasksOwned    Task[]   @relation("OwnedTasks")
-  fines         Fine[]   @relation("UserFines")
-  finesWaived   Fine[]   @relation("WaivedByUser")
-  finesMarkedPaid Fine[] @relation("PaidByUser")
-  notificationLogs NotificationLog[]
-  submissions   TaskSubmission[] @relation("SubmittedBy")
-  reviews       TaskSubmission[] @relation("ReviewedBy")
-  templatesAssigned RecurringTaskTemplate[] @relation("TemplateAssignee")
-  templatesOwned    RecurringTaskTemplate[] @relation("TemplateOwner")
-  templatesCreated  RecurringTaskTemplate[] @relation("TemplateCreatedBy")
-  projectsCreated   Project[] @relation("CreatedProjects")
-  auditLogs     AuditLog[]
+  tasksAssigned               Task[]                  @relation("AssignedTasks")
+  tasksCreated                Task[]                  @relation("CreatedTasks")
+  tasksOwned                  Task[]                  @relation("OwnedTasks")
+  fines                       Fine[]                  @relation("UserFines")
+  finesWaived                 Fine[]                  @relation("WaivedByUser")
+  finesMarkedPaid             Fine[]                  @relation("PaidByUser")
+  notificationLogs            NotificationLog[]
+  submissions                 TaskSubmission[]        @relation("SubmittedBy")
+  reviews                     TaskSubmission[]        @relation("ReviewedBy")
+  templatesAssigned           RecurringTaskTemplate[] @relation("TemplateAssignee")
+  templatesOwned              RecurringTaskTemplate[] @relation("TemplateOwner")
+  templatesCreated            RecurringTaskTemplate[] @relation("TemplateCreatedBy")
+  projectsCreated             Project[]               @relation("CreatedProjects")
+  auditLogs                   AuditLog[]
   // Employees this user (as a Lead) is allowed to create/assign tasks for.
-  assignableEmployees AssignmentScope[] @relation("LeadScope")
+  assignableEmployees         AssignmentScope[]       @relation("LeadScope")
   // Leads who are allowed to assign tasks to this user.
-  assignableByLeads   AssignmentScope[] @relation("EmployeeScope")
+  assignableByLeads           AssignmentScope[]       @relation("EmployeeScope")
   // The one specific fine rule this account is pinned to, if any.
-  fineRuleAssignment  FineRuleAssignment?
-  leaves              Leave[]             @relation("UserLeaves")
-  leavesCreated       Leave[]             @relation("LeaveCreatedBy")
-  rescheduleRequestsMade     RescheduleRequest[] @relation("RescheduleRequestedBy")
-  rescheduleRequestsDecided  RescheduleRequest[] @relation("RescheduleDecidedBy")
-  subscriptionsAssigned Subscription[] @relation("SubscriptionAssignee")
-  subscriptionsOwned    Subscription[] @relation("SubscriptionOwner")
-  subscriptionsCreated  Subscription[] @relation("SubscriptionCreatedBy")
+  fineRuleAssignment          FineRuleAssignment?
+  leaves                      Leave[]                 @relation("UserLeaves")
+  leavesCreated               Leave[]                 @relation("LeaveCreatedBy")
+  rescheduleRequestsMade      RescheduleRequest[]     @relation("RescheduleRequestedBy")
+  rescheduleRequestsDecided   RescheduleRequest[]     @relation("RescheduleDecidedBy")
+  subscriptionsAssigned       Subscription[]          @relation("SubscriptionAssignee")
+  subscriptionsOwned          Subscription[]          @relation("SubscriptionOwner")
+  subscriptionsCreated        Subscription[]          @relation("SubscriptionCreatedBy")
+  voiceTranscriptsCreated     VoiceTranscript[]       @relation("VoiceTranscriptCreatedBy")
+  voiceJobsCreated            VoiceProcessingJob[]    @relation("VoiceJobCreatedBy")
+  voiceDraftsResolvedAssignee VoiceTaskDraft[]        @relation("VoiceDraftResolvedAssignee")
 }
 
 // A tracked recurring cost with its own due date — a domain, phone number,
@@ -105,19 +111,19 @@ model Subscription {
   // independently editable, since an Admin often enters these on someone
   // else's behalf.
   assigneeId  String
-  assignee    User     @relation("SubscriptionAssignee", fields: [assigneeId], references: [id])
+  assignee    User    @relation("SubscriptionAssignee", fields: [assigneeId], references: [id])
   ownerId     String?
-  owner       User?    @relation("SubscriptionOwner", fields: [ownerId], references: [id])
+  owner       User?   @relation("SubscriptionOwner", fields: [ownerId], references: [id])
   createdById String
-  createdBy   User     @relation("SubscriptionCreatedBy", fields: [createdById], references: [id])
+  createdBy   User    @relation("SubscriptionCreatedBy", fields: [createdById], references: [id])
 
   reminder30dSentAt      DateTime?
   reminder15dSentAt      DateTime?
   lastDailyReminderAt    DateTime?
   lastPeriodicReminderAt DateTime?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Restricts which employees a given Lead (User.canAssignTasks) may create
@@ -146,7 +152,7 @@ model Project {
   createdBy   User     @relation("CreatedProjects", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
 
-  steps       Task[]
+  steps Task[]
 }
 
 // A personal vacation/leave block — a day range an employee (or an Admin on
@@ -197,18 +203,18 @@ model RescheduleRequest {
 }
 
 model Task {
-  id            String     @id @default(cuid())
-  title         String
-  description   String?
-  assigneeId    String
-  assignee      User       @relation("AssignedTasks", fields: [assigneeId], references: [id])
-  createdById   String
-  createdBy     User       @relation("CreatedTasks", fields: [createdById], references: [id])
-  ownerId       String?
-  owner         User?      @relation("OwnedTasks", fields: [ownerId], references: [id])
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+  assigneeId  String
+  assignee    User    @relation("AssignedTasks", fields: [assigneeId], references: [id])
+  createdById String
+  createdBy   User    @relation("CreatedTasks", fields: [createdById], references: [id])
+  ownerId     String?
+  owner       User?   @relation("OwnedTasks", fields: [ownerId], references: [id])
 
-  templateId    String?
-  template      RecurringTaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateId String?
+  template   RecurringTaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   // Multi-step chain ("сложна задача"): this task is one link, belonging to
   // Project and pointing at the step immediately before it. A step past the
@@ -217,28 +223,28 @@ model Task {
   // list it scans) until its previousStep is approved, at which point the
   // approve route computes the real deadline (approval time + delayDays)
   // and flips it to PENDING — see approveSubmission's chain-activation block.
-  projectId     String?
-  project       Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  chainOrder    Int?
+  projectId              String?
+  project                Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  chainOrder             Int?
   delayDaysAfterPrevious Int?
-  previousStepId String?   @unique
-  previousStep  Task?      @relation("ChainLink", fields: [previousStepId], references: [id])
-  nextStep      Task?      @relation("ChainLink")
+  previousStepId         String?  @unique
+  previousStep           Task?    @relation("ChainLink", fields: [previousStepId], references: [id])
+  nextStep               Task?    @relation("ChainLink")
 
-  deadline      DateTime
-  priority      String     @default("MEDIUM")
-  status        String     @default("PENDING")
+  deadline DateTime
+  priority String   @default("MEDIUM")
+  status   String   @default("PENDING")
 
-  reminder24hSentAt DateTime?
-  reminder4hSentAt  DateTime?
+  reminder24hSentAt      DateTime?
+  reminder4hSentAt       DateTime?
   lastPeriodicReminderAt DateTime?
-  lastEscalationAt DateTime?
+  lastEscalationAt       DateTime?
   // The daysLate value the most recent fine on THIS deadline cycle was for.
   // Fine history (including waived fines) is excluded from this check on
   // purpose: waiving a fine forgives that day, it must not make the scanner
   // re-fine the exact same day again on its next pass. Editing the deadline
   // starts a fresh cycle and resets this to null (see PATCH /tasks/:id).
-  lastFinedDaysLate Int?
+  lastFinedDaysLate      Int?
   // The cumulative fine total (per the rule's base+perDay formula, capped at
   // maxAmount) already charged across every Fine row created so far this
   // cycle. Each new escalation day only creates a Fine for the difference
@@ -246,94 +252,95 @@ model Task {
   // cumulative total again — so a rule of "50 base + 50/day" charges 50 on
   // day 1 and another 50 on day 2, not 50 then 100. Reset to null wherever
   // lastFinedDaysLate is.
-  lastFinedAmount Float?
-  completedAt      DateTime?
-  deletedAt        DateTime?
+  lastFinedAmount        Float?
+  completedAt            DateTime?
+  deletedAt              DateTime?
 
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  fines         Fine[]
-  notificationLogs NotificationLog[]
-  submissions   TaskSubmission[]
+  fines              Fine[]
+  notificationLogs   NotificationLog[]
+  submissions        TaskSubmission[]
   rescheduleRequests RescheduleRequest[]
+  voiceDraftSource   VoiceTaskDraft?
 }
 
 model TaskSubmission {
-  id            String     @id @default(cuid())
+  id            String  @id @default(cuid())
   taskId        String
-  task          Task       @relation(fields: [taskId], references: [id])
+  task          Task    @relation(fields: [taskId], references: [id])
   submittedById String
-  submittedBy   User       @relation("SubmittedBy", fields: [submittedById], references: [id])
+  submittedBy   User    @relation("SubmittedBy", fields: [submittedById], references: [id])
   note          String?
 
-  reviewStatus  String     @default("PENDING")
-  reviewDueAt   DateTime?
-  reviewedById  String?
-  reviewedBy    User?      @relation("ReviewedBy", fields: [reviewedById], references: [id])
-  reviewNote    String?
-  reviewedAt    DateTime?
-  reviewLastEscalationAt DateTime?
+  reviewStatus                 String    @default("PENDING")
+  reviewDueAt                  DateTime?
+  reviewedById                 String?
+  reviewedBy                   User?     @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  reviewNote                   String?
+  reviewedAt                   DateTime?
+  reviewLastEscalationAt       DateTime?
   // Mirrors Task.lastFinedDaysLate — the daysLate value the most recent
   // review fine was for, tracked independently of Fine.status so a waived
   // review fine doesn't get immediately re-created on the next scan.
-  reviewLastFinedDaysLate Int?
+  reviewLastFinedDaysLate      Int?
   // Mirrors Task.lastFinedAmount — the cumulative review-fine total already
   // charged, so each new escalation day only fines the incremental
   // difference instead of the whole cumulative amount again.
-  reviewLastFinedAmount Float?
+  reviewLastFinedAmount        Float?
   // Reminder tracking, mirroring Task's reminder24hSentAt/reminder4hSentAt/
   // lastPeriodicReminderAt but for the Owner's review window instead of the
   // assignee's deadline.
-  reviewFinalReminderSentAt   DateTime?
+  reviewFinalReminderSentAt    DateTime?
   lastPeriodicReviewReminderAt DateTime?
 
-  createdAt     DateTime   @default(now())
+  createdAt DateTime @default(now())
 
-  attachments   Attachment[]
+  attachments Attachment[]
 }
 
 model Attachment {
-  id            String     @id @default(cuid())
-  submissionId  String
-  submission    TaskSubmission @relation(fields: [submissionId], references: [id])
+  id           String         @id @default(cuid())
+  submissionId String
+  submission   TaskSubmission @relation(fields: [submissionId], references: [id])
   // "SUBMISSION" (uploaded by the assignee with their submission) or
   // "REVIEW" (uploaded by the Owner/admin alongside their approve/reject decision).
-  kind          String     @default("SUBMISSION")
-  filename      String
-  originalName  String
-  mimeType      String
-  size          Int
-  createdAt     DateTime   @default(now())
+  kind         String         @default("SUBMISSION")
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  createdAt    DateTime       @default(now())
 }
 
 model RecurringTaskTemplate {
-  id            String     @id @default(cuid())
-  title         String
-  description   String?
-  assigneeId    String
-  assignee      User       @relation("TemplateAssignee", fields: [assigneeId], references: [id])
-  ownerId       String?
-  owner         User?      @relation("TemplateOwner", fields: [ownerId], references: [id])
-  createdById   String
-  createdBy     User       @relation("TemplateCreatedBy", fields: [createdById], references: [id])
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+  assigneeId  String
+  assignee    User    @relation("TemplateAssignee", fields: [assigneeId], references: [id])
+  ownerId     String?
+  owner       User?   @relation("TemplateOwner", fields: [ownerId], references: [id])
+  createdById String
+  createdBy   User    @relation("TemplateCreatedBy", fields: [createdById], references: [id])
 
-  priority      String     @default("MEDIUM")
+  priority   String  @default("MEDIUM")
   // "WEEKLY" (uses daysOfWeek) or "MONTHLY" (uses dayOfMonth)
-  frequency     String     @default("WEEKLY")
+  frequency  String  @default("WEEKLY")
   // Comma-separated 3-letter weekday codes, e.g. "TUE,WED" — WEEKLY only
-  daysOfWeek    String
+  daysOfWeek String
   // Day of month 1-31 — MONTHLY only. A value past the end of a shorter
   // month (e.g. 31 in April) spawns on that month's last day instead.
-  dayOfMonth    Int?
+  dayOfMonth Int?
   // "HH:MM" 24h, server-local time
-  timeOfDay     String
-  active        Boolean    @default(true)
+  timeOfDay  String
+  active     Boolean @default(true)
 
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  occurrences   Task[]
+  occurrences Task[]
 }
 
 // A fine rule no longer keys off the task's priority — the Ultimate Admin
@@ -341,18 +348,18 @@ model RecurringTaskTemplate {
 // A rule with no assigned accounts is the fallback used for anyone without
 // a rule of their own.
 model FineRule {
-  id                String   @id @default(cuid())
-  name              String
-  baseAmount        Float
-  perDayAmount      Float
-  graceHours        Float    @default(0)
-  maxAmount         Float?
-  currency          String   @default("EUR")
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id           String   @id @default(cuid())
+  name         String
+  baseAmount   Float
+  perDayAmount Float
+  graceHours   Float    @default(0)
+  maxAmount    Float?
+  currency     String   @default("EUR")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  assignedUsers     FineRuleAssignment[]
+  assignedUsers FineRuleAssignment[]
 }
 
 // Ties one account to (at most) one specific fine rule — enforced by the
@@ -368,28 +375,28 @@ model FineRuleAssignment {
 }
 
 model Fine {
-  id            String     @id @default(cuid())
-  taskId        String?
-  task          Task?      @relation(fields: [taskId], references: [id])
-  userId        String
-  user          User       @relation("UserFines", fields: [userId], references: [id])
+  id     String  @id @default(cuid())
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id])
+  userId String
+  user   User    @relation("UserFines", fields: [userId], references: [id])
 
-  amount        Float
-  currency      String     @default("EUR")
-  reason        String
-  daysLate      Int        @default(0)
-  status        String     @default("ACTIVE")
+  amount   Float
+  currency String @default("EUR")
+  reason   String
+  daysLate Int    @default(0)
+  status   String @default("ACTIVE")
 
-  waivedById    String?
-  waivedBy      User?      @relation("WaivedByUser", fields: [waivedById], references: [id])
-  waivedReason  String?
+  waivedById   String?
+  waivedBy     User?   @relation("WaivedByUser", fields: [waivedById], references: [id])
+  waivedReason String?
 
-  paidAt        DateTime?
-  paidById      String?
-  paidBy        User?      @relation("PaidByUser", fields: [paidById], references: [id])
+  paidAt   DateTime?
+  paidById String?
+  paidBy   User?     @relation("PaidByUser", fields: [paidById], references: [id])
 
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model NotificationChannelConfig {
@@ -428,4 +435,90 @@ model NotificationLog {
   message   String
   error     String?
   createdAt DateTime @default(now())
+}
+
+// A transcribed audio recording — the shared input to every voice-to-tasks
+// pipeline (manual upload/recording, a quick admin dictation, or an
+// auto-pulled Google Meet recording via Drive). One transcript can yield
+// many VoiceTaskDraft rows (a meeting is rarely just one task).
+model VoiceTranscript {
+  id                 String   @id @default(cuid())
+  source             String // UPLOAD | MEET | DICTATION
+  originalFilename   String?
+  // Google Drive file id for a Meet recording — unique so the same
+  // recording is never processed twice across polling cycles (Phase 4).
+  meetRecordingId    String?  @unique
+  transcriptText     String
+  durationSeconds    Int?
+  languageDetected   String?
+  createdById        String?
+  createdBy          User?    @relation("VoiceTranscriptCreatedBy", fields: [createdById], references: [id])
+  // Cost tracking (see the brief's "log token/API costs" requirement) so
+  // spend is visible per transcript rather than only in the provider's
+  // own dashboard.
+  whisperCostUsd     Float?
+  claudeInputTokens  Int?
+  claudeOutputTokens Int?
+  createdAt          DateTime @default(now())
+
+  drafts         VoiceTaskDraft[]
+  processingJobs VoiceProcessingJob[]
+}
+
+// One AI-extracted (or manually added) candidate task, staged for admin
+// review before it ever becomes a real Task — "no task is ever created
+// directly as assigned; everything is a draft until the admin approves
+// it." Approving one creates a genuine Task through the same
+// createTaskAndNotify() path a manually created task uses (same
+// reminders/fines/visibility as any other task) and stamps approvedTaskId;
+// nothing about VoiceTaskDraft itself is ever fined or reminded on.
+model VoiceTaskDraft {
+  id           String           @id @default(cuid())
+  transcriptId String?
+  transcript   VoiceTranscript? @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  title              String
+  description        String?
+  // The raw key Claude picked from team-roles.json (e.g. "mirela", or
+  // "unassigned" if genuinely ambiguous) — kept as a record of what the AI
+  // actually said, independent of resolvedAssigneeId below.
+  assigneeKey        String?
+  // Best-guess real User resolved from assigneeKey via team-roles.json's
+  // email field — only a pre-fill for the admin's dropdown; approval always
+  // requires a real, explicitly confirmed assigneeId regardless of whether
+  // this resolved to anyone (see POST /voice/drafts/:id/approve).
+  resolvedAssigneeId String?
+  resolvedAssignee   User?   @relation("VoiceDraftResolvedAssignee", fields: [resolvedAssigneeId], references: [id])
+
+  deadline    DateTime
+  priority    String   @default("MEDIUM")
+  status      String   @default("DRAFT")
+  // The exact transcript sentence(s) this task was derived from — mandatory
+  // so the admin can verify the AI understood correctly before approving.
+  sourceQuote String
+  createdByAi Boolean  @default(true)
+
+  approvedAt     DateTime?
+  approvedTaskId String?   @unique
+  approvedTask   Task?     @relation(fields: [approvedTaskId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Tracks a background transcription+extraction run for a longer recording
+// (see POST /voice/transcribe's async path) — the frontend polls this by id
+// every few seconds instead of holding the upload request open for a file
+// that can take minutes to transcribe.
+model VoiceProcessingJob {
+  id           String           @id @default(cuid())
+  transcriptId String?
+  transcript   VoiceTranscript? @relation(fields: [transcriptId], references: [id], onDelete: SetNull)
+  source       String // UPLOAD | MEET | DICTATION
+  status       String           @default("PENDING")
+  errorMessage String?
+  createdById  String?
+  createdBy    User?            @relation("VoiceJobCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 }
