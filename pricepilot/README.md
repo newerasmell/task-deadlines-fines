@@ -96,19 +96,41 @@ Up to 4 per store.
   matches near-100% on EAN. Prefer this whenever the competitor qualifies.
 - **`scrape`** — anything else: for each of *our* products, requests a
   templated search URL (`{EAN}`, or `{QUERY}` = brand+name if no barcode)
-  and parses the first result's price using JSON-LD → meta tags → a plain
-  currency-text scan, in that order. Polite by design: ~1 request per
-  2-3s, a real User-Agent, 15s timeout, no proxies, no CAPTCHA bypass — a
-  source that keeps failing gets flagged `degraded` in Settings rather than
-  retried harder. Every `scrape` product is anchored to a specific one of
-  our products from the start (we searched *for* it), so there's no
-  ambiguous matching step for this source type — only `shopify_json`
-  listings ever land in the Unmatched tab.
+  via a real headless Chromium (plain HTTP requests get blocked outright by
+  some sites' bot detection). Only structured, site-authored price signals
+  are trusted (JSON-LD → meta tags) — no plain-text currency scan, since
+  that produced false-positive prices on pages with no actual match.
+  A search-results page usually lists several sibling products (different
+  scent lines, sizes); the closest title match is picked (not just the
+  first JSON-LD block on the page) and its own product page is visited to
+  read the exact size/price variant, rather than trusting the listing's
+  default price. A confirmed "not found" only clears a previously-matched
+  price after two consecutive not-found results, to absorb one-off page
+  load hiccups. Polite by design: ~1 request per 2-3s, a real User-Agent,
+  30s timeout, no proxies, no CAPTCHA bypass — a source that keeps failing
+  gets flagged `degraded` in Settings rather than retried harder. Every
+  `scrape` product is anchored to a specific one of our products from the
+  start (we searched *for* it), so there's no ambiguous matching step for
+  this source type — only `shopify_json` listings ever land in the
+  Unmatched tab.
+- **`manual_import`** — for sites that block automated fetching outright
+  (bot detection a headless browser can't get past): instead of a live
+  fetch, Settings offers a "Download template" CSV (every product, its
+  SKU/vendor/title/size, plus a pre-built search URL per the source's
+  template if one's set) and an "Upload results" file input. A person or a
+  Cowork agent searches the site by hand, fills in `competitor_price` (or
+  `not_found`) per row on that same file, and re-uploads it — rows are
+  matched by `product_id`, so there's no fuzzy matching or title-guessing
+  on the way back in. Writes through the exact same price/not-found
+  recording logic (hysteresis included) as `scrape`. Never runs on its own
+  — the scheduler and "Refresh now" no-op for this type.
 - **Scrape prioritization**: products flagged priority (manually, or the
   top 20 by `price × inventoryQuantity`) get scraped every run; everything
   else rotates through roughly one-seventh of the remaining catalog per
   run (a stable hash bucket, not stored state) — so the full catalog cycles
   over about a week rather than every product being scraped every day.
+  (`manual_import` templates always list the full catalog — there's no
+  automated request budget to ration there.)
 
 ## Matching (shopify_json sources only)
 

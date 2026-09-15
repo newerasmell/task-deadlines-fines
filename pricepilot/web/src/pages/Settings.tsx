@@ -353,10 +353,12 @@ function SourcesSection({ storeId }: { storeId: string }) {
                 {refreshResult[s.id] && <div className="small">{refreshResult[s.id]}</div>}
               </div>
               <div className="entity-row-actions">
-                <button className="small-btn secondary" onClick={() => refreshSource(s.id)} disabled={refreshing === s.id}>
-                  {refreshing === s.id ? "Refreshing…" : "Refresh now"}
-                </button>
-                {s.type === "scrape" && (
+                {s.type !== "manual_import" && (
+                  <button className="small-btn secondary" onClick={() => refreshSource(s.id)} disabled={refreshing === s.id}>
+                    {refreshing === s.id ? "Refreshing…" : "Refresh now"}
+                  </button>
+                )}
+                {(s.type === "scrape" || s.type === "manual_import") && (
                   <button
                     className="small-btn secondary"
                     onClick={() => setShowAttempts(showAttempts === s.id ? null : s.id)}
@@ -372,7 +374,8 @@ function SourcesSection({ storeId }: { storeId: string }) {
                 </button>
               </div>
             </div>
-            {showAttempts === s.id && <ScrapeAttemptsPanel sourceId={s.id} />}
+            {s.type === "manual_import" && <ManualImportPanel source={s} onImported={refresh} />}
+            {showAttempts === s.id && <ScrapeAttemptsPanel sourceId={s.id} sourceType={s.type} />}
           </div>
         ))}
         {sources.length === 0 && <p className="muted">No sources yet.</p>}
@@ -415,7 +418,82 @@ function SourcesSection({ storeId }: { storeId: string }) {
   );
 }
 
-function ScrapeAttemptsPanel({ sourceId }: { sourceId: string }) {
+// Round-trips the CSV export/import for a `manual_import` source: some
+// competitor sites block automated fetches outright, so instead of a live
+// scraper, a Cowork agent (or a person) searches the site by hand and fills
+// in prices on the exported template — no fuzzy product matching needed on
+// re-import since every row already carries our own product_id.
+function ManualImportPanel({ source, onImported }: { source: Source; onImported: () => void }) {
+  const [downloading, setDownloading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<{ matched: number; notFoundCount: number; errorCount: number; errors: string[] } | null>(
+    null
+  );
+
+  async function downloadTemplate() {
+    setDownloading(true);
+    try {
+      const res = await api<{ csv: string; filename: string }>(`/sources/${source.id}/export-template`);
+      const blob = new Blob([res.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setImporting(true);
+    setResult(null);
+    try {
+      const res = await api<{ matched: number; notFoundCount: number; errorCount: number; errors: string[] }>(
+        `/sources/${source.id}/import`,
+        { method: "POST", body: JSON.stringify({ csv: text }) }
+      );
+      setResult(res);
+      onImported();
+    } finally {
+      setImporting(false);
+      e.target.value = "";
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 4, marginBottom: 12 }}>
+      <p className="muted small">
+        1. Download the research template (every product, plus a suggested search URL). 2. Search {source.baseUrl} for
+        each one and fill in <code>competitor_price</code> (or mark <code>not_found</code>) on the same file. 3.
+        Upload it back here — rows are matched by <code>product_id</code>, so nothing here relies on titles lining
+        up exactly.
+      </p>
+      <div className="form-row">
+        <button className="small-btn secondary" onClick={downloadTemplate} disabled={downloading}>
+          {downloading ? "Preparing…" : "Download template"}
+        </button>
+        <input type="file" accept=".csv,text/csv" onChange={handleFile} disabled={importing} />
+      </div>
+      {result && (
+        <div className="small" style={{ marginTop: 8 }}>
+          Imported {result.matched} price(s), {result.notFoundCount} marked not-found.
+          {result.errorCount > 0 && (
+            <div className="error-text">
+              {result.errorCount} row(s) skipped: {result.errors.join("; ")}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourceType: SourceType }) {
   const [attempts, setAttempts] = useState<ScrapeAttempt[] | null>(null);
 
   useEffect(() => {
@@ -424,7 +502,13 @@ function ScrapeAttemptsPanel({ sourceId }: { sourceId: string }) {
 
   if (attempts === null) return <p className="muted small">Loading…</p>;
   if (attempts.length === 0) {
-    return <p className="muted small">No products searched yet — click "Refresh now" first.</p>;
+    return (
+      <p className="muted small">
+        {sourceType === "manual_import"
+          ? "No results imported yet — download the template above, fill it in, and upload it."
+          : 'No products searched yet — click "Refresh now" first.'}
+      </p>
+    );
   }
 
   const foundCount = attempts.filter((a) => a.found).length;
@@ -432,9 +516,10 @@ function ScrapeAttemptsPanel({ sourceId }: { sourceId: string }) {
   return (
     <div className="card" style={{ marginTop: 4, marginBottom: 12 }}>
       <p className="muted small">
-        {foundCount} of {attempts.length} searched products currently have a price from this source. Only the most
-        recent attempt per product is kept — not every product is searched every run (see the priority/rotation
-        note above).
+        {foundCount} of {attempts.length} {sourceType === "manual_import" ? "researched" : "searched"} products
+        currently have a price from this source.
+        {sourceType !== "manual_import" &&
+          " Only the most recent attempt per product is kept — not every product is searched every run (see the priority/rotation note above)."}
       </p>
       <div style={{ overflowX: "auto" }}>
         <table className="pricing-table">
@@ -506,7 +591,7 @@ function SourceForm({
         label,
         type,
         baseUrl,
-        searchUrlTemplate: type === "scrape" ? searchUrlTemplate || null : null,
+        searchUrlTemplate: type === "shopify_json" ? null : searchUrlTemplate || null,
         active,
       };
       if (isEdit) await api(`/sources/${source!.id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -541,6 +626,7 @@ function SourceForm({
           <select value={type} onChange={(e) => setType(e.target.value as SourceType)}>
             <option value="shopify_json">Shopify JSON (competitor runs Shopify)</option>
             <option value="scrape">Scrape (search + parse)</option>
+            <option value="manual_import">Manual import (Cowork research → CSV)</option>
           </select>
         </label>
       </div>
@@ -553,13 +639,13 @@ function SourceForm({
           required
         />
       </label>
-      {type === "scrape" && (
+      {(type === "scrape" || type === "manual_import") && (
         <label>
-          Search URL template
+          Search URL template {type === "manual_import" && <span className="muted">(optional — a starting point for whoever's researching)</span>}
           <input
             value={searchUrlTemplate}
             onChange={(e) => setSearchUrlTemplate(e.target.value)}
-            placeholder="https://competitor.com/search?q={EAN}"
+            placeholder="https://competitor.com/search?q={QUERY}"
           />
         </label>
       )}

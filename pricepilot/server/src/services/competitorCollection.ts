@@ -147,7 +147,57 @@ function buildSearchQuery(vendor: string | null, title: string): string {
   return (alreadyIncluded ? title : `${trimmedVendor} ${title}`).trim();
 }
 
-function buildSearchUrl(template: string, product: Product): string {
+// Shared by the live scraper below and the manual-import route (a Cowork
+// agent researches sites by hand and uploads a filled-in CSV export
+// template instead of us fetching the page ourselves) — both need the
+// exact same write semantics, hysteresis included, so there's one place
+// that decides what "found" and "not found" actually do to the DB.
+export async function recordFoundPrice(params: {
+  source: Source;
+  store: Store;
+  product: Product;
+  price: number;
+  url: string;
+}): Promise<void> {
+  const { source, store, product, price, url } = params;
+  const matchKey = product.barcode
+    ? normalizeBarcode(product.barcode)
+    : buildFallbackMatchKey(product.vendor, product.title);
+  await upsertCompetitorPrice({
+    sourceId: source.id,
+    productId: product.id,
+    matchKey,
+    competitorTitle: product.title,
+    competitorSku: product.sku,
+    competitorBarcode: product.barcode,
+    price,
+    currency: store.currency,
+    url,
+  });
+  await upsertScrapeAttempt({ sourceId: source.id, productId: product.id, found: true, price, error: null, url });
+}
+
+// A confirmed "no price here" is meaningful evidence a previously-matched
+// price is stale — but only once it's happened twice in a row (checking the
+// PRIOR attempt, not yet overwritten, before deciding to clear). Confirmed
+// live that requiring just one was too aggressive: a real match could
+// flicker away because a single run caught the page mid-load, not because
+// the product actually stopped being listed there.
+export async function recordNotFound(params: {
+  sourceId: string;
+  productId: string;
+  url: string;
+  error: string;
+}): Promise<void> {
+  const { sourceId, productId, url, error } = params;
+  const previous = await prisma.scrapeAttempt.findUnique({ where: { sourceId_productId: { sourceId, productId } } });
+  if (previous && !previous.found) {
+    await prisma.competitorPrice.deleteMany({ where: { sourceId, productId } });
+  }
+  await upsertScrapeAttempt({ sourceId, productId, found: false, price: null, error, url });
+}
+
+export function buildSearchUrl(template: string, product: Product): string {
   // Only take the EAN path if the template actually has an {EAN}
   // placeholder to fill — otherwise (e.g. a template that only defines
   // {QUERY}, which every source added so far uses) this used to leave
@@ -219,55 +269,17 @@ async function refreshScrapeSource(store: Store, source: Source): Promise<{ matc
         }
 
         if (result) {
-          const matchKey = product.barcode
-            ? normalizeBarcode(product.barcode)
-            : buildFallbackMatchKey(product.vendor, product.title);
-          await upsertCompetitorPrice({
-            sourceId: source.id,
-            productId: product.id, // we searched FOR this exact product, so it's already known
-            matchKey,
-            competitorTitle: product.title,
-            competitorSku: product.sku,
-            competitorBarcode: product.barcode,
-            price: result.price,
-            currency: store.currency,
-            url: result.url ?? resultUrl,
-          });
+          // The actual product page when we navigated to one, not the
+          // search results listing — lets the user click through and see
+          // exactly what was matched, rather than a results grid.
+          await recordFoundPrice({ source, store, product, price: result.price, url: result.url ?? resultUrl });
           matched++;
-          await upsertScrapeAttempt({
-            sourceId: source.id,
-            productId: product.id,
-            found: true,
-            price: result.price,
-            error: null,
-            // The actual product page when we navigated to one, not the
-            // search results listing — lets the user click through and see
-            // exactly what was matched, rather than a results grid.
-            url: resultUrl,
-          });
         } else {
-          // A confirmed "no price on this page" is meaningful evidence a
-          // previously-matched price is stale — but only once it's happened
-          // twice in a row. Confirmed live that requiring just one was too
-          // aggressive: a real, correct match could flicker away because a
-          // single run happened to catch the page mid-load or otherwise
-          // failed to render its structured data that one time, not because
-          // the product actually stopped being listed there. Checking the
-          // PRIOR attempt (not yet overwritten) before deciding: only clear
-          // if that one was also not-found.
-          const previous = await prisma.scrapeAttempt.findUnique({
-            where: { sourceId_productId: { sourceId: source.id, productId: product.id } },
-          });
-          if (previous && !previous.found) {
-            await prisma.competitorPrice.deleteMany({ where: { sourceId: source.id, productId: product.id } });
-          }
-          await upsertScrapeAttempt({
+          await recordNotFound({
             sourceId: source.id,
             productId: product.id,
-            found: false,
-            price: null,
-            error: "No price found on the page",
             url,
+            error: "No price found on the page",
           });
         }
       } catch (err) {
@@ -308,6 +320,15 @@ export async function refreshSource(sourceId: string): Promise<{ ok: boolean; ma
   inFlight.add(sourceId);
   try {
     const source = await prisma.source.findUniqueOrThrow({ where: { id: sourceId }, include: { store: true } });
+
+    // manual_import sources have no live fetch to run — prices come in
+    // through POST /sources/:id/import (a Cowork agent's research, applied
+    // by hand). The scheduler and "Refresh now" don't distinguish source
+    // types before calling this, so this just no-ops rather than treating
+    // the missing searchUrlTemplate as a failure and marking it degraded.
+    if (source.type === "manual_import") {
+      return { ok: true, matched: source.lastMatchedCount ?? 0 };
+    }
 
     try {
       const matched =
