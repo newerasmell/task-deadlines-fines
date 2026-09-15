@@ -87,7 +87,19 @@ export function Meeting() {
       setScriptError(err instanceof Error ? err.message : t("Неуспешно зареждане на meet.jit.si"));
       return;
     }
-    if (!window.JitsiMeetExternalAPI || !containerRef.current) return;
+    // The script tag can report success (onload fires) while an ad-blocker
+    // or privacy extension quietly swaps in an empty response instead of a
+    // real network error — window.JitsiMeetExternalAPI never gets defined
+    // in that case, so this must surface its own error rather than no-op.
+    if (!window.JitsiMeetExternalAPI) {
+      setScriptError(
+        t(
+          "meet.jit.si се зареди, но не предостави нужния API — вероятно блокиран от ad-blocker/разширение за поверителност. Пробвай да го изключиш за този сайт или отвори в друг браузър."
+        )
+      );
+      return;
+    }
+    if (!containerRef.current) return;
 
     const room = randomRoomName();
     jitsiRef.current?.dispose();

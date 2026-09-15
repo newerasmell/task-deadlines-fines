@@ -437,4 +437,6 @@ export const en: Record<string, string> = {
   "Споделянето на таба е отказано или недостъпно.": "Tab sharing was denied or unavailable.",
   "Неуспешно зареждане на meet.jit.si": "Failed to load meet.jit.si",
   "Среща (запис)": "Meeting (recording)",
+  "meet.jit.si се зареди, но не предостави нужния API — вероятно блокиран от ad-blocker/разширение за поверителност. Пробвай да го изключиш за този сайт или отвори в друг браузър.":
+    "meet.jit.si loaded but didn't provide the API it should have — likely blocked by an ad-blocker/privacy extension. Try disabling it for this site, or use a different browser.",
 };
