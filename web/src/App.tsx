@@ -9,6 +9,7 @@ import { Employees } from "./pages/Employees";
 import { Fines } from "./pages/Fines";
 import { Leave } from "./pages/Leave";
 import { Login } from "./pages/Login";
+import { Meeting } from "./pages/Meeting";
 import { Subscriptions } from "./pages/Subscriptions";
 import { MyTasks } from "./pages/MyTasks";
 import { RecurringTasks } from "./pages/RecurringTasks";
@@ -52,6 +53,14 @@ function AppRoutes() {
         <Route path="/my-tasks" element={<MyTasks />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/recurring" element={<RecurringTasks />} />
+        <Route
+          path="/meeting"
+          element={
+            <RequireAdmin>
+              <Meeting />
+            </RequireAdmin>
+          }
+        />
         <Route
           path="/voice-tasks"
           element={

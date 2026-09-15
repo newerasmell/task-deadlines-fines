@@ -13,6 +13,7 @@ import {
   IconLog,
   IconMe,
   IconMic,
+  IconVideo,
   IconPeople,
   IconRepeat,
   IconSettings,
@@ -68,6 +69,11 @@ export function Layout() {
           <NavLink to="/leave">
             <IconCalendar /> {t("Отпуска")}
           </NavLink>
+          {isAdmin && (
+            <NavLink to="/meeting">
+              <IconVideo /> {t("Среща")}
+            </NavLink>
+          )}
           {isAdmin && (
             <NavLink to="/voice-tasks">
               <IconMic /> {t("Задачи от разговор")}

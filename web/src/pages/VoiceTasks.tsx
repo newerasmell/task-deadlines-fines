@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { useNavigate } from "react-router-dom";
-import { api, apiUpload } from "../api/client";
-import { VOICE_JOB_STATUS_LABELS } from "../api/types";
-import type { GoogleMeetStatus, VoiceJobStatus } from "../api/types";
+import { api } from "../api/client";
+import type { GoogleMeetStatus } from "../api/types";
+import { VoiceOutcome } from "../components/VoiceOutcome";
+import { useVoiceUpload } from "../hooks/useVoiceUpload";
 import { useI18n } from "../i18n/I18nContext";
 
 function GoogleMeetPanel() {
@@ -100,35 +100,25 @@ function pickSupportedMimeType(): string | null {
   return null;
 }
 
-type Outcome =
-  | { kind: "sync"; transcriptId: string; draftsCreated: number }
-  | { kind: "job"; status: VoiceJobStatus; errorMessage: string | null }
-  | { kind: "error"; message: string };
-
 export function VoiceTasks() {
   const { t } = useI18n();
-  const navigate = useNavigate();
+  const { busy, outcome, submit } = useVoiceUpload();
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (pollRef.current) clearTimeout(pollRef.current);
     };
   }, []);
 
   async function startRecording() {
     setMicError(null);
-    setOutcome(null);
     const mimeType = pickSupportedMimeType();
     if (!mimeType) {
       setMicError(t("Този браузър не поддържа запис на звук."));
@@ -168,47 +158,6 @@ export function VoiceTasks() {
     e.target.value = "";
     if (!file) return;
     await submit(file);
-  }
-
-  async function submit(file: File) {
-    setBusy(true);
-    setOutcome(null);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("source", "upload");
-      const res = await apiUpload<
-        | { ok: true; sync: true; transcriptId: string; draftsCreated: number }
-        | { ok: true; sync: false; jobId: string }
-      >("/voice/transcribe", form);
-
-      if (res.sync) {
-        setOutcome({ kind: "sync", transcriptId: res.transcriptId, draftsCreated: res.draftsCreated });
-      } else {
-        setOutcome({ kind: "job", status: "PENDING", errorMessage: null });
-        pollJob(res.jobId);
-      }
-    } catch (err) {
-      setOutcome({ kind: "error", message: err instanceof Error ? err.message : t("Грешка при разпознаване — опитай отново.") });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function pollJob(jobId: string) {
-    pollRef.current = setTimeout(async () => {
-      try {
-        const job = await api<{ status: VoiceJobStatus; errorMessage: string | null }>(`/voice/jobs/${jobId}`);
-        if (job.status === "DONE" || job.status === "FAILED") {
-          setOutcome({ kind: "job", status: job.status, errorMessage: job.errorMessage });
-          return;
-        }
-        setOutcome({ kind: "job", status: job.status, errorMessage: null });
-        pollJob(jobId);
-      } catch (err) {
-        setOutcome({ kind: "error", message: err instanceof Error ? err.message : t("Грешка при проверка на статуса.") });
-      }
-    }, 4000);
   }
 
   return (
@@ -252,33 +201,7 @@ export function VoiceTasks() {
 
         {busy && <p className="muted small">{t("Качване…")}</p>}
 
-        {outcome?.kind === "sync" && (
-          <div className="small">
-            ✓ {t("Готово — открити {n} задача/и.", { n: outcome.draftsCreated })}{" "}
-            <button className="link-btn" onClick={() => navigate("/voice-review")}>
-              {t("Прегледай чернови →")}
-            </button>
-          </div>
-        )}
-        {outcome?.kind === "job" && (
-          <div className="small">
-            {outcome.status === "FAILED" ? (
-              <span className="error-text">
-                ✕ {t("Грешка при разпознаване — опитай отново.")} {outcome.errorMessage}
-              </span>
-            ) : outcome.status === "DONE" ? (
-              <>
-                ✓ {t("Готово.")}{" "}
-                <button className="link-btn" onClick={() => navigate("/voice-review")}>
-                  {t("Прегледай чернови →")}
-                </button>
-              </>
-            ) : (
-              t(VOICE_JOB_STATUS_LABELS[outcome.status])
-            )}
-          </div>
-        )}
-        {outcome?.kind === "error" && <div className="error-text small">✕ {outcome.message}</div>}
+        <VoiceOutcome outcome={outcome} />
       </div>
     </div>
   );

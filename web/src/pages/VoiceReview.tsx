@@ -12,7 +12,9 @@ const STATUS_LABELS: Record<VoiceDraftStatus, string> = {
 
 const SOURCE_LABELS: Record<string, string> = {
   UPLOAD: "Качен файл",
-  MEET: "Google Meet",
+  // Covers both the Google Meet Drive auto-pull and a manually recorded
+  // in-app meeting (Jitsi) — same source tag, either way it came from a call.
+  MEET: "Среща (запис)",
   DICTATION: "Диктовка",
 };
 

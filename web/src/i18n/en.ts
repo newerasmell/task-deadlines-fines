@@ -420,4 +420,21 @@ export const en: Record<string, string> = {
   "Папката не е намерена в Google Drive.": "Folder not found in Google Drive.",
   "Грешка при зареждане на статуса.": "Error loading status.",
   "Грешка при синхронизация.": "Sync error.",
+
+  // In-app meeting (Jitsi)
+  "Среща": "Meeting",
+  "Започни видео среща направо тук (Jitsi, безплатно, не изисква акаунт) и по желание запиши разговора за автоматично извличане на задачи.":
+    "Start a video meeting right here (Jitsi, free, no account needed) and optionally record it for automatic task extraction.",
+  "Започни среща": "Start meeting",
+  "Приключи срещата": "End meeting",
+  "Покани колеги с връзка": "Invite colleagues with this link",
+  "Запиши разговора": "Record the call",
+  "Спри записа": "Stop recording",
+  'При натискане на "Запиши разговора" браузърът ще поиска да избереш кой таб да споделиш — избери ТОЗИ таб и отбележи "Share tab audio" / "Споделяне на звук", за да се запишат всички участници, не само твоят микрофон.':
+    'When you click "Record the call" the browser will ask which tab to share — pick THIS tab and tick "Share tab audio", so everyone on the call gets recorded, not just your microphone.',
+  'Няма избран звук — при споделянето трябва да отбележиш "Share tab audio" / "Споделяне на звук".':
+    'No audio was shared — when sharing you must tick "Share tab audio".',
+  "Споделянето на таба е отказано или недостъпно.": "Tab sharing was denied or unavailable.",
+  "Неуспешно зареждане на meet.jit.si": "Failed to load meet.jit.si",
+  "Среща (запис)": "Meeting (recording)",
 };
