@@ -46,7 +46,12 @@ export function PricingTable() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [edited, setEdited] = useState<Map<string, number>>(new Map());
   const [rowStatus, setRowStatus] = useState<Map<string, RowStatus>>(new Map());
-  const [setCompareAt, setSetCompareAt] = useState(true);
+  // Off by default: silently overwriting compare-at on every publish is
+  // surprising — confirmed live it can leave a product's compare-at LOWER
+  // than its new price (e.g. raising 141 -> 142 with this on sets
+  // compare-at to the old 141, replacing whatever real reference price
+  // — 252.10 in that case — was there before). Opt-in only.
+  const [setCompareAt, setSetCompareAt] = useState(false);
   const [skipSingleConfirm, setSkipSingleConfirm] = useState(() => localStorage.getItem("pp.skipSingleConfirm") === "1");
   const [bulkPublishing, setBulkPublishing] = useState(false);
 
@@ -226,9 +231,9 @@ export function PricingTable() {
     <div>
       <div className="page-header">
         <h1>Pricing — {currentStore.name}</h1>
-        <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }} title="Overwrites this product's existing compare-at price with its price right before this publish. Off by default so publishing never touches compare-at unless you turn this on.">
           <input type="checkbox" checked={setCompareAt} onChange={(e) => setSetCompareAt(e.target.checked)} />
-          Set old price as compare-at
+          Also overwrite compare-at with the pre-publish price
         </label>
       </div>
 
