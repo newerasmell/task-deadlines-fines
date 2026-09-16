@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { MulterError } from "multer";
 import { uploadAudio } from "../lib/voiceUploads";
 import { requireAdmin, requireAuth } from "../middleware/auth";
+import { createProjectAndNotify } from "../services/projectCreation";
 import { createTaskAndNotify } from "../services/taskCreation";
 import {
   errorMessageFor,
@@ -244,6 +245,100 @@ voiceRouter.post("/transcripts/:id/approve-all", async (req, res) => {
   }
 
   res.json({ approved, skipped });
+});
+
+const chainStepApproveSchema = z.object({
+  draftId: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().nullable().optional(),
+  assigneeId: z.string().min(1),
+  ownerId: z.string().nullable().optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+  // Step 1 only.
+  deadline: z.coerce.date().optional(),
+  // Steps 2+ only.
+  delayDays: z.number().int().min(1).max(90).optional(),
+});
+
+const chainApproveSchema = z.object({
+  projectTitle: z.string().min(1),
+  steps: z.array(chainStepApproveSchema).min(2).max(4),
+});
+
+// Approves an entire detected chain (see the "СЛОЖНИ ЗАДАЧИ" extraction
+// prompt section) as one real multi-step Project in a single call, instead
+// of one draft at a time — a chain step in isolation can't become a real
+// Task on its own (steps 2+ have no deadline yet, only a delay), so this
+// is the only way voice-detected chain drafts turn into anything real.
+voiceRouter.post("/chains/:chainGroupId/approve", async (req, res) => {
+  const parsed = chainApproveSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const drafts = await prisma.voiceTaskDraft.findMany({
+    where: { chainGroupId: req.params.chainGroupId },
+    orderBy: { chainOrder: "asc" },
+  });
+  if (drafts.length < 2) return res.status(404).json({ error: "Not found" });
+  if (drafts.some((d) => d.status !== "DRAFT")) {
+    return res.status(400).json({ error: "Тази верига вече е обработена (частично или изцяло)" });
+  }
+
+  const draftById = new Map(drafts.map((d) => [d.id, d]));
+  if (parsed.data.steps.length !== drafts.length || parsed.data.steps.some((s) => !draftById.has(s.draftId))) {
+    return res.status(400).json({ error: "Стъпките не съответстват на веригата" });
+  }
+
+  // Trust the drafts' own chainOrder for sequencing, not whatever order the
+  // client happened to submit them in — createProjectAndNotify treats
+  // array position as chain order (step 0 = immediate deadline, the rest as
+  // delays), so a client sending steps out of order would otherwise silently
+  // scramble the chain.
+  const steps = [...parsed.data.steps].sort((a, b) => (draftById.get(a.draftId)!.chainOrder ?? 0) - (draftById.get(b.draftId)!.chainOrder ?? 0));
+
+  let result;
+  try {
+    result = await createProjectAndNotify({
+      title: parsed.data.projectTitle,
+      steps: steps.map((s) => ({
+        assigneeId: s.assigneeId,
+        title: s.title,
+        description: s.description ?? undefined,
+        ownerId: s.ownerId ?? undefined,
+        priority: s.priority,
+        deadline: s.deadline,
+        delayDays: s.delayDays,
+      })),
+      createdById: req.user!.sub,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err instanceof Error ? err.message : "Грешка при създаване на проекта" });
+  }
+
+  const now = new Date();
+  const updatedDrafts = [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const task = result.steps[i];
+    const draft = draftById.get(step.draftId)!;
+    updatedDrafts.push(
+      await prisma.voiceTaskDraft.update({
+        where: { id: step.draftId },
+        data: {
+          title: step.title,
+          description: step.description ?? null,
+          resolvedAssigneeId: step.assigneeId,
+          priority: step.priority,
+          deadline: step.deadline ?? draft.deadline,
+          status: "APPROVED",
+          approvedAt: now,
+          approvedTaskId: task.id,
+        },
+        include: draftInclude,
+      })
+    );
+  }
+
+  res.json({ project: result.project, tasks: result.steps, drafts: updatedDrafts });
 });
 
 // Read-only status for the frontend's Google Meet settings panel: whether

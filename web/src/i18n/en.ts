@@ -453,4 +453,15 @@ export const en: Record<string, string> = {
   "Присъедини се": "Join",
   "Постави връзка или код на среща.": "Paste a meeting link or code.",
   "Опресни връзката": "Refresh connection",
+
+  // Voice-to-tasks: chain (multi-step) drafts
+  "Сложна задача": "Complex task",
+  "{n} стъпки": "{n} steps",
+  "Избери изпълнител за стъпка {n}.": "Select an assignee for step {n}.",
+  'Наистина ли да отхвърля цялата верига "{title}" ({n} стъпки)?': 'Really reject the whole chain "{title}" ({n} steps)?',
+  "{n} дни след предходната": "{n} days after the previous one",
+  "Owner (по избор — задължителен само ако изпълнителят е самият теб)": "Owner (optional — required only if you're the assignee yourself)",
+  "— Без Owner —": "— No Owner —",
+  "Одобри веригата": "Approve the chain",
+  "Отхвърли веригата": "Reject the chain",
 };

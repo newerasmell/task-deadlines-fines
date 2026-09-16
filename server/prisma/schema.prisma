@@ -507,6 +507,21 @@ model VoiceTaskDraft {
   sourceQuote String
   createdByAi Boolean  @default(true)
 
+  // When Claude detects an explicit dependency in the conversation ("first
+  // X, then Y after 3 days"), every draft in that chain shares this id
+  // (a cuid generated server-side in extractAndCreateDrafts, not by Claude,
+  // to avoid collisions across separate extraction calls) with chainOrder
+  // marking its 1-based position — mirrors Task's own chain fields, but
+  // stays draft-only until POST /voice/chains/:chainGroupId/approve turns
+  // the whole group into a real Project in one shot instead of one draft
+  // at a time. Null for an ordinary standalone draft.
+  chainGroupId           String?
+  chainOrder             Int?
+  delayDaysAfterPrevious Int?
+  // Suggested name for the resulting Project — only set on chainOrder 1;
+  // the other steps in the same chain leave this null.
+  chainTitle             String?
+
   approvedAt     DateTime?
   approvedTaskId String?   @unique
   approvedTask   Task?     @relation(fields: [approvedTaskId], references: [id])

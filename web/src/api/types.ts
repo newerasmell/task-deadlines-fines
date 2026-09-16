@@ -314,6 +314,13 @@ export interface VoiceTaskDraft {
   approvedTaskId: string | null;
   createdAt: string;
   updatedAt: string;
+  // Set together when Claude detected this draft as one step of a
+  // multi-step chain ("Сложна задача") — null for an ordinary draft. See
+  // POST /voice/chains/:chainGroupId/approve.
+  chainGroupId: string | null;
+  chainOrder: number | null;
+  delayDaysAfterPrevious: number | null;
+  chainTitle: string | null;
 }
 
 export const VOICE_JOB_STATUS_LABELS: Record<VoiceJobStatus, string> = {

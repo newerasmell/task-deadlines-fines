@@ -1,5 +1,6 @@
+import { randomUUID } from "crypto";
 import { prisma } from "../lib/prisma";
-import { ExtractionParseError, extractTasks, priorityToTaskPriority, resolveDeadline } from "../lib/taskExtraction";
+import { ExtractionParseError, ExtractedTask, extractTasks, priorityToTaskPriority, resolveDeadline } from "../lib/taskExtraction";
 import { estimateWhisperCostUsd, transcribeAudio } from "../lib/whisper";
 
 export type VoiceSource = "UPLOAD" | "MEET" | "DICTATION";
@@ -37,6 +38,48 @@ export async function transcribeAndStore(input: TranscribeInput): Promise<string
   return transcript.id;
 }
 
+interface ChainAssignment {
+  chainGroupId: string;
+  chainOrder: number;
+  delayDaysAfterPrevious: number | null;
+  chainTitle: string | null;
+}
+
+// Claude marks chain membership with a small integer scoped to this one
+// extraction call (see the "СЛОЖНИ ЗАДАЧИ" prompt section) — this turns
+// that into real per-draft chain fields: a generated (not model-provided)
+// group id so two separate extraction runs can never collide, a 1-based
+// order within the group, and a chain of exactly one item (the model
+// flagged a dependency but nothing else shares its number) demoted back to
+// a standalone draft, since a "chain" of one step isn't one.
+function assignChainGroups(tasks: ExtractedTask[]): (ChainAssignment | null)[] {
+  const counts = new Map<number, number>();
+  for (const t of tasks) {
+    if (t.chain_group != null) counts.set(t.chain_group, (counts.get(t.chain_group) ?? 0) + 1);
+  }
+
+  const groupIdByRaw = new Map<number, string>();
+  const nextOrderByRaw = new Map<number, number>();
+
+  return tasks.map((t) => {
+    if (t.chain_group == null || (counts.get(t.chain_group) ?? 0) < 2) return null;
+
+    if (!groupIdByRaw.has(t.chain_group)) {
+      groupIdByRaw.set(t.chain_group, randomUUID());
+      nextOrderByRaw.set(t.chain_group, 1);
+    }
+    const order = nextOrderByRaw.get(t.chain_group)!;
+    nextOrderByRaw.set(t.chain_group, order + 1);
+
+    return {
+      chainGroupId: groupIdByRaw.get(t.chain_group)!,
+      chainOrder: order,
+      delayDaysAfterPrevious: order > 1 ? (t.delay_days_after_previous ?? 1) : null,
+      chainTitle: order === 1 ? t.chain_title?.trim() || t.title : null,
+    };
+  });
+}
+
 // Confirms an extracted assignee_id is actually a real, still-active user —
 // Claude was given the live roster and told to echo back one of those ids
 // verbatim, but never trust that blindly (a stale/hallucinated id, or the
@@ -64,8 +107,12 @@ export async function extractAndCreateDrafts(transcriptId: string): Promise<numb
     data: { claudeInputTokens: extraction.inputTokens, claudeOutputTokens: extraction.outputTokens },
   });
 
+  const chainAssignments = assignChainGroups(extraction.tasks);
+
   let created = 0;
-  for (const item of extraction.tasks) {
+  for (let i = 0; i < extraction.tasks.length; i++) {
+    const item = extraction.tasks[i];
+    const chain = chainAssignments[i];
     const resolvedAssigneeId = await resolveAssignee(item.assignee_id);
     await prisma.voiceTaskDraft.create({
       data: {
@@ -78,6 +125,10 @@ export async function extractAndCreateDrafts(transcriptId: string): Promise<numb
         priority: priorityToTaskPriority(item.priority),
         sourceQuote: item.source_quote,
         createdByAi: true,
+        chainGroupId: chain?.chainGroupId ?? null,
+        chainOrder: chain?.chainOrder ?? null,
+        delayDaysAfterPrevious: chain?.delayDaysAfterPrevious ?? null,
+        chainTitle: chain?.chainTitle ?? null,
       },
     });
     created++;

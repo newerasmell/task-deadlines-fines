@@ -139,14 +139,43 @@ export function VoiceReview() {
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
-            {items.map((draft) => (
-              <DraftCard key={draft.id} draft={draft} employees={employees} readOnly={status !== "DRAFT"} onChanged={refresh} />
-            ))}
+            {partitionChains(items).map((entry) =>
+              entry.kind === "chain" ? (
+                <ChainCard key={entry.chainGroupId} steps={entry.steps} employees={employees} readOnly={status !== "DRAFT"} onChanged={refresh} />
+              ) : (
+                <DraftCard key={entry.draft.id} draft={entry.draft} employees={employees} readOnly={status !== "DRAFT"} onChanged={refresh} />
+              )
+            )}
           </div>
         </div>
       ))}
     </div>
   );
+}
+
+type PartitionedEntry = { kind: "single"; draft: VoiceTaskDraft } | { kind: "chain"; chainGroupId: string; steps: VoiceTaskDraft[] };
+
+// Splits one transcript's drafts into ordinary standalone items and
+// chain groups (drafts sharing a chainGroupId, sorted by chainOrder) — a
+// chain renders as one combined ChainCard instead of N separate DraftCards,
+// since its steps can only be approved together as a single Project.
+function partitionChains(items: VoiceTaskDraft[]): PartitionedEntry[] {
+  const chainMap = new Map<string, VoiceTaskDraft[]>();
+  const singles: VoiceTaskDraft[] = [];
+  for (const d of items) {
+    if (d.chainGroupId) {
+      if (!chainMap.has(d.chainGroupId)) chainMap.set(d.chainGroupId, []);
+      chainMap.get(d.chainGroupId)!.push(d);
+    } else {
+      singles.push(d);
+    }
+  }
+  const chains: PartitionedEntry[] = Array.from(chainMap.entries()).map(([chainGroupId, steps]) => ({
+    kind: "chain",
+    chainGroupId,
+    steps: [...steps].sort((a, b) => (a.chainOrder ?? 0) - (b.chainOrder ?? 0)),
+  }));
+  return [...chains, ...singles.map((draft): PartitionedEntry => ({ kind: "single", draft }))];
 }
 
 function DraftCard({
@@ -276,6 +305,227 @@ function DraftCard({
             </button>
             <button className="secondary" onClick={reject} disabled={submitting}>
               {t("Отхвърли")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ChainStepDraft {
+  draftId: string;
+  title: string;
+  description: string;
+  assigneeId: string;
+  ownerId: string;
+  priority: Priority;
+  deadline: string; // step 0 only
+  delayDays: string; // steps 1+ only
+}
+
+function ChainCard({
+  steps,
+  employees,
+  readOnly,
+  onChanged,
+}: {
+  steps: VoiceTaskDraft[];
+  employees: User[];
+  readOnly: boolean;
+  onChanged: () => void;
+}) {
+  const { t } = useI18n();
+  const [projectTitle, setProjectTitle] = useState(steps[0]?.chainTitle || steps[0]?.title || "");
+  const [stepDrafts, setStepDrafts] = useState<ChainStepDraft[]>(() =>
+    steps.map((s) => ({
+      draftId: s.id,
+      title: s.title,
+      description: s.description ?? "",
+      assigneeId: s.resolvedAssigneeId ?? "",
+      ownerId: "",
+      priority: s.priority,
+      deadline: s.deadline.slice(0, 10),
+      delayDays: s.delayDaysAfterPrevious ? String(s.delayDaysAfterPrevious) : "",
+    }))
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  function updateStep(index: number, patch: Partial<ChainStepDraft>) {
+    setStepDrafts((cur) => cur.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+  }
+
+  async function approveChain() {
+    for (let i = 0; i < stepDrafts.length; i++) {
+      const s = stepDrafts[i];
+      if (!s.assigneeId) return setError(t("Избери изпълнител за стъпка {n}.", { n: i + 1 }));
+      if (i === 0 && !s.deadline) return setError(t("Първата стъпка трябва да има краен срок."));
+      if (i > 0 && !s.delayDays) return setError(t("Стъпка {n} трябва да има брой дни след предходната.", { n: i + 1 }));
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await api(`/voice/chains/${steps[0].chainGroupId}/approve`, {
+        method: "POST",
+        body: JSON.stringify({
+          projectTitle,
+          steps: stepDrafts.map((s, i) => ({
+            draftId: s.draftId,
+            title: s.title,
+            description: s.description || null,
+            assigneeId: s.assigneeId,
+            ownerId: s.ownerId || null,
+            priority: s.priority,
+            deadline: i === 0 ? s.deadline : undefined,
+            delayDays: i > 0 ? Number(s.delayDays) : undefined,
+          })),
+        }),
+      });
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Грешка"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function rejectChain() {
+    if (!window.confirm(t('Наистина ли да отхвърля цялата верига "{title}" ({n} стъпки)?', { title: projectTitle, n: steps.length }))) return;
+    setSubmitting(true);
+    try {
+      await Promise.all(steps.map((s) => api(`/voice/drafts/${s.id}/reject`, { method: "POST" })));
+      onChanged();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ margin: 0, background: "var(--bg)", borderLeft: "4px solid var(--primary)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span className="badge badge-info">🔗 {t("Сложна задача")}</span>
+        <span className="muted small">{t("{n} стъпки", { n: steps.length })}</span>
+      </div>
+
+      {readOnly ? (
+        <div>
+          <strong>{projectTitle}</strong>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+            {steps.map((s, i) => (
+              <div key={s.id} className="card" style={{ margin: 0, padding: "10px 14px" }}>
+                <blockquote className="muted small" style={{ borderLeft: "3px solid var(--border)", paddingLeft: 10, margin: "0 0 8px" }}>
+                  “{s.sourceQuote}”
+                </blockquote>
+                <strong>
+                  {i + 1}. {s.title}
+                </strong>
+                {s.description && <p className="muted small" style={{ margin: "4px 0" }}>{s.description}</p>}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                  <span className="badge">{s.resolvedAssignee?.name ?? t("Неопределен")}</span>
+                  <span className="badge">
+                    {i === 0
+                      ? new Date(s.deadline).toLocaleDateString()
+                      : t("{n} дни след предходната", { n: s.delayDaysAfterPrevious ?? "?" })}
+                  </span>
+                  <span className={PRIORITY_BADGE_CLASS[s.priority]}>{t(PRIORITY_LABELS[s.priority])}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="form">
+          <label>
+            {t("Име на проекта")}
+            <input value={projectTitle} onChange={(e) => setProjectTitle(e.target.value)} disabled={submitting} />
+          </label>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+            {steps.map((s, i) => {
+              const step = stepDrafts[i];
+              return (
+                <div key={s.id} className="card" style={{ margin: 0 }}>
+                  <blockquote className="muted small" style={{ borderLeft: "3px solid var(--border)", paddingLeft: 10, margin: "0 0 10px" }}>
+                    “{s.sourceQuote}”
+                  </blockquote>
+                  <strong className="small">{t("Стъпка {n}", { n: i + 1 })}</strong>
+                  <label style={{ marginTop: 6 }}>
+                    {t("Заглавие")}
+                    <input value={step.title} onChange={(e) => updateStep(i, { title: e.target.value })} disabled={submitting} />
+                  </label>
+                  <label>
+                    {t("Описание")}
+                    <textarea value={step.description} onChange={(e) => updateStep(i, { description: e.target.value })} disabled={submitting} rows={2} />
+                  </label>
+                  <div className="form-row">
+                    <label>
+                      {t("Изпълнител")}
+                      <select value={step.assigneeId} onChange={(e) => updateStep(i, { assigneeId: e.target.value })} disabled={submitting}>
+                        <option value="">{t("— Избери —")}</option>
+                        {employees
+                          .filter((e) => e.active)
+                          .map((e) => (
+                            <option key={e.id} value={e.id}>
+                              {e.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    {i === 0 ? (
+                      <label>
+                        {t("Срок")}
+                        <input type="date" value={step.deadline} onChange={(e) => updateStep(i, { deadline: e.target.value })} disabled={submitting} />
+                      </label>
+                    ) : (
+                      <label>
+                        {t("Дни след предходната стъпка")}
+                        <input
+                          type="number"
+                          min={1}
+                          max={90}
+                          value={step.delayDays}
+                          onChange={(e) => updateStep(i, { delayDays: e.target.value })}
+                          disabled={submitting}
+                        />
+                      </label>
+                    )}
+                    <label>
+                      {t("Приоритет")}
+                      <select value={step.priority} onChange={(e) => updateStep(i, { priority: e.target.value as Priority })} disabled={submitting}>
+                        {(Object.keys(PRIORITY_LABELS) as Priority[]).map((p) => (
+                          <option key={p} value={p}>
+                            {t(PRIORITY_LABELS[p])}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <label>
+                    {t("Owner (по избор — задължителен само ако изпълнителят е самият теб)")}
+                    <select value={step.ownerId} onChange={(e) => updateStep(i, { ownerId: e.target.value })} disabled={submitting}>
+                      <option value="">{t("— Без Owner —")}</option>
+                      {employees
+                        .filter((e) => e.active && e.id !== step.assigneeId)
+                        .map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+
+          {error && <div className="error-text small" style={{ marginTop: 10 }}>{error}</div>}
+          <div className="form-row" style={{ marginTop: 10 }}>
+            <button onClick={approveChain} disabled={submitting}>
+              {t("Одобри веригата")}
+            </button>
+            <button className="secondary" onClick={rejectChain} disabled={submitting}>
+              {t("Отхвърли веригата")}
             </button>
           </div>
         </div>
