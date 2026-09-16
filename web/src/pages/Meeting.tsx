@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { VoiceOutcome } from "../components/VoiceOutcome";
+import { IconGlobe, IconMic, IconPeople, IconVideo } from "../components/icons";
 import { useVoiceUpload } from "../hooks/useVoiceUpload";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
+
+function formatDuration(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 const JITSI_DOMAIN = "meet.jit.si";
 const JITSI_SCRIPT_SRC = `https://${JITSI_DOMAIN}/external_api.js`;
@@ -63,6 +70,7 @@ export function Meeting() {
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [recordError, setRecordError] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const jitsiRef = useRef<JitsiEmbed | null>(null);
@@ -192,32 +200,69 @@ export function Meeting() {
     if (timerRef.current) clearInterval(timerRef.current);
   }
 
+  async function copyInviteLink() {
+    if (!roomName) return;
+    try {
+      await navigator.clipboard.writeText(`https://${JITSI_DOMAIN}/${roomName}`);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // clipboard access can be denied by the browser — the link is still
+      // shown as plain text, so nothing further to do here
+    }
+  }
+
   return (
     <div>
       <div className="page-header">
         <h1>{t("Среща")}</h1>
       </div>
-      <p className="muted">
-        {t(
-          "Започни видео среща направо тук (Jitsi, безплатно, не изисква акаунт) и по желание запиши разговора за автоматично извличане на задачи."
-        )}
-      </p>
 
-      <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="card" style={{ padding: roomName ? 0 : undefined, overflow: "hidden" }}>
         {!roomName && (
-          <div>
-            <button onClick={startMeeting}>{t("Започни среща")}</button>
-            {scriptError && <div className="error-text small" style={{ marginTop: 8 }}>{scriptError}</div>}
+          <div className="meeting-hero">
+            <div className="meeting-icon">
+              <IconVideo size={26} />
+            </div>
+            <h2>{t("Готови ли сте за среща?")}</h2>
+            <p className="muted">
+              {t(
+                "Започни видео среща направо тук (Jitsi, безплатно, не изисква акаунт) и по желание запиши разговора за автоматично извличане на задачи."
+              )}
+            </p>
+            <button className="cta" onClick={startMeeting}>
+              {t("Започни среща")}
+            </button>
+            {scriptError && <div className="error-text small" style={{ marginTop: 12 }}>{scriptError}</div>}
+
+            <div className="meeting-features">
+              <div className="meeting-feature">
+                <IconGlobe size={20} />
+                {t("Безплатно · не изисква акаунт")}
+              </div>
+              <div className="meeting-feature">
+                <IconPeople size={20} />
+                {t("Покани колеги с линк")}
+              </div>
+              <div className="meeting-feature">
+                <IconMic size={20} />
+                {t("По желание: запис → авто-извлечени задачи")}
+              </div>
+            </div>
           </div>
         )}
 
         {roomName && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <p className="muted small" style={{ margin: 0 }}>
-              {t("Покани колеги с връзка")}:{" "}
-              <code>{`https://${JITSI_DOMAIN}/${roomName}`}</code>
-            </p>
-            <button style={{ background: "#e53935" }} onClick={endMeeting}>
+          <div className="meeting-toolbar">
+            <div className="invite-pill">
+              <IconPeople size={15} />
+              {t("Покани колеги с връзка")}:
+              <code>{`${JITSI_DOMAIN}/${roomName}`}</code>
+              <button className="small-btn secondary" onClick={copyInviteLink}>
+                {linkCopied ? t("Копирано ✓") : t("Копирай")}
+              </button>
+            </div>
+            <button className="secondary" onClick={endMeeting}>
               {t("Приключи срещата")}
             </button>
           </div>
@@ -227,37 +272,36 @@ export function Meeting() {
             needs this container to already exist in the DOM before it can
             create the embed and set roomName, so it can't be conditional on
             roomName itself without a chicken-and-egg deadlock. */}
-        <div ref={containerRef} style={{ borderRadius: 8, overflow: "hidden", display: roomName ? "block" : "none" }} />
+        <div ref={containerRef} style={{ display: roomName ? "block" : "none" }} />
 
         {roomName && (
-          <>
+          <div className="meeting-record-bar">
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               {!recording ? (
                 <button onClick={startRecording} disabled={busy}>
                   ⏺ {t("Запиши разговора")}
                 </button>
               ) : (
-                <button style={{ background: "#e53935" }} onClick={stopRecording}>
-                  ⏹ {t("Спри записа")} ({recordSeconds}s)
+                <button className="secondary" onClick={stopRecording}>
+                  ⏹ {t("Спри записа")} ({formatDuration(recordSeconds)})
                 </button>
               )}
               {recording && (
-                <span className="small" style={{ color: "#e53935", fontWeight: 600 }}>
-                  ● {t("Записва се…")}
+                <span className="recording-pill badge badge-danger">
+                  <span className="recording-dot" /> {t("Записва се…")}
                 </span>
               )}
             </div>
-            <p className="muted small" style={{ margin: 0 }}>
+            <p className="notice card small" style={{ margin: 0 }}>
               {t(
                 'При натискане на "Запиши разговора" браузърът ще поиска да избереш кой таб да споделиш — избери ТОЗИ таб и отбележи "Share tab audio" / "Споделяне на звук", за да се запишат всички участници, не само твоят микрофон.'
               )}
             </p>
             {recordError && <div className="error-text small">{recordError}</div>}
-          </>
+            {busy && <p className="muted small">{t("Качване…")}</p>}
+            <VoiceOutcome outcome={outcome} />
+          </div>
         )}
-
-        {busy && <p className="muted small">{t("Качване…")}</p>}
-        <VoiceOutcome outcome={outcome} />
       </div>
     </div>
   );

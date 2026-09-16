@@ -439,4 +439,10 @@ export const en: Record<string, string> = {
   "Среща (запис)": "Meeting (recording)",
   "meet.jit.si се зареди, но не предостави нужния API — вероятно блокиран от ad-blocker/разширение за поверителност. Пробвай да го изключиш за този сайт или отвори в друг браузър.":
     "meet.jit.si loaded but didn't provide the API it should have — likely blocked by an ad-blocker/privacy extension. Try disabling it for this site, or use a different browser.",
+  "Готови ли сте за среща?": "Ready for a meeting?",
+  "Безплатно · не изисква акаунт": "Free · no account needed",
+  "Покани колеги с линк": "Invite colleagues with a link",
+  "По желание: запис → авто-извлечени задачи": "Optional: recording → auto-extracted tasks",
+  "Копирай": "Copy",
+  "Копирано ✓": "Copied ✓",
 };
