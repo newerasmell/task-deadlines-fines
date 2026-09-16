@@ -21,6 +21,22 @@ function pickSupportedMimeType(): string | null {
   return null;
 }
 
+// Rotated well under both Whisper's 25MB hard cap and the server's 10MB
+// sync-vs-background threshold at 128kbps audio (~7.5MB per 8 minutes) —
+// a long meeting never produces one file too big to upload, and each
+// segment stays on the fast synchronous path.
+const SEGMENT_ROTATE_MS = 8 * 60 * 1000;
+
+interface RecordedSegment {
+  index: number;
+  sessionId: string;
+  filename: string;
+  blob: Blob;
+  mimeType: string;
+  isFinal: boolean;
+  status: "uploading" | "done" | "error";
+}
+
 function randomRoomName(): string {
   return `todf-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36)}`;
 }
@@ -80,18 +96,27 @@ export function Meeting() {
   const [recordError, setRecordError] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  const [segments, setSegments] = useState<RecordedSegment[]>([]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const jitsiRef = useRef<JitsiEmbed | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const displayStreamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const audioStreamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const segmentIndexRef = useRef(0);
+  const isFinalStopRef = useRef(false);
+  const mimeTypeRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
       jitsiRef.current?.dispose();
       if (timerRef.current) clearInterval(timerRef.current);
+      if (rotateTimerRef.current) clearTimeout(rotateTimerRef.current);
       displayStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+      audioStreamRef.current?.getTracks().forEach((tr) => tr.stop());
     };
   }, []);
 
@@ -190,34 +215,18 @@ export function Meeting() {
       }
       displayStream.getVideoTracks().forEach((tr) => tr.stop()); // video only needed for the picker, discard it
       displayStreamRef.current = displayStream;
+      audioStreamRef.current = new MediaStream(audioTracks);
+      mimeTypeRef.current = mimeType;
+      sessionIdRef.current = crypto.randomUUID();
+      segmentIndexRef.current = 0;
+      isFinalStopRef.current = false;
+      setSegments([]);
 
-      const audioOnlyStream = new MediaStream(audioTracks);
-      // Explicit bitrate — getDisplayMedia's audio track otherwise inherits
-      // whatever low default the browser picks for a "screen share" stream
-      // (tuned for a video call's secondary audio channel, not for a clean
-      // source recording), which loses a lot of the source material.
-      const recorder = new MediaRecorder(audioOnlyStream, { mimeType, audioBitsPerSecond: 128_000 });
-      chunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        displayStreamRef.current?.getTracks().forEach((tr) => tr.stop());
-        displayStreamRef.current = null;
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("aac") ? "aac" : "webm";
-        void submit(new File([blob], `meeting-${Date.now()}.${ext}`, { type: mimeType }), "meet");
-      };
       // If the user stops sharing from the browser's own "Stop sharing" bar
       // instead of our button, treat that the same as clicking "Спри".
       audioTracks[0].addEventListener("ended", () => stopRecording());
 
-      mediaRecorderRef.current = recorder;
-      // A timeslice makes the recorder flush a chunk every second instead
-      // of buffering the whole call in memory for one single flush at the
-      // end — steadier for a longer call, and nothing is lost if the tab
-      // gets backgrounded or something else goes wrong mid-recording.
-      recorder.start(1000);
+      beginSegment();
       setRecording(true);
       setRecordSeconds(0);
       timerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
@@ -226,10 +235,86 @@ export function Meeting() {
     }
   }
 
+  // One MediaRecorder start()/stop() cycle produces its own complete,
+  // independently valid audio file — unlike slicing one long recording's
+  // raw bytes afterward, which would corrupt the container framing. A call
+  // longer than SEGMENT_ROTATE_MS therefore rotates through several of
+  // these automatically, on the same underlying audio stream (no repeat
+  // "share this tab" prompt), so no single upload can exceed Whisper's
+  // 25MB cap the way one long continuous recording eventually would.
+  function beginSegment() {
+    const stream = audioStreamRef.current;
+    const mimeType = mimeTypeRef.current;
+    const sessionId = sessionIdRef.current;
+    if (!stream || !mimeType || !sessionId) return;
+
+    const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 128_000 });
+    const localChunks: Blob[] = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) localChunks.push(e.data);
+    };
+    recorder.onstop = () => {
+      const isFinal = isFinalStopRef.current;
+      const blob = new Blob(localChunks, { type: mimeType });
+      const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("aac") ? "aac" : "webm";
+      const index = segmentIndexRef.current;
+      segmentIndexRef.current += 1;
+      const filename = `meeting-${sessionId}-${index}.${ext}`;
+
+      // Kept and shown regardless of upload outcome — this is the safety
+      // net that used to be missing: a segment that fails to upload (too
+      // big, network drop, server error) is never silently gone, it just
+      // sits here downloadable/retryable until the person deals with it.
+      const segment: RecordedSegment = { index, sessionId, filename, blob, mimeType, isFinal, status: "uploading" };
+      setSegments((prev) => [...prev, segment]);
+      void uploadSegment(segment);
+
+      if (isFinal) {
+        audioStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+        audioStreamRef.current = null;
+        displayStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+        displayStreamRef.current = null;
+        setRecording(false);
+        if (timerRef.current) clearInterval(timerRef.current);
+      } else {
+        beginSegment();
+      }
+    };
+
+    mediaRecorderRef.current = recorder;
+    // A timeslice makes the recorder flush a chunk every second instead of
+    // buffering the whole segment in memory for one single flush at the
+    // end — nothing is lost if the tab gets backgrounded mid-segment.
+    recorder.start(1000);
+    rotateTimerRef.current = setTimeout(() => {
+      if (mediaRecorderRef.current === recorder) recorder.stop();
+    }, SEGMENT_ROTATE_MS);
+  }
+
+  async function uploadSegment(segment: RecordedSegment) {
+    const file = new File([segment.blob], segment.filename, { type: segment.mimeType });
+    const result = await submit(file, "meet", { sessionId: segment.sessionId, final: segment.isFinal });
+    setSegments((prev) => prev.map((s) => (s.index === segment.index ? { ...s, status: result.ok ? "done" : "error" } : s)));
+  }
+
+  function retrySegment(segment: RecordedSegment) {
+    setSegments((prev) => prev.map((s) => (s.index === segment.index ? { ...s, status: "uploading" } : s)));
+    void uploadSegment(segment);
+  }
+
+  function downloadSegment(segment: RecordedSegment) {
+    const url = URL.createObjectURL(segment.blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = segment.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function stopRecording() {
+    isFinalStopRef.current = true;
+    if (rotateTimerRef.current) clearTimeout(rotateTimerRef.current);
     mediaRecorderRef.current?.stop();
-    setRecording(false);
-    if (timerRef.current) clearInterval(timerRef.current);
   }
 
   async function copyInviteLink() {
@@ -355,12 +440,36 @@ export function Meeting() {
             </div>
             <p className="notice card small" style={{ margin: 0 }}>
               {t(
-                'При натискане на "Запиши разговора" браузърът ще поиска да избереш кой таб да споделиш — избери ТОЗИ таб и отбележи "Share tab audio" / "Споделяне на звук", за да се запишат всички участници, не само твоят микрофон.'
+                'При натискане на "Запиши разговора" браузърът ще поиска да избереш кой таб да споделиш — избери ТОЗИ таб и отбележи "Share tab audio" / "Споделяне на звук", за да се запишат всички участници, не само твоят микрофон. При по-дълъг разговор записът автоматично се разделя на части при качване — всяка част остава свалима локално, ако качването ѝ се провали, така че нищо не се губи.'
               )}
             </p>
             {recordError && <div className="error-text small">{recordError}</div>}
+            {segments.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {segments.map((seg) => (
+                  <div key={seg.index} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span className="small">{t("Част {n}", { n: String(seg.index + 1) })}</span>
+                    <span
+                      className={
+                        seg.status === "error" ? "badge badge-danger" : seg.status === "done" ? "badge badge-success" : "badge"
+                      }
+                    >
+                      {seg.status === "uploading" ? t("Качва се…") : seg.status === "done" ? t("Качено") : t("Грешка при качване")}
+                    </span>
+                    <button type="button" className="small-btn" onClick={() => downloadSegment(seg)}>
+                      {t("Свали локално")}
+                    </button>
+                    {seg.status === "error" && (
+                      <button type="button" className="small-btn" onClick={() => retrySegment(seg)}>
+                        {t("Опитай пак")}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {busy && <p className="muted small">{t("Качване…")}</p>}
-            <VoiceOutcome outcome={outcome} />
+            {!recording && <VoiceOutcome outcome={outcome} />}
           </div>
         )}
       </div>

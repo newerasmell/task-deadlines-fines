@@ -443,10 +443,16 @@ export const en: Record<string, string> = {
   "Покани колеги с връзка": "Invite colleagues with this link",
   "Запиши разговора": "Record the call",
   "Спри записа": "Stop recording",
-  'При натискане на "Запиши разговора" браузърът ще поиска да избереш кой таб да споделиш — избери ТОЗИ таб и отбележи "Share tab audio" / "Споделяне на звук", за да се запишат всички участници, не само твоят микрофон.':
-    'When you click "Record the call" the browser will ask which tab to share — pick THIS tab and tick "Share tab audio", so everyone on the call gets recorded, not just your microphone.',
+  'При натискане на "Запиши разговора" браузърът ще поиска да избереш кой таб да споделиш — избери ТОЗИ таб и отбележи "Share tab audio" / "Споделяне на звук", за да се запишат всички участници, не само твоят микрофон. При по-дълъг разговор записът автоматично се разделя на части при качване — всяка част остава свалима локално, ако качването ѝ се провали, така че нищо не се губи.':
+    'When you click "Record the call" the browser will ask which tab to share — pick THIS tab and tick "Share tab audio", so everyone on the call gets recorded, not just your microphone. For a longer call the recording is automatically split into parts as it uploads — each part stays downloadable locally if its upload fails, so nothing gets lost.',
   'Няма избран звук — при споделянето трябва да отбележиш "Share tab audio" / "Споделяне на звук".':
     'No audio was shared — when sharing you must tick "Share tab audio".',
+  "Част {n}": "Part {n}",
+  "Качва се…": "Uploading…",
+  "Качено": "Uploaded",
+  "Грешка при качване": "Upload failed",
+  "Свали локално": "Download locally",
+  "Опитай пак": "Retry",
   "Споделянето на таба е отказано или недостъпно.": "Tab sharing was denied or unavailable.",
   "Неуспешно зареждане на meet.jit.si": "Failed to load meet.jit.si",
   "Среща (запис)": "Meeting (recording)",

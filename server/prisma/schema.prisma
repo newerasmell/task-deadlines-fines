@@ -463,6 +463,12 @@ model VoiceTranscript {
   // Google Drive file id for a Meet recording — unique so the same
   // recording is never processed twice across polling cycles (Phase 4).
   meetRecordingId    String?  @unique
+  // Client-generated id shared by every audio segment of one continuous
+  // in-app meeting recording rotated into sub-25MB chunks (see
+  // Meeting.tsx / transcribeAndStore) — one row per session; segments
+  // after the first are appended into transcriptText instead of each
+  // creating their own row. Null for a plain one-shot upload/dictation.
+  meetingSessionId   String?  @unique
   transcriptText     String
   durationSeconds    Int?
   languageDetected   String?

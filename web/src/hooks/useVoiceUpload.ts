@@ -41,17 +41,32 @@ export function useVoiceUpload() {
     }, 4000);
   }
 
-  async function submit(file: File, source: "upload" | "dictation" | "meet" = "upload") {
+  // segment is set only for one chunk of a rotated, multi-part meeting
+  // recording (see Meeting.tsx) — a non-final segment is transcribed and
+  // appended server-side but doesn't run extraction or touch `outcome`
+  // (nothing new to show yet), so the caller can silently upload segments
+  // in the background and only surface a result once the final one lands.
+  async function submit(
+    file: File,
+    source: "upload" | "dictation" | "meet" = "upload",
+    segment?: { sessionId: string; final: boolean }
+  ): Promise<{ ok: boolean }> {
     setBusy(true);
-    setOutcome(null);
+    if (!segment || segment.final) setOutcome(null);
     try {
       const form = new FormData();
       form.append("file", file);
       form.append("source", source);
+      if (segment) {
+        form.append("sessionId", segment.sessionId);
+        form.append("final", segment.final ? "true" : "false");
+      }
       const res = await apiUpload<
         | { ok: true; sync: true; transcriptId: string; draftsCreated: number }
         | { ok: true; sync: false; jobId: string }
       >("/voice/transcribe", form);
+
+      if (segment && !segment.final) return { ok: true };
 
       if (res.sync) {
         setOutcome({ kind: "sync", transcriptId: res.transcriptId, draftsCreated: res.draftsCreated });
@@ -59,8 +74,12 @@ export function useVoiceUpload() {
         setOutcome({ kind: "job", status: "PENDING", errorMessage: null });
         pollJob(res.jobId);
       }
+      return { ok: true };
     } catch (err) {
-      setOutcome({ kind: "error", message: err instanceof Error ? err.message : t("Грешка при разпознаване — опитай отново.") });
+      if (!segment || segment.final) {
+        setOutcome({ kind: "error", message: err instanceof Error ? err.message : t("Грешка при разпознаване — опитай отново.") });
+      }
+      return { ok: false };
     } finally {
       setBusy(false);
     }

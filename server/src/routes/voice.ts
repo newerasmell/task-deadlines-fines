@@ -53,12 +53,22 @@ voiceRouter.post("/transcribe", handleAudioUpload, async (req, res) => {
   const sourceRaw = (typeof req.body.source === "string" ? req.body.source.toUpperCase() : "UPLOAD") as VoiceSource;
   const source = SOURCES.includes(sourceRaw) ? sourceRaw : "UPLOAD";
 
+  // A long in-app meeting recording is rotated client-side into several
+  // sub-25MB segments sharing one sessionId (see Meeting.tsx) rather than
+  // uploaded as one file that would exceed Whisper's hard cap — every
+  // segment is transcribed and appended, but extraction only runs once,
+  // on the segment the client marks final.
+  const sessionId = typeof req.body.sessionId === "string" && req.body.sessionId ? req.body.sessionId : null;
+  const isFinalSegment = req.body.final !== "false";
+
   const input = {
     buffer: req.file.buffer,
     filename: req.file.originalname || `recording-${Date.now()}.webm`,
     mimeType: req.file.mimetype,
     source,
     createdById: req.user!.sub,
+    meetingSessionId: sessionId,
+    isFinalSegment,
   };
 
   // Short recordings are processed inline — a few seconds of Whisper +
@@ -68,6 +78,9 @@ voiceRouter.post("/transcribe", handleAudioUpload, async (req, res) => {
   if (req.file.size <= env.voiceSyncMaxBytes) {
     try {
       const transcriptId = await transcribeAndStore(input);
+      if (sessionId && !isFinalSegment) {
+        return res.json({ ok: true, sync: true, transcriptId, draftsCreated: 0, segment: true, final: false });
+      }
       const draftsCreated = await extractAndCreateDrafts(transcriptId);
       return res.json({ ok: true, sync: true, transcriptId, draftsCreated });
     } catch (err) {

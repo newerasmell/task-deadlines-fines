@@ -16,6 +16,13 @@ export interface TranscribeInput {
   // when that text is already in hand, skip Whisper entirely rather than
   // re-transcribing audio that's already been transcribed once for free.
   pregivenTranscriptText?: string | null;
+  // Multi-segment in-app meeting recording (see Meeting.tsx): a long
+  // recording is rotated client-side into sub-25MB chunks sharing this id,
+  // each uploaded as its own request rather than one file that would blow
+  // past Whisper's hard 25MB cap. isFinalSegment marks the last one, which
+  // is when extraction actually runs (see POST /voice/transcribe).
+  meetingSessionId?: string | null;
+  isFinalSegment?: boolean;
 }
 
 export async function transcribeAndStore(input: TranscribeInput): Promise<string> {
@@ -23,11 +30,27 @@ export async function transcribeAndStore(input: TranscribeInput): Promise<string
     ? { text: input.pregivenTranscriptText, language: undefined, durationSeconds: undefined }
     : await transcribeAudio(input.buffer, input.filename, input.mimeType);
 
+  if (input.meetingSessionId) {
+    const existing = await prisma.voiceTranscript.findUnique({ where: { meetingSessionId: input.meetingSessionId } });
+    if (existing) {
+      const updated = await prisma.voiceTranscript.update({
+        where: { id: existing.id },
+        data: {
+          transcriptText: `${existing.transcriptText}\n${result.text}`,
+          durationSeconds: (existing.durationSeconds ?? 0) + (result.durationSeconds ?? 0),
+          whisperCostUsd: (existing.whisperCostUsd ?? 0) + (estimateWhisperCostUsd(result.durationSeconds) ?? 0),
+        },
+      });
+      return updated.id;
+    }
+  }
+
   const transcript = await prisma.voiceTranscript.create({
     data: {
       source: input.source,
       originalFilename: input.filename,
       meetRecordingId: input.meetRecordingId ?? null,
+      meetingSessionId: input.meetingSessionId ?? null,
       transcriptText: result.text,
       durationSeconds: result.durationSeconds ?? null,
       languageDetected: result.language ?? null,
@@ -154,7 +177,12 @@ export async function processJobInBackground(jobId: string, input: TranscribeInp
     await prisma.voiceProcessingJob.update({ where: { id: jobId }, data: { status: "TRANSCRIBING" } });
     const transcriptId = await transcribeAndStore(input);
     await prisma.voiceProcessingJob.update({ where: { id: jobId }, data: { status: "EXTRACTING", transcriptId } });
-    await extractAndCreateDrafts(transcriptId);
+    // A non-final segment of a multi-part meeting recording is transcribed
+    // and appended, but extraction only runs once, on the final segment —
+    // Claude needs the whole conversation, not a fragment of it.
+    if (!input.meetingSessionId || input.isFinalSegment) {
+      await extractAndCreateDrafts(transcriptId);
+    }
     await prisma.voiceProcessingJob.update({ where: { id: jobId }, data: { status: "DONE" } });
   } catch (err) {
     await prisma.voiceProcessingJob
