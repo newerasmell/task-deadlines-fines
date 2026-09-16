@@ -103,6 +103,21 @@ voiceRouter.get("/transcripts/:id", async (req, res) => {
   res.json(transcript);
 });
 
+// Most recent transcripts regardless of how many drafts they produced —
+// the drafts-grouped list on the review page has nothing to show for a
+// recording that extracted zero tasks, which makes "why did this find
+// nothing" impossible to debug without this. Whisper's raw output is the
+// first thing worth checking when extraction comes back empty.
+voiceRouter.get("/transcripts", async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 20, 50);
+  const transcripts = await prisma.voiceTranscript.findMany({
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: { _count: { select: { drafts: true } } },
+  });
+  res.json(transcripts);
+});
+
 voiceRouter.get("/jobs/:id", async (req, res) => {
   const job = await prisma.voiceProcessingJob.findUnique({ where: { id: req.params.id } });
   if (!job) return res.status(404).json({ error: "Not found" });

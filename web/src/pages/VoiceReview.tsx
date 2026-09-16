@@ -34,6 +34,10 @@ const PRIORITY_BAR_COLOR: Record<Priority, string> = {
   CRITICAL: "var(--danger)",
 };
 
+interface RecentTranscript extends VoiceTranscript {
+  _count: { drafts: number };
+}
+
 export function VoiceReview() {
   const { t } = useI18n();
   const [status, setStatus] = useState<VoiceDraftStatus>("DRAFT");
@@ -42,6 +46,12 @@ export function VoiceReview() {
   const [loading, setLoading] = useState(true);
   const [expandedTranscript, setExpandedTranscript] = useState<string | null>(null);
   const [transcriptText, setTranscriptText] = useState<Record<string, VoiceTranscript>>({});
+  // The drafts-grouped list below has nothing to show for a recording that
+  // extracted zero tasks — this is the only way to see what Whisper
+  // actually heard in that case, to tell "bad audio" from "Claude found
+  // nothing actionable" apart.
+  const [recentTranscripts, setRecentTranscripts] = useState<RecentTranscript[]>([]);
+  const [showRecent, setShowRecent] = useState(false);
 
   async function refresh() {
     setDrafts(await api<VoiceTaskDraft[]>(`/voice/drafts?status=${status}`));
@@ -54,6 +64,10 @@ export function VoiceReview() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
+
+  useEffect(() => {
+    api<RecentTranscript[]>("/voice/transcripts?limit=20").then(setRecentTranscripts);
+  }, []);
 
   async function toggleTranscript(id: string | null) {
     if (!id) return;
@@ -107,6 +121,41 @@ export function VoiceReview() {
             {t(STATUS_LABELS[s])}
           </button>
         ))}
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <button className="small-btn secondary" onClick={() => setShowRecent((s) => !s)}>
+          {showRecent ? t("Скрий последните разговори") : t("Покажи последните разговори (вкл. без намерени задачи)")}
+        </button>
+        {showRecent && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+            {recentTranscripts.length === 0 && <p className="muted small">{t("Няма разговори още.")}</p>}
+            {recentTranscripts.map((tr) => (
+              <div key={tr.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span className="badge badge-info">{t(SOURCE_LABELS[tr.source] ?? tr.source)}</span>
+                  <span className="muted small">{new Date(tr.createdAt).toLocaleString()}</span>
+                  <span className={tr._count.drafts > 0 ? "badge badge-success" : "badge"}>
+                    {t("{n} задачи", { n: String(tr._count.drafts) })}
+                  </span>
+                  <button className="small-btn secondary" onClick={() => toggleTranscript(tr.id)}>
+                    {expandedTranscript === tr.id ? t("Скрий транскрипта") : t("Покажи транскрипта")}
+                  </button>
+                </div>
+                {expandedTranscript === tr.id && (
+                  <p
+                    className="muted small"
+                    style={{ whiteSpace: "pre-wrap", background: "var(--bg)", padding: 10, borderRadius: 6, marginTop: 8 }}
+                  >
+                    {transcriptText[tr.id]
+                      ? transcriptText[tr.id].transcriptText || t("(празен транскрипт — Whisper не е разпознал говор)")
+                      : t("Зареждане…")}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {groups.length === 0 && <p className="muted">{t("Няма чернови тук.")}</p>}
