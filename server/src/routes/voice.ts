@@ -27,6 +27,7 @@ voiceRouter.use(requireAdmin);
 
 const draftInclude = {
   resolvedAssignee: { select: { id: true, name: true, email: true } },
+  resolvedOwner: { select: { id: true, name: true, email: true } },
   transcript: { select: { id: true, source: true, originalFilename: true, createdAt: true } },
 } as const;
 
@@ -208,7 +209,13 @@ voiceRouter.post("/drafts/:id/approve", async (req, res) => {
   if (!draft) return res.status(404).json({ error: "Not found" });
   if (draft.status !== "DRAFT") return res.status(400).json({ error: "Тази чернова вече е обработена" });
 
-  if (parsed.data.ownerId && parsed.data.ownerId === parsed.data.assigneeId) {
+  // If the admin's request never mentions ownerId at all (undefined, not
+  // explicitly null), fall back to whatever Claude suggested from the
+  // transcript rather than silently dropping it — an explicit null (the
+  // admin cleared the field) or a specific id both still win over that.
+  const ownerId = parsed.data.ownerId !== undefined ? parsed.data.ownerId : draft.resolvedOwnerId;
+
+  if (ownerId && ownerId === parsed.data.assigneeId) {
     return res.status(400).json({ error: "Owner-ът не може да е самият изпълнител" });
   }
 
@@ -218,7 +225,7 @@ voiceRouter.post("/drafts/:id/approve", async (req, res) => {
       title: parsed.data.title ?? draft.title,
       description: parsed.data.description ?? draft.description,
       assigneeId: parsed.data.assigneeId,
-      ownerId: parsed.data.ownerId ?? null,
+      ownerId,
       deadline: parsed.data.deadline ?? draft.deadline,
       priority: parsed.data.priority ?? (draft.priority as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"),
       createdById: req.user!.sub,
@@ -233,6 +240,7 @@ voiceRouter.post("/drafts/:id/approve", async (req, res) => {
       title: parsed.data.title ?? draft.title,
       description: parsed.data.description ?? draft.description,
       resolvedAssigneeId: parsed.data.assigneeId,
+      resolvedOwnerId: ownerId,
       deadline: parsed.data.deadline ?? draft.deadline,
       priority: parsed.data.priority ?? draft.priority,
       status: "APPROVED",

@@ -100,6 +100,7 @@ model User {
   voiceTranscriptsCreated     VoiceTranscript[]       @relation("VoiceTranscriptCreatedBy")
   voiceJobsCreated            VoiceProcessingJob[]    @relation("VoiceJobCreatedBy")
   voiceDraftsResolvedAssignee VoiceTaskDraft[]        @relation("VoiceDraftResolvedAssignee")
+  voiceDraftsResolvedOwner    VoiceTaskDraft[]        @relation("VoiceDraftResolvedOwner")
 }
 
 // A tracked recurring cost with its own due date — a domain, phone number,
@@ -512,6 +513,14 @@ model VoiceTaskDraft {
   // (see POST /voice/drafts/:id/approve).
   resolvedAssigneeId String?
   resolvedAssignee   User?   @relation("VoiceDraftResolvedAssignee", fields: [resolvedAssigneeId], references: [id])
+
+  // Same idea as assigneeKey/resolvedAssigneeId above, but for a reviewing
+  // Owner — set only when the transcript explicitly names someone to
+  // review/approve the work (e.g. "предай на Ани за преглед"), never
+  // inferred otherwise. Null for the vast majority of drafts.
+  ownerKey        String?
+  resolvedOwnerId String?
+  resolvedOwner   User?   @relation("VoiceDraftResolvedOwner", fields: [resolvedOwnerId], references: [id])
 
   deadline    DateTime
   priority    String   @default("MEDIUM")

@@ -103,11 +103,12 @@ function assignChainGroups(tasks: ExtractedTask[]): (ChainAssignment | null)[] {
   });
 }
 
-// Confirms an extracted assignee_id is actually a real, still-active user —
-// Claude was given the live roster and told to echo back one of those ids
-// verbatim, but never trust that blindly (a stale/hallucinated id, or the
-// literal "unassigned", both just leave the draft unassigned for the admin
-// to pick on the review screen; never blocks draft creation either way).
+// Confirms an extracted assignee_id (or owner_id) is actually a real,
+// still-active user — Claude was given the live roster and told to echo
+// back one of those ids verbatim, but never trust that blindly (a stale/
+// hallucinated id, or the literal "unassigned", both just leave the field
+// unset for the admin to pick on the review screen; never blocks draft
+// creation either way).
 async function resolveAssignee(id: string | null | undefined): Promise<string | null> {
   if (!id || id === "unassigned") return null;
   const user = await prisma.user.findFirst({ where: { id, active: true } });
@@ -137,6 +138,12 @@ export async function extractAndCreateDrafts(transcriptId: string): Promise<numb
     const item = extraction.tasks[i];
     const chain = chainAssignments[i];
     const resolvedAssigneeId = await resolveAssignee(item.assignee_id);
+    // A resolved owner is never allowed to equal the resolved assignee
+    // (same rule POST /voice/drafts/:id/approve enforces) — if Claude ever
+    // slips and names the same person for both, drop the owner rather than
+    // create a draft the admin can't approve as-is.
+    const resolvedOwnerIdRaw = await resolveAssignee(item.owner_id);
+    const resolvedOwnerId = resolvedOwnerIdRaw && resolvedOwnerIdRaw !== resolvedAssigneeId ? resolvedOwnerIdRaw : null;
     await prisma.voiceTaskDraft.create({
       data: {
         transcriptId,
@@ -144,6 +151,8 @@ export async function extractAndCreateDrafts(transcriptId: string): Promise<numb
         description: item.description ?? null,
         assigneeKey: item.assignee_id,
         resolvedAssigneeId,
+        ownerKey: item.owner_id ?? null,
+        resolvedOwnerId,
         deadline: resolveDeadline(item.deadline),
         priority: priorityToTaskPriority(item.priority),
         sourceQuote: item.source_quote,

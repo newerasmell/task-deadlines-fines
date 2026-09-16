@@ -242,6 +242,7 @@ function DraftCard({
   const [title, setTitle] = useState(draft.title);
   const [description, setDescription] = useState(draft.description ?? "");
   const [assigneeId, setAssigneeId] = useState(draft.resolvedAssigneeId ?? "");
+  const [ownerId, setOwnerId] = useState(draft.resolvedOwnerId ?? "");
   const [deadline, setDeadline] = useState(draft.deadline.slice(0, 10));
   const [priority, setPriority] = useState<Priority>(draft.priority);
   const [error, setError] = useState<string | null>(null);
@@ -250,6 +251,10 @@ function DraftCard({
   async function approve() {
     if (!assigneeId) {
       setError(t("Избери изпълнител, преди да одобриш."));
+      return;
+    }
+    if (ownerId && ownerId === assigneeId) {
+      setError(t("Owner-ът не може да е самият изпълнител"));
       return;
     }
     setError(null);
@@ -261,6 +266,7 @@ function DraftCard({
           title,
           description: description || null,
           assigneeId,
+          ownerId: ownerId || null,
           deadline,
           priority,
         }),
@@ -304,6 +310,9 @@ function DraftCard({
             <span className="badge">
               {draft.resolvedAssignee?.name ?? t("Неопределен")}
             </span>
+            {draft.resolvedOwner && (
+              <span className="badge badge-info">{t("Owner: {name}", { name: draft.resolvedOwner.name })}</span>
+            )}
             <span className="badge">{new Date(draft.deadline).toLocaleDateString()}</span>
             <span className={PRIORITY_BADGE_CLASS[draft.priority]}>{t(PRIORITY_LABELS[draft.priority])}</span>
           </div>
@@ -347,6 +356,19 @@ function DraftCard({
               </select>
             </label>
           </div>
+          <label>
+            {t("Owner (по избор — само ако разговорът изрично спомене преглеждащ)")}
+            <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} disabled={submitting}>
+              <option value="">{t("— Без Owner —")}</option>
+              {employees
+                .filter((e) => e.active && e.id !== assigneeId)
+                .map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+            </select>
+          </label>
           {error && <div className="error-text small">{error}</div>}
           <div className="form-row" style={{ marginTop: 4 }}>
             <button onClick={approve} disabled={submitting}>

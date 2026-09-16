@@ -306,6 +306,11 @@ export interface VoiceTaskDraft {
   assigneeKey: string | null;
   resolvedAssigneeId: string | null;
   resolvedAssignee: UserRef | null;
+  // Set only when the transcript explicitly named someone to review/approve
+  // the work — most drafts leave this null (see taskExtraction.ts's owner_id).
+  ownerKey: string | null;
+  resolvedOwnerId: string | null;
+  resolvedOwner: UserRef | null;
   deadline: string;
   priority: Priority;
   status: VoiceDraftStatus;

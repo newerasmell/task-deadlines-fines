@@ -485,7 +485,9 @@ export const en: Record<string, string> = {
   'Наистина ли да отхвърля цялата верига "{title}" ({n} стъпки)?': 'Really reject the whole chain "{title}" ({n} steps)?',
   "{n} дни след предходната": "{n} days after the previous one",
   "Owner (по избор — задължителен само ако изпълнителят е самият теб)": "Owner (optional — required only if you're the assignee yourself)",
+  "Owner (по избор — само ако разговорът изрично спомене преглеждащ)": "Owner (optional — only if the recording explicitly names a reviewer)",
   "— Без Owner —": "— No Owner —",
+  "Owner: {name}": "Owner: {name}",
   "Одобри веригата": "Approve the chain",
   "Отхвърли веригата": "Reject the chain",
 };
