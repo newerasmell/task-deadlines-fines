@@ -24,6 +24,7 @@ const publicUser = {
   viberUserId: true,
   googleCalendarId: true,
   voiceAssignmentNotes: true,
+  voiceAssignOnlyWhenNamed: true,
   createdAt: true,
 } as const;
 
@@ -79,6 +80,7 @@ const createSchema = z.object({
   viberUserId: z.string().optional(),
   googleCalendarId: z.string().optional(),
   voiceAssignmentNotes: z.string().optional(),
+  voiceAssignOnlyWhenNamed: z.boolean().optional(),
 });
 
 usersRouter.post("/", requireAdmin, async (req, res) => {
@@ -121,6 +123,7 @@ const updateSchema = z.object({
   viberUserId: z.string().nullable().optional(),
   googleCalendarId: z.string().nullable().optional(),
   voiceAssignmentNotes: z.string().nullable().optional(),
+  voiceAssignOnlyWhenNamed: z.boolean().optional(),
 });
 
 // Admins can edit anyone; employees can edit their own contact channels only.
@@ -145,7 +148,7 @@ usersRouter.patch("/:id", async (req, res) => {
   const data: Record<string, unknown> = { ...parsed.data };
   if (req.user!.role !== "ADMIN") {
     // Employees may only touch their own notification identities, plus their own email/password.
-    for (const key of ["name", "role", "active", "isSuperAdmin", "canAssignTasks", "canAccessSubscriptions", "voiceAssignmentNotes"])
+    for (const key of ["name", "role", "active", "isSuperAdmin", "canAssignTasks", "canAccessSubscriptions", "voiceAssignmentNotes", "voiceAssignOnlyWhenNamed"])
       delete data[key];
   } else if (!req.user!.isSuperAdmin) {
     for (const key of ["role", "isSuperAdmin", "canAssignTasks", "canAccessSubscriptions"]) delete data[key];

@@ -58,6 +58,14 @@ model User {
   // explicitly (see src/lib/taskExtraction.ts). Purely descriptive, not a
   // permission; any Admin can edit it, not just a super admin.
   voiceAssignmentNotes String?
+  // When true, Claude is told never to infer this person as an assignee
+  // from context alone — only ever use them when the transcript names them
+  // explicitly. For an owner/leadership account whose "responsibilities"
+  // text would otherwise superficially match all sorts of tasks (e.g.
+  // "final say on quality/refunds"), or an account whose role isn't
+  // defined yet, this stops a task from silently landing on them just
+  // because their description sounds like a plausible fit.
+  voiceAssignOnlyWhenNamed Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

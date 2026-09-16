@@ -408,6 +408,8 @@ export const en: Record<string, string> = {
     "e.g. design work, posting schedule, visual content — the more specific, the more accurately the AI will route unnamed tasks to them",
   "Използва се само при „Задачи от разговор“ — помага на AI-то да познае на кого да възложи задача, която не назовава конкретен човек.":
     "Only used by \"Tasks from a recording\" — helps the AI guess who a task should go to when it doesn't name anyone explicitly.",
+  "Задачи от разговор да се възлагат на този човек само ако е изрично споменат по име (никога автоматично по описанието по-горе)":
+    "Tasks from a recording should only go to this person when they're explicitly named (never automatically, based on the description above)",
 
   // Voice-to-tasks: Google Meet panel
   "Не е конфигуриран — за автоматично внасяне на записи от Google Meet трябва да зададеш GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET и GOOGLE_REFRESH_TOKEN.":

@@ -216,6 +216,7 @@ function EmployeeForm({
   const [whatsappPhone, setWhatsappPhone] = useState(user?.whatsappPhone ?? "");
   const [viberUserId, setViberUserId] = useState(user?.viberUserId ?? "");
   const [voiceAssignmentNotes, setVoiceAssignmentNotes] = useState(user?.voiceAssignmentNotes ?? "");
+  const [voiceAssignOnlyWhenNamed, setVoiceAssignOnlyWhenNamed] = useState(user?.voiceAssignOnlyWhenNamed ?? false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -245,6 +246,7 @@ function EmployeeForm({
             email: email !== user.email ? email : undefined,
             password: password || undefined,
             voiceAssignmentNotes: voiceAssignmentNotes || null,
+            voiceAssignOnlyWhenNamed,
             ...permissions,
             ...channels,
           }),
@@ -258,6 +260,7 @@ function EmployeeForm({
             password,
             role: isSuperAdmin ? role : "EMPLOYEE",
             voiceAssignmentNotes: voiceAssignmentNotes || undefined,
+            voiceAssignOnlyWhenNamed,
             ...permissions,
             ...channels,
           }),
@@ -325,6 +328,14 @@ function EmployeeForm({
       <p className="muted small" style={{ marginTop: -8 }}>
         {t("Използва се само при „Задачи от разговор“ — помага на AI-то да познае на кого да възложи задача, която не назовава конкретен човек.")}
       </p>
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={voiceAssignOnlyWhenNamed}
+          onChange={(e) => setVoiceAssignOnlyWhenNamed(e.target.checked)}
+        />
+        {t("Задачи от разговор да се възлагат на този човек само ако е изрично споменат по име (никога автоматично по описанието по-горе)")}
+      </label>
 
       {isSuperAdmin && (
         <>

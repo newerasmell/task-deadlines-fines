@@ -28,6 +28,7 @@ export interface User {
   viberUserId: string | null;
   googleCalendarId: string | null;
   voiceAssignmentNotes: string | null;
+  voiceAssignOnlyWhenNamed: boolean;
   createdAt: string;
 }
 
