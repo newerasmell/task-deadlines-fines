@@ -3,8 +3,10 @@ import type { ChangeEvent } from "react";
 import { api } from "../api/client";
 import type { GoogleMeetStatus } from "../api/types";
 import { VoiceOutcome } from "../components/VoiceOutcome";
+import { IconGlobe, IconInbox, IconMic } from "../components/icons";
 import { useVoiceUpload } from "../hooks/useVoiceUpload";
 import { useI18n } from "../i18n/I18nContext";
+import { formatDuration } from "../utils/format";
 
 function GoogleMeetPanel() {
   const { t } = useI18n();
@@ -41,9 +43,9 @@ function GoogleMeetPanel() {
 
   if (!status.configured) {
     return (
-      <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Google Meet</h3>
-        <p className="muted small">
+      <div className="card panel-row">
+        <span className="badge">Google Meet</span>
+        <p className="muted small" style={{ margin: 0 }}>
           {t(
             "Не е конфигуриран — за автоматично внасяне на записи от Google Meet трябва да зададеш GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET и GOOGLE_REFRESH_TOKEN."
           )}
@@ -55,10 +57,10 @@ function GoogleMeetPanel() {
   const result = status.lastResult;
 
   return (
-    <div className="card" style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ margin: 0 }}>Google Meet</h3>
-        <button onClick={syncNow} disabled={syncing || status.inProgress}>
+        <span className="badge badge-info">Google Meet</span>
+        <button className="small-btn secondary" onClick={syncNow} disabled={syncing || status.inProgress}>
           {syncing || status.inProgress ? t("Синхронизира се…") : t("Синхронизирай сега")}
         </button>
       </div>
@@ -110,6 +112,7 @@ export function VoiceTasks() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -165,43 +168,64 @@ export function VoiceTasks() {
       <div className="page-header">
         <h1>{t("Задачи от разговор")}</h1>
       </div>
-      <p className="muted">
-        {t(
-          "Качи запис или го направи направо тук — системата ще го разпознае и ще извлече задачите като чернови за одобрение."
-        )}
-      </p>
 
       <GoogleMeetPanel />
 
-      <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div className="card hero-card">
+        <div className="hero-icon">
+          <IconMic size={26} />
+        </div>
+        <h2>{t("Запиши или качи разговор")}</h2>
+        <p className="muted">
+          {t(
+            "Качи запис или го направи направо тук — системата ще го разпознае и ще извлече задачите като чернови за одобрение."
+          )}
+        </p>
+
+        <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
           {!recording ? (
-            <button onClick={startRecording} disabled={busy}>
+            <button className="cta" onClick={startRecording} disabled={busy}>
               🎙️ {t("Запиши")}
             </button>
           ) : (
-            <button style={{ background: "#e53935" }} onClick={stopRecording}>
-              ⏹ {t("Спри")} ({recordSeconds}s)
+            <button className="cta secondary" onClick={stopRecording}>
+              ⏹ {t("Спри")} ({formatDuration(recordSeconds)})
             </button>
           )}
-          {recording && (
-            <span className="small" style={{ color: "#e53935", fontWeight: 600 }}>
-              ● {t("Записва се…")}
+          <button className="cta secondary" onClick={() => fileInputRef.current?.click()} disabled={busy || recording}>
+            📁 {t("Качи файл")}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".mp3,.m4a,.wav,.webm,.ogg,audio/*"
+            onChange={handleFile}
+            disabled={busy || recording}
+            style={{ display: "none" }}
+          />
+        </div>
+
+        {recording && (
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+            <span className="recording-pill badge badge-danger">
+              <span className="recording-dot" /> {t("Записва се…")}
             </span>
-          )}
-        </div>
-        {micError && <div className="error-text">{micError}</div>}
-
-        <div>
-          <label className="muted small" style={{ display: "block", marginBottom: 4 }}>
-            {t("...или качи файл (mp3, m4a, wav, webm, ogg)")}
-          </label>
-          <input type="file" accept=".mp3,.m4a,.wav,.webm,.ogg,audio/*" onChange={handleFile} disabled={busy || recording} />
-        </div>
-
-        {busy && <p className="muted small">{t("Качване…")}</p>}
-
+          </div>
+        )}
+        {micError && <div className="error-text small" style={{ marginTop: 12 }}>{micError}</div>}
+        {busy && <p className="muted small" style={{ marginTop: 12 }}>{t("Качване…")}</p>}
         <VoiceOutcome outcome={outcome} />
+
+        <div className="hero-features">
+          <div className="hero-feature">
+            <IconGlobe size={20} />
+            {t("Поддържани формати: mp3, m4a, wav, webm, ogg")}
+          </div>
+          <div className="hero-feature">
+            <IconInbox size={20} />
+            {t("Черновите отиват в „Чакащи одобрение“")}
+          </div>
+        </div>
       </div>
     </div>
   );

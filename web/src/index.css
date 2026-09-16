@@ -626,12 +626,12 @@ button.secondary:hover {
   margin-top: 2px;
 }
 
-.meeting-hero {
+.hero-card {
   text-align: center;
   padding: 40px 24px;
 }
 
-.meeting-icon {
+.hero-icon {
   width: 56px;
   height: 56px;
   margin: 0 auto 16px;
@@ -643,22 +643,22 @@ button.secondary:hover {
   background: linear-gradient(135deg, #0073ea, #a25ddc 60%, #ff642e);
 }
 
-.meeting-hero h2 {
+.hero-card h2 {
   margin: 0 0 6px;
   font-size: 1.2rem;
 }
 
-.meeting-hero p {
+.hero-card p {
   max-width: 440px;
   margin: 0 auto 22px;
 }
 
-.meeting-hero .cta {
+.hero-card .cta {
   padding: 12px 28px;
   font-size: 0.95rem;
 }
 
-.meeting-features {
+.hero-features {
   display: flex;
   justify-content: center;
   gap: 24px;
@@ -668,7 +668,7 @@ button.secondary:hover {
   border-top: 1px solid var(--border);
 }
 
-.meeting-feature {
+.hero-feature {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -677,9 +677,16 @@ button.secondary:hover {
   max-width: 180px;
 }
 
-.meeting-feature svg {
+.hero-feature svg {
   flex-shrink: 0;
   color: var(--primary);
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .meeting-toolbar {

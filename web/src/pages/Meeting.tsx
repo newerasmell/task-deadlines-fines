@@ -4,12 +4,7 @@ import { IconGlobe, IconMic, IconPeople, IconVideo } from "../components/icons";
 import { useVoiceUpload } from "../hooks/useVoiceUpload";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
-
-function formatDuration(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
+import { formatDuration } from "../utils/format";
 
 const JITSI_DOMAIN = "meet.jit.si";
 const JITSI_SCRIPT_SRC = `https://${JITSI_DOMAIN}/external_api.js`;
@@ -220,8 +215,8 @@ export function Meeting() {
 
       <div className="card" style={{ padding: roomName ? 0 : undefined, overflow: "hidden" }}>
         {!roomName && (
-          <div className="meeting-hero">
-            <div className="meeting-icon">
+          <div className="hero-card">
+            <div className="hero-icon">
               <IconVideo size={26} />
             </div>
             <h2>{t("Готови ли сте за среща?")}</h2>
@@ -235,16 +230,16 @@ export function Meeting() {
             </button>
             {scriptError && <div className="error-text small" style={{ marginTop: 12 }}>{scriptError}</div>}
 
-            <div className="meeting-features">
-              <div className="meeting-feature">
+            <div className="hero-features">
+              <div className="hero-feature">
                 <IconGlobe size={20} />
                 {t("Безплатно · не изисква акаунт")}
               </div>
-              <div className="meeting-feature">
+              <div className="hero-feature">
                 <IconPeople size={20} />
                 {t("Покани колеги с линк")}
               </div>
-              <div className="meeting-feature">
+              <div className="hero-feature">
                 <IconMic size={20} />
                 {t("По желание: запис → авто-извлечени задачи")}
               </div>
