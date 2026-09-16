@@ -445,4 +445,5 @@ export const en: Record<string, string> = {
   "По желание: запис → авто-извлечени задачи": "Optional: recording → auto-extracted tasks",
   "Копирай": "Copy",
   "Копирано ✓": "Copied ✓",
+  "Извлечено от разговора": "Extracted from the conversation",
 };

@@ -558,6 +558,11 @@ button.secondary:hover {
   color: #1d4ed8;
 }
 
+.badge-warning {
+  background: var(--warning-bg);
+  color: #92400e;
+}
+
 .fine-group-header td {
   background: #f5f6fa;
   cursor: pointer;

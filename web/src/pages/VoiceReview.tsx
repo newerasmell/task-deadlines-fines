@@ -18,6 +18,22 @@ const SOURCE_LABELS: Record<string, string> = {
   DICTATION: "Диктовка",
 };
 
+// Color-codes priority so a long stack of draft cards can be scanned at a
+// glance instead of reading every "Приоритет: ..." line individually.
+const PRIORITY_BADGE_CLASS: Record<Priority, string> = {
+  LOW: "badge",
+  MEDIUM: "badge badge-info",
+  HIGH: "badge badge-warning",
+  CRITICAL: "badge badge-danger",
+};
+
+const PRIORITY_BAR_COLOR: Record<Priority, string> = {
+  LOW: "var(--border)",
+  MEDIUM: "#3b82f6",
+  HIGH: "var(--warning-border)",
+  CRITICAL: "var(--danger)",
+};
+
 export function VoiceReview() {
   const { t } = useI18n();
   const [status, setStatus] = useState<VoiceDraftStatus>("DRAFT");
@@ -85,9 +101,9 @@ export function VoiceReview() {
       <div className="page-header">
         <h1>{t("Чакащи одобрение")}</h1>
       </div>
-      <div className="form-row" style={{ marginBottom: 12 }}>
+      <div className="tabs" style={{ marginBottom: 16 }}>
         {(["DRAFT", "APPROVED", "REJECTED"] as VoiceDraftStatus[]).map((s) => (
-          <button key={s} className={s === status ? "" : "secondary"} onClick={() => setStatus(s)}>
+          <button key={s} className={s === status ? "active" : ""} onClick={() => setStatus(s)}>
             {t(STATUS_LABELS[s])}
           </button>
         ))}
@@ -96,16 +112,16 @@ export function VoiceReview() {
       {groups.length === 0 && <p className="muted">{t("Няма чернови тук.")}</p>}
 
       {groups.map(([transcriptId, items]) => (
-        <div key={transcriptId} className="card" style={{ marginBottom: 16 }}>
-          <div className="form-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <strong>{t(SOURCE_LABELS[items[0].transcript?.source ?? "UPLOAD"])}</strong>{" "}
+        <div key={transcriptId} className="card" style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span className="badge badge-info">{t(SOURCE_LABELS[items[0].transcript?.source ?? "UPLOAD"])}</span>
               <span className="muted small">
                 {items[0].transcript ? new Date(items[0].transcript.createdAt).toLocaleString() : ""}
                 {items[0].transcript?.originalFilename ? ` — ${items[0].transcript.originalFilename}` : ""}
               </span>
               {items[0].transcriptId && (
-                <button className="link-btn small" onClick={() => toggleTranscript(items[0].transcriptId)}>
+                <button className="small-btn secondary" onClick={() => toggleTranscript(items[0].transcriptId)}>
                   {expandedTranscript === items[0].transcriptId ? t("Скрий транскрипта") : t("Покажи транскрипта")}
                 </button>
               )}
@@ -117,14 +133,16 @@ export function VoiceReview() {
             )}
           </div>
           {expandedTranscript === items[0].transcriptId && items[0].transcriptId && (
-            <p className="muted small" style={{ whiteSpace: "pre-wrap", background: "var(--bg)", padding: 8, borderRadius: 6 }}>
+            <p className="muted small" style={{ whiteSpace: "pre-wrap", background: "var(--bg)", padding: 10, borderRadius: 6, marginTop: 12 }}>
               {transcriptText[items[0].transcriptId]?.transcriptText ?? t("Зареждане…")}
             </p>
           )}
 
-          {items.map((draft) => (
-            <DraftCard key={draft.id} draft={draft} employees={employees} readOnly={status !== "DRAFT"} onChanged={refresh} />
-          ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
+            {items.map((draft) => (
+              <DraftCard key={draft.id} draft={draft} employees={employees} readOnly={status !== "DRAFT"} onChanged={refresh} />
+            ))}
+          </div>
         </div>
       ))}
     </div>
@@ -189,26 +207,40 @@ function DraftCard({
   }
 
   return (
-    <div className="card" style={{ marginTop: 10, background: "var(--bg)" }}>
-      <blockquote className="muted small" style={{ borderLeft: "3px solid #ccc", paddingLeft: 10, margin: "0 0 10px" }}>
+    <div
+      className="card"
+      style={{ margin: 0, background: "var(--bg)", borderLeft: `4px solid ${PRIORITY_BAR_COLOR[draft.priority]}` }}
+    >
+      <p className="muted small" style={{ margin: "0 0 10px", fontWeight: 600 }}>
+        {t("Извлечено от разговора")}:
+      </p>
+      <blockquote className="muted small" style={{ borderLeft: "3px solid var(--border)", paddingLeft: 10, margin: "0 0 14px" }}>
         “{draft.sourceQuote}”
       </blockquote>
+
       {readOnly ? (
         <div>
           <strong>{draft.title}</strong>
-          {draft.description && <p className="muted small">{draft.description}</p>}
-          <p className="small">
-            {draft.resolvedAssignee?.name ?? t("Неопределен")} · {new Date(draft.deadline).toLocaleDateString()} ·{" "}
-            {t(PRIORITY_LABELS[draft.priority])}
-          </p>
+          {draft.description && <p className="muted small" style={{ margin: "4px 0 10px" }}>{draft.description}</p>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            <span className="badge">
+              {draft.resolvedAssignee?.name ?? t("Неопределен")}
+            </span>
+            <span className="badge">{new Date(draft.deadline).toLocaleDateString()}</span>
+            <span className={PRIORITY_BADGE_CLASS[draft.priority]}>{t(PRIORITY_LABELS[draft.priority])}</span>
+          </div>
         </div>
       ) : (
-        <>
+        <div className="form">
+          <label>
+            {t("Заглавие")}
+            <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={submitting} />
+          </label>
+          <label>
+            {t("Описание")}
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} disabled={submitting} rows={2} />
+          </label>
           <div className="form-row">
-            <label>
-              {t("Заглавие")}
-              <input value={title} onChange={(e) => setTitle(e.target.value)} disabled={submitting} />
-            </label>
             <label>
               {t("Изпълнител")}
               <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} disabled={submitting}>
@@ -222,12 +254,6 @@ function DraftCard({
                   ))}
               </select>
             </label>
-          </div>
-          <label>
-            {t("Описание")}
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} disabled={submitting} rows={2} />
-          </label>
-          <div className="form-row">
             <label>
               {t("Срок")}
               <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} disabled={submitting} />
@@ -244,7 +270,7 @@ function DraftCard({
             </label>
           </div>
           {error && <div className="error-text small">{error}</div>}
-          <div className="form-row">
+          <div className="form-row" style={{ marginTop: 4 }}>
             <button onClick={approve} disabled={submitting}>
               {t("Одобри")}
             </button>
@@ -252,7 +278,7 @@ function DraftCard({
               {t("Отхвърли")}
             </button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
