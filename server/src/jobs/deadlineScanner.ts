@@ -1,6 +1,7 @@
 import { deadlineFallsOnWeekend, nonWorkingHoursBetween } from "../lib/bulgarianHolidays";
 import { formatDateTime } from "../lib/dateFormat";
 import { env } from "../lib/env";
+import { isOnLeave } from "../lib/leave";
 import { prisma } from "../lib/prisma";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
 import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
@@ -89,6 +90,13 @@ async function sendUpcomingReminders(now: Date): Promise<void> {
   });
 
   for (const task of openTasks) {
+    // A reminder exists to prod someone into finishing before a deadline —
+    // sending it while they're on approved leave just interrupts a day
+    // they're not working. Skipping here (rather than also marking it
+    // sent) means it isn't lost either: it fires normally on the first
+    // scan after they're back, same as if this task had just become due.
+    if (await isOnLeave(task.assigneeId, now)) continue;
+
     const timeToDeadlineMs = task.deadline.getTime() - now.getTime();
     const totalDurationMs = task.deadline.getTime() - task.createdAt.getTime();
     const target = toNotificationTarget(task.assignee);
@@ -192,15 +200,21 @@ async function handleOverdueTasks(now: Date): Promise<void> {
         },
       });
 
-      const target = toNotificationTarget(task.assignee);
-      await dispatchToAllChannels(
-        target,
-        {
-          subject: `Просрочена задача и наложена глоба`,
-          body: `Задачата "${task.title}" е просрочена с ${daysLate} ${daysLate === 1 ? "ден" : "дни"}.\nНаложена глоба: ${fine.amount} ${fine.currency}.\nАко закъснението е основателно, свържи се с администратор за анулиране.`,
-        },
-        { taskId: task.id }
-      );
+      // The fine itself still applies — leaveHoursOverlap above already
+      // excluded actual leave time from hoursLate, so a fine landing here
+      // reflects genuine lateness outside that window. Only the personal
+      // ping is held back while they're away; admins still hear about it.
+      if (!(await isOnLeave(task.assigneeId, now))) {
+        const target = toNotificationTarget(task.assignee);
+        await dispatchToAllChannels(
+          target,
+          {
+            subject: `Просрочена задача и наложена глоба`,
+            body: `Задачата "${task.title}" е просрочена с ${daysLate} ${daysLate === 1 ? "ден" : "дни"}.\nНаложена глоба: ${fine.amount} ${fine.currency}.\nАко закъснението е основателно, свържи се с администратор за анулиране.`,
+          },
+          { taskId: task.id }
+        );
+      }
       await broadcastToAdmins({
         subject: "Просрочие и глоба",
         body: `"${task.title}" (${task.assignee.name}) — ${daysLate} ${daysLate === 1 ? "ден" : "дни"} закъснение, глоба ${fine.amount} ${fine.currency}.`,
@@ -233,6 +247,9 @@ async function sendUpcomingReviewReminders(now: Date): Promise<void> {
   for (const submission of pendingReviews) {
     const task = submission.task;
     if (!task.ownerId || !task.owner) continue;
+    // Same reasoning as the assignee reminders above: skip without marking
+    // it sent, so it resumes normally once the Owner is back from leave.
+    if (await isOnLeave(task.ownerId, now)) continue;
 
     const timeToReviewDueMs = submission.reviewDueAt!.getTime() - now.getTime();
     const target = toNotificationTarget(task.owner);
@@ -326,10 +343,15 @@ async function handleOverdueReviews(now: Date): Promise<void> {
       },
     });
 
-    await dispatchToAllChannels(toNotificationTarget(task.owner), {
-      subject: "Забавен преглед и наложена глоба",
-      body: `Все още не си прегледал подадената задача "${task.title}". Просрочие на прегледа: ${daysLate} ${daysLate === 1 ? "ден" : "дни"}. Наложена глоба: ${fine.amount} ${fine.currency}.`,
-    });
+    // Same split as handleOverdueTasks: the fine stands (leaveHoursOverlap
+    // above already excluded real leave time), only the personal ping to
+    // the Owner is held back while they're away.
+    if (!(await isOnLeave(task.ownerId, now))) {
+      await dispatchToAllChannels(toNotificationTarget(task.owner), {
+        subject: "Забавен преглед и наложена глоба",
+        body: `Все още не си прегледал подадената задача "${task.title}". Просрочие на прегледа: ${daysLate} ${daysLate === 1 ? "ден" : "дни"}. Наложена глоба: ${fine.amount} ${fine.currency}.`,
+      });
+    }
     await broadcastToAdmins({
       subject: "Забавен преглед и глоба",
       body: `Owner ${task.owner.name} не прегледа "${task.title}" навреме — ${daysLate} ${daysLate === 1 ? "ден" : "дни"} закъснение, глоба ${fine.amount} ${fine.currency}.`,

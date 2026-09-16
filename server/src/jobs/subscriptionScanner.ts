@@ -1,4 +1,5 @@
 import { formatDateTime } from "../lib/dateFormat";
+import { isOnLeave } from "../lib/leave";
 import { prisma } from "../lib/prisma";
 import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
 
@@ -44,7 +45,7 @@ export async function runSubscriptionScan(now: Date = new Date()): Promise<void>
     if (isDueDay) {
       const last = item.lastPeriodicReminderAt?.getTime() ?? 0;
       if (now.getTime() - last < 2 * HOUR_MS) continue;
-      await notify(item, recipients, `Днес изтича срокът: ${item.title}`, `Днес е крайният срок за "${item.title}" (${formatDateTime(item.dueDate)}).${amountLine(item)}`);
+      await notify(recipients, `Днес изтича срокът: ${item.title}`, `Днес е крайният срок за "${item.title}" (${formatDateTime(item.dueDate)}).${amountLine(item)}`, now);
       await prisma.subscription.update({ where: { id: item.id }, data: { lastPeriodicReminderAt: now } });
       continue;
     }
@@ -58,19 +59,19 @@ export async function runSubscriptionScan(now: Date = new Date()): Promise<void>
         daysRemaining < 0
           ? `"${item.title}" просрочи срока си (${formatDateTime(item.dueDate)}) с ${daysLate} ${daysLate === 1 ? "ден" : "дни"}.${amountLine(item)}`
           : `Остават ${Math.ceil(daysRemaining)} ${Math.ceil(daysRemaining) === 1 ? "ден" : "дни"} до крайния срок за "${item.title}" (${formatDateTime(item.dueDate)}).${amountLine(item)}`;
-      await notify(item, recipients, subject, body);
+      await notify(recipients, subject, body, now);
       await prisma.subscription.update({ where: { id: item.id }, data: { lastDailyReminderAt: now } });
       continue;
     }
 
     if (daysRemaining <= 15 && !item.reminder15dSentAt) {
-      await notify(item, recipients, `Наближава срок (15 дни): ${item.title}`, `Остават 15 дни до крайния срок за "${item.title}" (${formatDateTime(item.dueDate)}).${amountLine(item)}`);
+      await notify(recipients, `Наближава срок (15 дни): ${item.title}`, `Остават 15 дни до крайния срок за "${item.title}" (${formatDateTime(item.dueDate)}).${amountLine(item)}`, now);
       await prisma.subscription.update({ where: { id: item.id }, data: { reminder15dSentAt: now } });
       continue;
     }
 
     if (daysRemaining <= 30 && !item.reminder30dSentAt) {
-      await notify(item, recipients, `Наближава срок (1 месец): ${item.title}`, `Остава 1 месец до крайния срок за "${item.title}" (${formatDateTime(item.dueDate)}).${amountLine(item)}`);
+      await notify(recipients, `Наближава срок (1 месец): ${item.title}`, `Остава 1 месец до крайния срок за "${item.title}" (${formatDateTime(item.dueDate)}).${amountLine(item)}`, now);
       await prisma.subscription.update({ where: { id: item.id }, data: { reminder30dSentAt: now } });
       continue;
     }
@@ -81,13 +82,11 @@ function amountLine(item: { amount: number | null; currency: string | null }): s
   return item.amount ? `\nСума: ${item.amount} ${item.currency ?? "EUR"}` : "";
 }
 
-async function notify(
-  item: { id: string },
-  recipients: Recipient[],
-  subject: string,
-  body: string
-): Promise<void> {
+async function notify(recipients: Recipient[], subject: string, body: string, now: Date): Promise<void> {
   for (const recipient of recipients) {
+    // Skip just this recipient, not the whole reminder — an assignee and
+    // owner on leave at different times shouldn't block each other's copy.
+    if (await isOnLeave(recipient.id, now)) continue;
     await dispatchToAllChannels(toNotificationTarget(recipient), { subject, body });
   }
 }
