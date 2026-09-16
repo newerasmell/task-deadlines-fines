@@ -446,4 +446,6 @@ export const en: Record<string, string> = {
   "Копирай": "Copy",
   "Копирано ✓": "Copied ✓",
   "Извлечено от разговора": "Extracted from the conversation",
+  'Понякога Jitsi показва рекламен екран върху срещата (техен проблем, не наш) и може да извади участник от разговора. Ако това стане на теб или колега: затвори го с X и се присъедини отново през връзката по-горе.':
+    "Jitsi occasionally shows a promo screen over the call (their issue, not ours) and it can knock a participant out. If that happens to you or a colleague: close it with the X and rejoin using the link above.",
 };

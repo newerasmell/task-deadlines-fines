@@ -263,6 +263,14 @@ export function Meeting() {
           </div>
         )}
 
+        {roomName && (
+          <p className="notice card small" style={{ margin: "0 18px 14px" }}>
+            {t(
+              'Понякога Jitsi показва рекламен екран върху срещата (техен проблем, не наш) и може да извади участник от разговора. Ако това стане на теб или колега: затвори го с X и се присъедини отново през връзката по-горе.'
+            )}
+          </p>
+        )}
+
         {/* Always mounted (not just once roomName is set) — startMeeting()
             needs this container to already exist in the DOM before it can
             create the embed and set roomName, so it can't be conditional on
