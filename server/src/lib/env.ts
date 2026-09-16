@@ -20,7 +20,12 @@ export const env = {
   reminderHoursBefore: Number(process.env.REMINDER_HOURS_BEFORE ?? 24),
   reminderFinalHoursBefore: Number(process.env.REMINDER_FINAL_HOURS_BEFORE ?? 4),
   reminderPeriodicHours: Number(process.env.REMINDER_PERIODIC_HOURS ?? 48),
+  // Measured in BUSINESS hours now, not wall-clock — see businessHours.ts.
+  // A submission outside the 9-18 window starts its clock at the next
+  // working day's opening instead of ticking overnight/over the weekend.
   reviewDueHours: Number(process.env.REVIEW_DUE_HOURS ?? 24),
+  reviewBusinessStartHour: Number(process.env.REVIEW_BUSINESS_START_HOUR ?? 9),
+  reviewBusinessEndHour: Number(process.env.REVIEW_BUSINESS_END_HOUR ?? 18),
   // How often to nudge the Owner about a submission still waiting on them,
   // and how long before reviewDueAt to send the last "about to be fined" heads-up.
   reviewReminderPeriodicHours: Number(process.env.REVIEW_REMINDER_PERIODIC_HOURS ?? 4),

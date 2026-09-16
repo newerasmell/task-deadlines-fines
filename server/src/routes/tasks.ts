@@ -4,6 +4,7 @@ import { z } from "zod";
 import { formatDateTime } from "../lib/dateFormat";
 import { logAction } from "../lib/auditLog";
 import { verifyToken } from "../lib/auth";
+import { addBusinessHours } from "../lib/businessHours";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
 import { absoluteUploadPath, uploadAttachments } from "../lib/uploads";
@@ -445,7 +446,10 @@ tasksRouter.post("/:id/submit", uploadAttachments.array("attachments", 5), async
   const note = typeof req.body.note === "string" ? req.body.note : undefined;
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
 
-  const reviewDueAt = new Date(Date.now() + env.reviewDueHours * 60 * 60 * 1000);
+  // Business-hours clock, not wall-clock: a submission outside 9-18 starts
+  // counting at the next working day's opening instead of ticking overnight
+  // or over the weekend — see businessHours.ts.
+  const reviewDueAt = addBusinessHours(new Date(), env.reviewDueHours);
 
   const submission = await prisma.taskSubmission.create({
     data: {
