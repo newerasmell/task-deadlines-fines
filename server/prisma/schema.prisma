@@ -554,3 +554,14 @@ model VoiceProcessingJob {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 }
+
+// Single-row config (id is always "singleton") for org-wide assignment
+// rules that don't belong to any one person's own voiceAssignmentNotes —
+// cross-cutting disambiguation like "if the channel isn't named, default
+// to X" or "escalations of type Y always go to Z regardless of who raised
+// them". Free text, shown to Claude verbatim after the per-person roster.
+model VoiceAssignmentConfig {
+  id        String   @id @default("singleton")
+  rulesText String?
+  updatedAt DateTime @updatedAt
+}

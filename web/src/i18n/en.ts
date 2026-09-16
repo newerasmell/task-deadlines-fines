@@ -403,13 +403,24 @@ export const en: Record<string, string> = {
   "Диктовка": "Dictation",
 
   // Employee expertise notes (used for voice-to-tasks assignee matching)
-  "Отговорности / експертиза (за разпределяне на гласови задачи)": "Responsibilities / expertise (for voice-task assignment)",
-  "напр. дизайни, план за постване, визуално съдържание — колкото по-конкретно, толкова по-точно AI-то ще му възложи неназовани задачи":
-    "e.g. design work, posting schedule, visual content — the more specific, the more accurately the AI will route unnamed tasks to them",
-  "Използва се само при „Задачи от разговор“ — помага на AI-то да познае на кого да възложи задача, която не назовава конкретен човек.":
-    "Only used by \"Tasks from a recording\" — helps the AI guess who a task should go to when it doesn't name anyone explicitly.",
+  "Профил за разпределяне на гласови задачи (може да е дълъг — описвай пълноценно, ще расте във времето)":
+    "Profile for voice-task assignment (can be long — describe fully, it'll grow over time)",
+  "Пиши колкото ти трябва — не е ограничено до 1-2 реда. Полезно е да опишеш: основни отговорности и домейни; изключения и ескалационни случаи; кой го замества при отсъствие; конкретни правила (напр. кой поема кои клиенти/категории/магазини); отчита се на кого. Колкото по-подробно, толкова по-точно AI-то ще му възложи неназовани задачи.":
+    "Write as much as you need — it's not limited to 1-2 lines. It helps to describe: core responsibilities and domains; exceptions and escalation cases; who covers for them when they're away; specific rules (e.g. which clients/categories/stores they own); who they report to. The more detail, the more accurately the AI will route unnamed tasks to them.",
+  "Използва се само при „Задачи от разговор“ — помага на AI-то да познае на кого да възложи задача, която не назовава конкретен човек. Може да се редактира и допълва по всяко време — това е жива база, не еднократен текст.":
+    "Only used by \"Tasks from a recording\" — helps the AI guess who a task should go to when it doesn't name anyone explicitly. It can be edited and added to at any time — it's a living profile, not a one-time text.",
   "Задачи от разговор да се възлагат на този човек само ако е изрично споменат по име (никога автоматично по описанието по-горе)":
     "Tasks from a recording should only go to this person when they're explicitly named (never automatically, based on the description above)",
+
+  // Voice-to-tasks: org-wide assignment rules (Settings page)
+  "Общи правила за разпределяне на гласови задачи": "Global rules for voice-task assignment",
+  "Важат за всички служители едновременно, в допълнение към профила на всеки (виж „Служители“). Полезни за правила, които пресичат няколко човека — напр. „ако не е ясен каналът, по подразбиране е Х“, или „рекламации над определена сума винаги отиват при Y“. Може да пишеш и допълваш по всяко време.":
+    "Apply to all employees at once, in addition to each person's own profile (see \"Employees\"). Useful for rules that cross several people — e.g. \"if the channel isn't clear, default to X\", or \"complaints above a certain amount always go to Y\". You can write and add to it at any time.",
+  "напр.:\n- Клиентски запитвания и рекламации → по подразбиране Х, освен ако Y не е изрично спомената.\n- Ако задачата не пасва ясно на никого или е двусмислена между двама души → assignee unassigned, никога не гадай.":
+    "e.g.:\n- Customer inquiries and complaints → default to X, unless Y is explicitly mentioned.\n- If the task doesn't clearly fit anyone, or is ambiguous between two people → assignee unassigned, never guess.",
+  "Запази": "Save",
+  "Запазване…": "Saving…",
+  "Запазено": "Saved",
 
   // Voice-to-tasks: Google Meet panel
   "Не е конфигуриран — за автоматично внасяне на записи от Google Meet трябва да зададеш GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET и GOOGLE_REFRESH_TOKEN.":

@@ -96,6 +96,28 @@ voiceRouter.get("/jobs/:id", async (req, res) => {
   res.json(job);
 });
 
+// Org-wide assignment rules (free text) shown to Claude alongside the
+// per-person roster — see buildSystemPrompt() in lib/taskExtraction.ts.
+// Single row, always id "singleton"; created on first save.
+voiceRouter.get("/assignment-rules", async (_req, res) => {
+  const config = await prisma.voiceAssignmentConfig.findUnique({ where: { id: "singleton" } });
+  res.json({ rulesText: config?.rulesText ?? "" });
+});
+
+const assignmentRulesSchema = z.object({ rulesText: z.string() });
+
+voiceRouter.put("/assignment-rules", async (req, res) => {
+  const parsed = assignmentRulesSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const config = await prisma.voiceAssignmentConfig.upsert({
+    where: { id: "singleton" },
+    create: { id: "singleton", rulesText: parsed.data.rulesText || null },
+    update: { rulesText: parsed.data.rulesText || null },
+  });
+  res.json({ rulesText: config.rulesText ?? "" });
+});
+
 voiceRouter.get("/drafts", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status.toUpperCase() : "DRAFT";
   const transcriptId = typeof req.query.transcriptId === "string" ? req.query.transcriptId : undefined;

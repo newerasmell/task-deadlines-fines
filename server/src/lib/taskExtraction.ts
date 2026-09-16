@@ -54,11 +54,14 @@ function todayIso(): string {
 // well for a task that doesn't name anyone: without it, the roster is just
 // names with no signal to match against.
 async function buildSystemPrompt(): Promise<string> {
-  const users = await prisma.user.findMany({
-    where: { active: true },
-    select: { id: true, name: true, voiceAssignmentNotes: true, voiceAssignOnlyWhenNamed: true },
-    orderBy: { name: "asc" },
-  });
+  const [users, config] = await Promise.all([
+    prisma.user.findMany({
+      where: { active: true },
+      select: { id: true, name: true, voiceAssignmentNotes: true, voiceAssignOnlyWhenNamed: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.voiceAssignmentConfig.findUnique({ where: { id: "singleton" } }),
+  ]);
   const roster = users
     .map((u) => {
       const desc = u.voiceAssignmentNotes?.trim() || "(няма описание — виж в Служители)";
@@ -69,6 +72,7 @@ async function buildSystemPrompt(): Promise<string> {
     })
     .join("\n");
   const namedOnlyList = users.filter((u) => u.voiceAssignOnlyWhenNamed).map((u) => u.name);
+  const globalRules = config?.rulesText?.trim();
 
   return `Ти извличаш конкретни задачи от транскрипт на говорен български (понякога смесен с английски) — записан разговор, среща или диктовка. Днешната дата е ${todayIso()}.
 
@@ -76,6 +80,7 @@ async function buildSystemPrompt(): Promise<string> {
 ${roster}
 - id="unassigned" — използвай това САМО ако наистина не е ясно на кого принадлежи задачата, дори след като си преценил по описанията по-горе; никога не познавай на случаен принцип.
 ${namedOnlyList.length > 0 ? `\nВАЖНО: ${namedOnlyList.join(", ")} са маркирани "само при изрично споменаване по име" (виж ⚠️ до тях по-горе) — дори ако описанието им звучи като най-добро съвпадение за дадена задача, НЕ ги избирай за assignee_id освен ако разговорът не ги е назовал директно по име. В такъв случай прецени по описанията на останалите (без ограничение), а ако наистина никое не пасва, върни "unassigned".\n` : ""}
+${globalRules ? `\nОбщи правила за разпределяне (важат в допълнение към описанията по-горе, и имат предимство при конфликт с тях):\n${globalRules}\n` : ""}
 За всяко конкретно, действимо нещо, което трябва да се свърши, върни един обект с точно тези полета:
 - "title": кратко заглавие (до ~120 символа)
 - "description": по-подробно описание, ако има нужда от повече контекст (или null)

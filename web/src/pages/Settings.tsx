@@ -16,6 +16,9 @@ export function Settings() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [assignmentRules, setAssignmentRules] = useState("");
+  const [savingAssignmentRules, setSavingAssignmentRules] = useState(false);
+  const [assignmentRulesSaved, setAssignmentRulesSaved] = useState(false);
 
   async function refresh() {
     const promises: [Promise<FineRule[]>, Promise<ChannelStatus[]>, Promise<User[]>?] = [
@@ -27,6 +30,19 @@ export function Settings() {
     setRules(r);
     setChannels(c);
     if (u) setEmployees(u);
+    const { rulesText } = await api<{ rulesText: string }>("/voice/assignment-rules");
+    setAssignmentRules(rulesText);
+  }
+
+  async function saveAssignmentRules() {
+    setSavingAssignmentRules(true);
+    try {
+      await api("/voice/assignment-rules", { method: "PUT", body: JSON.stringify({ rulesText: assignmentRules }) });
+      setAssignmentRulesSaved(true);
+      setTimeout(() => setAssignmentRulesSaved(false), 2000);
+    } finally {
+      setSavingAssignmentRules(false);
+    }
   }
 
   useEffect(() => {
@@ -77,6 +93,29 @@ export function Settings() {
           ))}
         </tbody>
       </table>
+      </div>
+
+      <h2>{t("Общи правила за разпределяне на гласови задачи")}</h2>
+      <p className="muted">
+        {t(
+          "Важат за всички служители едновременно, в допълнение към профила на всеки (виж „Служители“). Полезни за правила, които пресичат няколко човека — напр. „ако не е ясен каналът, по подразбиране е Х“, или „рекламации над определена сума винаги отиват при Y“. Може да пишеш и допълваш по всяко време."
+        )}
+      </p>
+      <label>
+        <textarea
+          value={assignmentRules}
+          onChange={(e) => setAssignmentRules(e.target.value)}
+          rows={12}
+          placeholder={t(
+            "напр.:\n- Клиентски запитвания и рекламации → по подразбиране Х, освен ако Y не е изрично спомената.\n- Ако задачата не пасва ясно на никого или е двусмислена между двама души → assignee unassigned, никога не гадай."
+          )}
+        />
+      </label>
+      <div className="form-row" style={{ alignItems: "center", gap: 12 }}>
+        <button onClick={saveAssignmentRules} disabled={savingAssignmentRules}>
+          {savingAssignmentRules ? t("Запазване…") : t("Запази")}
+        </button>
+        {assignmentRulesSaved && <span className="badge badge-success">{t("Запазено")}</span>}
       </div>
 
       <div className="page-header">
