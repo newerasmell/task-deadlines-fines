@@ -25,6 +25,18 @@ function randomRoomName(): string {
   return `todf-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36)}`;
 }
 
+// Accepts whatever someone might paste — the bare room slug, "meet.jit.si/x",
+// or a full "https://meet.jit.si/x" link — and reduces it to just the room
+// name Jitsi actually needs.
+function parseRoomInput(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .replace(new RegExp(`^${JITSI_DOMAIN}/?`), "")
+    .replace(/\/+$/, "")
+    .trim();
+}
+
 // Loaded once and cached on window — re-injecting the script on every mount
 // (e.g. leaving and returning to this page) would otherwise redefine the
 // global JitsiMeetExternalAPI class repeatedly for no benefit.
@@ -62,6 +74,7 @@ export function Meeting() {
 
   const [scriptError, setScriptError] = useState<string | null>(null);
   const [roomName, setRoomName] = useState<string | null>(null);
+  const [joinRoomInput, setJoinRoomInput] = useState("");
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [recordError, setRecordError] = useState<string | null>(null);
@@ -82,7 +95,12 @@ export function Meeting() {
     };
   }, []);
 
-  async function startMeeting() {
+  // Shared by starting a brand-new meeting, joining an existing one by its
+  // room name, and re-embedding the SAME room after something external
+  // breaks the iframe (e.g. Jitsi's own promo-screen interstitial knocking
+  // a participant out — see the notice below) — those three only differ in
+  // which room name they pass in.
+  async function embedRoom(room: string) {
     setScriptError(null);
     try {
       await loadJitsiScript();
@@ -104,7 +122,6 @@ export function Meeting() {
     }
     if (!containerRef.current) return;
 
-    const room = randomRoomName();
     jitsiRef.current?.dispose();
     jitsiRef.current = new window.JitsiMeetExternalAPI(JITSI_DOMAIN, {
       roomName: room,
@@ -115,6 +132,26 @@ export function Meeting() {
       configOverwrite: { prejoinPageEnabled: false },
     });
     setRoomName(room);
+  }
+
+  function startMeeting() {
+    void embedRoom(randomRoomName());
+  }
+
+  function joinMeeting() {
+    const room = parseRoomInput(joinRoomInput);
+    if (!room) {
+      setScriptError(t("Постави връзка или код на среща."));
+      return;
+    }
+    void embedRoom(room);
+  }
+
+  // For when the embed itself breaks (the Jitsi promo-screen case) without
+  // the person ever clicking "Приключи срещата" — re-creates the same room
+  // in place rather than sending them hunting for the invite link again.
+  function rejoinMeeting() {
+    if (roomName) void embedRoom(roomName);
   }
 
   function endMeeting() {
@@ -228,6 +265,20 @@ export function Meeting() {
             <button className="cta" onClick={startMeeting}>
               {t("Започни среща")}
             </button>
+
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 16 }}>
+              <span className="muted small">{t("или")}</span>
+              <input
+                value={joinRoomInput}
+                onChange={(e) => setJoinRoomInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && joinMeeting()}
+                placeholder={t("постави връзка/код на среща")}
+                style={{ padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 6, fontSize: "0.9rem", minWidth: 220 }}
+              />
+              <button className="secondary" onClick={joinMeeting}>
+                {t("Присъедини се")}
+              </button>
+            </div>
             {scriptError && <div className="error-text small" style={{ marginTop: 12 }}>{scriptError}</div>}
 
             <div className="hero-features">
@@ -252,21 +303,28 @@ export function Meeting() {
             <div className="invite-pill">
               <IconPeople size={15} />
               {t("Покани колеги с връзка")}:
-              <code>{`${JITSI_DOMAIN}/${roomName}`}</code>
+              <a href={`https://${JITSI_DOMAIN}/${roomName}`} target="_blank" rel="noreferrer">
+                <code>{`${JITSI_DOMAIN}/${roomName}`}</code>
+              </a>
               <button className="small-btn secondary" onClick={copyInviteLink}>
                 {linkCopied ? t("Копирано ✓") : t("Копирай")}
               </button>
             </div>
-            <button className="secondary" onClick={endMeeting}>
-              {t("Приключи срещата")}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="secondary" onClick={rejoinMeeting}>
+                {t("Опресни връзката")}
+              </button>
+              <button className="secondary" onClick={endMeeting}>
+                {t("Приключи срещата")}
+              </button>
+            </div>
           </div>
         )}
 
         {roomName && (
           <p className="notice card small" style={{ margin: "0 18px 14px" }}>
             {t(
-              'Понякога Jitsi показва рекламен екран върху срещата (техен проблем, не наш) и може да извади участник от разговора. Ако това стане на теб или колега: затвори го с X и се присъедини отново през връзката по-горе.'
+              'Понякога Jitsi показва рекламен екран върху срещата (техен проблем, не наш) и може да извади участник от разговора. Ако това стане на теб или колега: натисни "Опресни връзката" горе.'
             )}
           </p>
         )}
