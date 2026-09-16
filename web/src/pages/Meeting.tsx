@@ -133,7 +133,15 @@ export function Meeting() {
       return;
     }
     try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      // echoCancellation/noiseSuppression/autoGainControl are tuned for a
+      // live mic-to-speaker loop — applied to a TAB's own audio output
+      // (not a mic) they misfire and produce exactly the garbled,
+      // drops-most-of-it artifacts this was built to avoid, so they're
+      // explicitly turned off here rather than left at browser defaults.
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
       const audioTracks = displayStream.getAudioTracks();
       if (audioTracks.length === 0) {
         displayStream.getTracks().forEach((tr) => tr.stop());
@@ -144,7 +152,11 @@ export function Meeting() {
       displayStreamRef.current = displayStream;
 
       const audioOnlyStream = new MediaStream(audioTracks);
-      const recorder = new MediaRecorder(audioOnlyStream, { mimeType });
+      // Explicit bitrate — getDisplayMedia's audio track otherwise inherits
+      // whatever low default the browser picks for a "screen share" stream
+      // (tuned for a video call's secondary audio channel, not for a clean
+      // source recording), which loses a lot of the source material.
+      const recorder = new MediaRecorder(audioOnlyStream, { mimeType, audioBitsPerSecond: 128_000 });
       chunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -161,7 +173,11 @@ export function Meeting() {
       audioTracks[0].addEventListener("ended", () => stopRecording());
 
       mediaRecorderRef.current = recorder;
-      recorder.start();
+      // A timeslice makes the recorder flush a chunk every second instead
+      // of buffering the whole call in memory for one single flush at the
+      // end — steadier for a longer call, and nothing is lost if the tab
+      // gets backgrounded or something else goes wrong mid-recording.
+      recorder.start(1000);
       setRecording(true);
       setRecordSeconds(0);
       timerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
