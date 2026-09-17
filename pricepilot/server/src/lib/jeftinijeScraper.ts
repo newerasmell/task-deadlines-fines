@@ -118,18 +118,20 @@ export function extractProducts(html: string, pageUrl: string): JeftinijeListing
 }
 
 async function fetchWithRetry(url: string): Promise<string | null> {
+  let lastMessage = "unknown error";
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await politeGet(url);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.includes("403") || message.includes("429")) {
+      lastMessage = err instanceof Error ? err.message : String(err);
+      if (lastMessage.includes("403") || lastMessage.includes("429")) {
         await sleep(30000);
       } else {
         await sleep(5000);
       }
     }
   }
+  console.warn(`[jeftinije] giving up on ${url} after 3 attempts: ${lastMessage}`);
   return null;
 }
 
@@ -153,14 +155,17 @@ async function detectPageParam(baseUrl: string, firstPageProducts: JeftinijeList
   return null;
 }
 
-async function crawlListing(baseUrl: string, out: JeftinijeListing[]): Promise<void> {
+// Returns whether the listing's first page was reachable at all — lets the
+// caller tell "this one listing had no pages" apart from "the site stopped
+// answering us", which is the signal a run-wide circuit breaker needs.
+async function crawlListing(baseUrl: string, out: JeftinijeListing[]): Promise<boolean> {
   const first = await fetchWithRetry(baseUrl);
-  if (!first) return;
+  if (!first) return false;
   const firstProducts = extractProducts(first, baseUrl);
   out.push(...firstProducts);
 
   const pageFmt = await detectPageParam(baseUrl, firstProducts);
-  if (!pageFmt) return;
+  if (!pageFmt) return true;
 
   let prevUrls = new Set(firstProducts.map((p) => p.url));
   for (let n = 2; n <= 200; n++) {
@@ -175,22 +180,50 @@ async function crawlListing(baseUrl: string, out: JeftinijeListing[]): Promise<v
     out.push(...products);
     prevUrls = urls;
   }
+  return true;
 }
+
+// A real block (bot detection, IP ban) fails every request the same way —
+// without this, a blocked run would silently retry all ~150 listing pages
+// for hours (3 attempts x up to 30s backoff each) before ever surfacing an
+// error. Abort as soon as that pattern shows up instead of grinding through
+// the rest of the brand list.
+const CONSECUTIVE_FAILURE_LIMIT = 5;
 
 // Crawls every category for every id of every brand in `brands` (defaults
 // to all of BRAND_IDS) and returns the combined listing — ~150-250 pages
-// for the full brand list, several minutes at the polite 1.2s pace.
+// for the full brand list, several minutes at the polite pace.
 export async function buildJeftinijeIndex(brands: string[] = Object.keys(BRAND_IDS)): Promise<JeftinijeListing[]> {
   const out: JeftinijeListing[] = [];
+  let consecutiveFailures = 0;
+  let attempted = 0;
+  console.log(`[jeftinije] starting crawl: ${brands.length} brands x ${CATEGORIES.length} categories`);
+
   for (const category of CATEGORIES) {
     const categoryBase = `${BASE}/L3/${category.id}/${category.slug}`;
     for (const brand of brands) {
       const ids = BRAND_IDS[brand];
       if (!ids) continue;
       for (const pbra of ids) {
-        await crawlListing(`${categoryBase}?pbra=${pbra}`, out);
+        if (attempted > 0) await sleep(1200);
+        attempted++;
+        const ok = await crawlListing(`${categoryBase}?pbra=${pbra}`, out);
+        if (!ok) {
+          consecutiveFailures++;
+          console.warn(
+            `[jeftinije] listing unreachable: brand=${brand} pbra=${pbra} category=${category.slug} (${consecutiveFailures} in a row)`
+          );
+          if (consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
+            throw new Error(
+              `jeftinije.hr rejected ${CONSECUTIVE_FAILURE_LIMIT} consecutive requests — it's likely blocking this server. Aborted after ${attempted} of ~${brands.length * CATEGORIES.length} listing pages (${out.length} products collected before the block).`
+            );
+          }
+        } else {
+          consecutiveFailures = 0;
+        }
       }
     }
   }
+  console.log(`[jeftinije] crawl finished: ${out.length} products from ${attempted} listing pages`);
   return out;
 }
