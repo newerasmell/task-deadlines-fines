@@ -18,6 +18,14 @@ function brandsCarriedByCatalog(products: { vendor: string | null }[]): string[]
 // matching against every product in the store — unlike the per-product
 // `scrape` source, this never visits a page per product, so it isn't
 // subject to the same priority/rotation scheduling.
+//
+// Matching happens PER BRAND, right after that brand's own listings finish
+// crawling, rather than once at the very end for the whole run — confirmed
+// live that the crawl can be OOM-killed by Render partway through the full
+// brand list, and a mid-crawl kill previously lost every result since
+// nothing was written to the database until the entire thing finished.
+// This way, whatever brands were already fully crawled have their matches
+// already persisted even if a later brand's crawl is what gets killed.
 export async function refreshJeftinijeSource(store: Store, source: Source): Promise<{ matched: number; ambiguous: number }> {
   const products = await prisma.product.findMany({ where: { storeId: store.id } });
   const brands = brandsCarriedByCatalog(products);
@@ -27,30 +35,43 @@ export async function refreshJeftinijeSource(store: Store, source: Source): Prom
     );
   }
 
-  const listings = await buildJeftinijeIndex(brands);
-  const index = buildMatchIndex(listings);
+  const productsByBrand = new Map<string, Product[]>();
+  for (const product of products) {
+    const brand = canonBrand(product.vendor ?? "");
+    if (!brand) continue;
+    const list = productsByBrand.get(brand) ?? [];
+    list.push(product);
+    productsByBrand.set(brand, list);
+  }
 
   let matched = 0;
   let ambiguous = 0;
 
-  for (const product of products) {
-    const result = matchProduct(product, index);
+  await buildJeftinijeIndex(brands, async (brand, listings) => {
+    const brandProducts = productsByBrand.get(canonBrand(brand)) ?? [];
+    if (brandProducts.length === 0) return;
+    const index = buildMatchIndex(listings);
 
-    if (result.status === "found") {
-      await recordFoundPrice({ source, store, product, price: result.price, url: result.url });
-      matched++;
-    } else if (result.status === "ambiguous") {
-      await upsertAmbiguousMatch(source.id, product, result.candidates);
-      ambiguous++;
-    } else {
-      await recordNotFound({
-        sourceId: source.id,
-        productId: product.id,
-        url: source.baseUrl,
-        error: "No matching listing found on jeftinije.hr",
-      });
+    for (const product of brandProducts) {
+      const result = matchProduct(product, index);
+
+      if (result.status === "found") {
+        await recordFoundPrice({ source, store, product, price: result.price, url: result.url });
+        matched++;
+      } else if (result.status === "ambiguous") {
+        await upsertAmbiguousMatch(source.id, product, result.candidates);
+        ambiguous++;
+      } else {
+        await recordNotFound({
+          sourceId: source.id,
+          productId: product.id,
+          url: source.baseUrl,
+          error: "No matching listing found on jeftinije.hr",
+        });
+      }
     }
-  }
+    console.log(`[jeftinije] persisted brand=${brand}: ${brandProducts.length} products matched against ${listings.length} listings`);
+  });
 
   return { matched, ambiguous };
 }

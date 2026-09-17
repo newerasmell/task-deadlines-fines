@@ -369,7 +369,7 @@ function SourcesSection({ storeId }: { storeId: string }) {
                     {showAttempts === s.id ? "Hide results" : "View results"}
                   </button>
                 )}
-                {s.type === "jeftinije_hr" && (
+                {(s.type === "jeftinije_hr" || s.type === "manual_import") && (
                   <button
                     className="small-btn secondary"
                     onClick={() => setShowAmbiguous(showAmbiguous === s.id ? null : s.id)}
@@ -441,6 +441,10 @@ function ManualImportPanel({ source, onImported }: { source: Source; onImported:
   const [result, setResult] = useState<{ matched: number; notFoundCount: number; errorCount: number; errors: string[] } | null>(
     null
   );
+  const [importingAmbiguous, setImportingAmbiguous] = useState(false);
+  const [ambiguousResult, setAmbiguousResult] = useState<{ imported: number; errorCount: number; errors: string[] } | null>(
+    null
+  );
 
   async function downloadTemplate() {
     setDownloading(true);
@@ -477,6 +481,25 @@ function ManualImportPanel({ source, onImported }: { source: Source; onImported:
     }
   }
 
+  async function handleAmbiguousFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setImportingAmbiguous(true);
+    setAmbiguousResult(null);
+    try {
+      const res = await api<{ imported: number; errorCount: number; errors: string[] }>(
+        `/sources/${source.id}/import-ambiguous`,
+        { method: "POST", body: JSON.stringify({ csv: text }) }
+      );
+      setAmbiguousResult(res);
+      onImported();
+    } finally {
+      setImportingAmbiguous(false);
+      e.target.value = "";
+    }
+  }
+
   return (
     <div className="card" style={{ marginTop: 4, marginBottom: 12 }}>
       <p className="muted small">
@@ -497,6 +520,24 @@ function ManualImportPanel({ source, onImported }: { source: Source; onImported:
           {result.errorCount > 0 && (
             <div className="error-text">
               {result.errorCount} row(s) skipped: {result.errors.join("; ")}
+            </div>
+          )}
+        </div>
+      )}
+      <p className="muted small" style={{ marginTop: 12 }}>
+        If your research turned up candidates you weren't sure about, upload that separate review file (e.g.{" "}
+        <code>ambiguous_review.csv</code>) here — they'll show up in the "Review queue" below instead of needing to
+        be resolved by hand in the spreadsheet.
+      </p>
+      <div className="form-row">
+        <input type="file" accept=".csv,text/csv" onChange={handleAmbiguousFile} disabled={importingAmbiguous} />
+      </div>
+      {ambiguousResult && (
+        <div className="small" style={{ marginTop: 8 }}>
+          {ambiguousResult.imported} product(s) added to the review queue.
+          {ambiguousResult.errorCount > 0 && (
+            <div className="error-text">
+              {ambiguousResult.errorCount} row(s) skipped: {ambiguousResult.errors.join("; ")}
             </div>
           )}
         </div>

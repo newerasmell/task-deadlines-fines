@@ -240,7 +240,18 @@ const CONSECUTIVE_FAILURE_LIMIT = 5;
 // Crawls every category for every id of every brand in `brands` (defaults
 // to all of BRAND_IDS) and returns the combined listing — ~150-250 pages
 // for the full brand list, several minutes at the polite pace.
-export async function buildJeftinijeIndex(brands: string[] = Object.keys(BRAND_IDS)): Promise<JeftinijeListing[]> {
+//
+// Brand-outer, category-inner loop order (not the reverse) so that
+// `onBrandDone`, when given, fires once a brand's listings are complete
+// across ALL categories — letting the caller persist that brand's matches
+// to the database right away. Confirmed live on Render's 512MB instance:
+// the crawl can be OOM-killed by the platform partway through the full
+// brand list; without this, a mid-crawl kill loses every result, even for
+// brands that were already fully and successfully crawled.
+export async function buildJeftinijeIndex(
+  brands: string[] = Object.keys(BRAND_IDS),
+  onBrandDone?: (brand: string, listings: JeftinijeListing[]) => Promise<void>
+): Promise<JeftinijeListing[]> {
   const out: JeftinijeListing[] = [];
   let consecutiveFailures = 0;
   let attempted = 0;
@@ -253,15 +264,16 @@ export async function buildJeftinijeIndex(brands: string[] = Object.keys(BRAND_I
   try {
     const page = await browser.newPersistentPage();
     try {
-      for (const category of CATEGORIES) {
-        const categoryBase = `${BASE}/L3/${category.id}/${category.slug}`;
-        for (const brand of brands) {
-          const ids = BRAND_IDS[brand];
-          if (!ids) continue;
+      for (const brand of brands) {
+        const ids = BRAND_IDS[brand];
+        if (!ids) continue;
+        const brandListings: JeftinijeListing[] = [];
+        for (const category of CATEGORIES) {
+          const categoryBase = `${BASE}/L3/${category.id}/${category.slug}`;
           for (const pbra of ids) {
             if (attempted > 0) await sleep(1200);
             attempted++;
-            const ok = await crawlListing(page, `${categoryBase}?pbra=${pbra}`, out);
+            const ok = await crawlListing(page, `${categoryBase}?pbra=${pbra}`, brandListings);
             if (!ok) {
               consecutiveFailures++;
               console.warn(
@@ -269,7 +281,7 @@ export async function buildJeftinijeIndex(brands: string[] = Object.keys(BRAND_I
               );
               if (consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
                 throw new Error(
-                  `jeftinije.hr rejected ${CONSECUTIVE_FAILURE_LIMIT} consecutive requests — it's likely blocking this server. Aborted after ${attempted} of ~${brands.length * CATEGORIES.length} listing pages (${out.length} products collected before the block).`
+                  `jeftinije.hr rejected ${CONSECUTIVE_FAILURE_LIMIT} consecutive requests — it's likely blocking this server. Aborted after ${attempted} of ~${brands.length * CATEGORIES.length} listing pages (${out.length + brandListings.length} products collected before the block).`
                 );
               }
             } else {
@@ -277,6 +289,8 @@ export async function buildJeftinijeIndex(brands: string[] = Object.keys(BRAND_I
             }
           }
         }
+        out.push(...brandListings);
+        if (onBrandDone) await onBrandDone(brand, brandListings);
       }
     } finally {
       await page.close();

@@ -333,3 +333,81 @@ sourcesRouter.post("/:id/import", async (req, res) => {
 
   res.json({ matched, notFoundCount, errorCount: errors.length, errors: errors.slice(0, 20) });
 });
+
+// Round-trips match_products.py's ambiguous_review.csv (one row per
+// candidate, several rows per product_id) into the same AmbiguousMatch
+// review queue the automated jeftinije_hr crawl uses — so a manual_import
+// source's uncertain matches get the same pick-a-candidate UI instead of
+// requiring the CSV itself to be hand-edited.
+const importAmbiguousSchema = z.object({ csv: z.string().min(1) });
+
+sourcesRouter.post("/:id/import-ambiguous", async (req, res) => {
+  const source = await prisma.source.findUnique({ where: { id: req.params.id } });
+  if (!source) return res.status(404).json({ error: "Source not found" });
+
+  const parsed = importAmbiguousSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  let records: Record<string, string>[];
+  try {
+    const raw = parse(parsed.data.csv, { columns: true, skip_empty_lines: true, trim: true }) as Record<
+      string,
+      string
+    >[];
+    records = raw.map((row) => {
+      const normalized: Record<string, string> = {};
+      for (const [key, value] of Object.entries(row)) normalized[key.trim().toLowerCase()] = (value ?? "").trim();
+      return normalized;
+    });
+  } catch (err) {
+    return res.status(400).json({ error: `Could not parse CSV: ${err instanceof Error ? err.message : "invalid format"}` });
+  }
+  if (records.length === 0) return res.status(400).json({ error: "CSV has no rows" });
+
+  const products = await prisma.product.findMany({ where: { storeId: source.storeId } });
+  const productIds = new Set(products.map((p) => p.id));
+
+  const byProduct = new Map<string, { title: string; price: number | null; url: string }[]>();
+  const errors: string[] = [];
+  for (const [i, row] of records.entries()) {
+    const productId = row.product_id;
+    if (!productId) continue; // blank row — ignore, common at the end of a sheet
+    if (!productIds.has(productId)) {
+      errors.push(`Row ${i + 2}: unknown product_id "${productId}" (was this row edited?)`);
+      continue;
+    }
+    const title = row.candidate_title;
+    const url = row.candidate_url;
+    if (!title || !url) {
+      errors.push(`Row ${i + 2}: missing candidate_title/candidate_url`);
+      continue;
+    }
+    const priceRaw = row.candidate_price;
+    const parsedPrice = priceRaw ? parseFloat(priceRaw.replace(",", ".")) : NaN;
+    const price = Number.isNaN(parsedPrice) ? null : parsedPrice;
+    const list = byProduct.get(productId) ?? [];
+    list.push({ title, price, url });
+    byProduct.set(productId, list);
+  }
+
+  let imported = 0;
+  for (const [productId, candidates] of byProduct) {
+    // Same "leave an already-resolved/dismissed row alone unless the
+    // candidate set changed" rule the automated crawl's upsert uses — a
+    // re-import of the same review file shouldn't re-litigate a decision
+    // already made.
+    const candidatesJson = JSON.stringify(candidates.slice(0, 5));
+    const existing = await prisma.ambiguousMatch.findUnique({
+      where: { sourceId_productId: { sourceId: source.id, productId } },
+    });
+    if (existing && existing.status !== "pending" && existing.candidatesJson === candidatesJson) continue;
+    await prisma.ambiguousMatch.upsert({
+      where: { sourceId_productId: { sourceId: source.id, productId } },
+      create: { sourceId: source.id, productId, candidatesJson, status: "pending" },
+      update: { candidatesJson, status: "pending", resolvedAt: null },
+    });
+    imported++;
+  }
+
+  res.json({ imported, errorCount: errors.length, errors: errors.slice(0, 20) });
+});
