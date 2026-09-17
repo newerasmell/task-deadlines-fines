@@ -5,7 +5,8 @@
 // tracked brand's whole catalog there; matching against our own products
 // happens afterward in jeftinijeMatcher.ts.
 import * as cheerio from "cheerio";
-import { politeGet, sleep } from "./httpClient";
+import { BrowserSession } from "./browserFetch";
+import { sleep } from "./httpClient";
 
 const BASE = "https://www.jeftinije.hr";
 
@@ -117,11 +118,15 @@ export function extractProducts(html: string, pageUrl: string): JeftinijeListing
   return out;
 }
 
-async function fetchWithRetry(url: string): Promise<string | null> {
+// jeftinije.hr 403s a plain HTTP client outright — confirmed live, same
+// TLS/header fingerprinting douglas.hr already forced a real-browser fetch
+// for (see browserFetch.ts) — so this crawl goes through a real headless
+// Chromium via BrowserSession instead of politeGet.
+async function fetchWithRetry(browser: BrowserSession, url: string): Promise<string | null> {
   let lastMessage = "unknown error";
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await politeGet(url);
+      return await browser.get(url);
     } catch (err) {
       lastMessage = err instanceof Error ? err.message : String(err);
       if (lastMessage.includes("403") || lastMessage.includes("429")) {
@@ -139,13 +144,17 @@ async function fetchWithRetry(url: string): Promise<string | null> {
 // ?stran=) by comparing page 2's product set against page 1's — same
 // detect-by-diffing approach as the Python version, since the working
 // param isn't guaranteed the same across every listing.
-async function detectPageParam(baseUrl: string, firstPageProducts: JeftinijeListing[]): Promise<string | null> {
+async function detectPageParam(
+  browser: BrowserSession,
+  baseUrl: string,
+  firstPageProducts: JeftinijeListing[]
+): Promise<string | null> {
   const sep = baseUrl.includes("?") ? "&" : "?";
   const firstUrls = new Set(firstPageProducts.map((p) => p.url));
   for (const param of ["p", "page", "stran"]) {
     const testUrl = `${baseUrl}${sep}${param}=2`;
     await sleep(1200);
-    const html = await fetchWithRetry(testUrl);
+    const html = await fetchWithRetry(browser, testUrl);
     if (!html) continue;
     const products = extractProducts(html, testUrl);
     const urls = new Set(products.map((p) => p.url));
@@ -158,20 +167,20 @@ async function detectPageParam(baseUrl: string, firstPageProducts: JeftinijeList
 // Returns whether the listing's first page was reachable at all — lets the
 // caller tell "this one listing had no pages" apart from "the site stopped
 // answering us", which is the signal a run-wide circuit breaker needs.
-async function crawlListing(baseUrl: string, out: JeftinijeListing[]): Promise<boolean> {
-  const first = await fetchWithRetry(baseUrl);
+async function crawlListing(browser: BrowserSession, baseUrl: string, out: JeftinijeListing[]): Promise<boolean> {
+  const first = await fetchWithRetry(browser, baseUrl);
   if (!first) return false;
   const firstProducts = extractProducts(first, baseUrl);
   out.push(...firstProducts);
 
-  const pageFmt = await detectPageParam(baseUrl, firstProducts);
+  const pageFmt = await detectPageParam(browser, baseUrl, firstProducts);
   if (!pageFmt) return true;
 
   let prevUrls = new Set(firstProducts.map((p) => p.url));
   for (let n = 2; n <= 200; n++) {
     const url = `${baseUrl}${pageFmt.replace("{n}", String(n))}`;
     await sleep(1200);
-    const html = await fetchWithRetry(url);
+    const html = await fetchWithRetry(browser, url);
     if (!html) break;
     const products = extractProducts(html, url);
     const urls = new Set(products.map((p) => p.url));
@@ -199,30 +208,37 @@ export async function buildJeftinijeIndex(brands: string[] = Object.keys(BRAND_I
   let attempted = 0;
   console.log(`[jeftinije] starting crawl: ${brands.length} brands x ${CATEGORIES.length} categories`);
 
-  for (const category of CATEGORIES) {
-    const categoryBase = `${BASE}/L3/${category.id}/${category.slug}`;
-    for (const brand of brands) {
-      const ids = BRAND_IDS[brand];
-      if (!ids) continue;
-      for (const pbra of ids) {
-        if (attempted > 0) await sleep(1200);
-        attempted++;
-        const ok = await crawlListing(`${categoryBase}?pbra=${pbra}`, out);
-        if (!ok) {
-          consecutiveFailures++;
-          console.warn(
-            `[jeftinije] listing unreachable: brand=${brand} pbra=${pbra} category=${category.slug} (${consecutiveFailures} in a row)`
-          );
-          if (consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
-            throw new Error(
-              `jeftinije.hr rejected ${CONSECUTIVE_FAILURE_LIMIT} consecutive requests — it's likely blocking this server. Aborted after ${attempted} of ~${brands.length * CATEGORIES.length} listing pages (${out.length} products collected before the block).`
+  // One headless Chromium for the whole crawl (launched lazily on first use,
+  // closed below) — same lifecycle as refreshScrapeSource's BrowserSession.
+  const browser = new BrowserSession();
+  try {
+    for (const category of CATEGORIES) {
+      const categoryBase = `${BASE}/L3/${category.id}/${category.slug}`;
+      for (const brand of brands) {
+        const ids = BRAND_IDS[brand];
+        if (!ids) continue;
+        for (const pbra of ids) {
+          if (attempted > 0) await sleep(1200);
+          attempted++;
+          const ok = await crawlListing(browser, `${categoryBase}?pbra=${pbra}`, out);
+          if (!ok) {
+            consecutiveFailures++;
+            console.warn(
+              `[jeftinije] listing unreachable: brand=${brand} pbra=${pbra} category=${category.slug} (${consecutiveFailures} in a row)`
             );
+            if (consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
+              throw new Error(
+                `jeftinije.hr rejected ${CONSECUTIVE_FAILURE_LIMIT} consecutive requests — it's likely blocking this server. Aborted after ${attempted} of ~${brands.length * CATEGORIES.length} listing pages (${out.length} products collected before the block).`
+              );
+            }
+          } else {
+            consecutiveFailures = 0;
           }
-        } else {
-          consecutiveFailures = 0;
         }
       }
     }
+  } finally {
+    await browser.close();
   }
   console.log(`[jeftinije] crawl finished: ${out.length} products from ${attempted} listing pages`);
   return out;
