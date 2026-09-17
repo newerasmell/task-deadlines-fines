@@ -53,7 +53,7 @@ const GENERIC = new Set([
   "new", "original", "u", "i", "de", "o",
 ]);
 
-function canonBrand(s: string): string {
+export function canonBrand(s: string): string {
   const n = normalizeText(s);
   return BRAND_ALIASES[n] ?? n;
 }
