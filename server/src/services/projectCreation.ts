@@ -46,6 +46,8 @@ export interface ProjectStepInput {
   assigneeId: string;
   title: string;
   description?: string | null;
+  definitionOfDone: string;
+  dodSource?: "stated" | "ai_suggested" | "admin" | null;
   ownerId?: string | null;
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   // Step 1 only.
@@ -107,6 +109,8 @@ export async function createProjectAndNotify(input: CreateProjectInput): Promise
       data: {
         title: step.title,
         description: step.description,
+        definitionOfDone: step.definitionOfDone,
+        dodSource: step.dodSource ?? "admin",
         assigneeId: step.assigneeId,
         ownerId: step.ownerId,
         createdById: input.createdById,

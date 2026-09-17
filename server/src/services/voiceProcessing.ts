@@ -115,6 +115,25 @@ async function resolveAssignee(id: string | null | undefined): Promise<string | 
   return user?.id ?? null;
 }
 
+// Validates Claude's 1-2 candidate guesses (only ever present when
+// assignee_id came back "unassigned") against real active users the same
+// way resolveAssignee does, dropping any stale/hallucinated id rather than
+// showing the admin a suggestion pointing at nobody. Returns a JSON string
+// for VoiceTaskDraft.suggestedAssignees (null if nothing survived), with
+// each user's name embedded so the review screen never needs a second
+// lookup just to render a suggestion.
+async function resolveSuggestedAssignees(
+  raw: ExtractedTask["suggested_assignees"]
+): Promise<string | null> {
+  if (!raw || raw.length === 0) return null;
+  const resolved: { id: string; name: string; reason: string }[] = [];
+  for (const s of raw) {
+    const user = await prisma.user.findFirst({ where: { id: s.assignee_id, active: true }, select: { id: true, name: true } });
+    if (user) resolved.push({ id: user.id, name: user.name, reason: s.reason });
+  }
+  return resolved.length > 0 ? JSON.stringify(resolved) : null;
+}
+
 /**
  * Runs Claude extraction on an already-stored transcript and creates one
  * VoiceTaskDraft per extracted task — never a real Task (see the brief's
@@ -144,13 +163,21 @@ export async function extractAndCreateDrafts(transcriptId: string): Promise<numb
     // create a draft the admin can't approve as-is.
     const resolvedOwnerIdRaw = await resolveAssignee(item.owner_id);
     const resolvedOwnerId = resolvedOwnerIdRaw && resolvedOwnerIdRaw !== resolvedAssigneeId ? resolvedOwnerIdRaw : null;
+    // Suggestions only make sense when nothing was actually resolved — if
+    // assignee_id somehow did resolve, the admin already has a real pick,
+    // so don't also show a "guess" alongside it.
+    const suggestedAssignees = resolvedAssigneeId ? null : await resolveSuggestedAssignees(item.suggested_assignees);
     await prisma.voiceTaskDraft.create({
       data: {
         transcriptId,
         title: item.title.slice(0, 200),
         description: item.description ?? null,
+        definitionOfDone: item.definition_of_done,
+        dodSource: item.dod_source,
+        taskType: item.task_type,
         assigneeKey: item.assignee_id,
         resolvedAssigneeId,
+        suggestedAssignees,
         ownerKey: item.owner_id ?? null,
         resolvedOwnerId,
         deadline: resolveDeadline(item.deadline),

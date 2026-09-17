@@ -170,6 +170,7 @@ voiceRouter.get("/drafts/:id", async (req, res) => {
 const patchSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
+  definitionOfDone: z.string().min(1).optional(),
   assigneeId: z.string().nullable().optional(),
   deadline: z.coerce.date().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
@@ -195,6 +196,10 @@ voiceRouter.patch("/drafts/:id", async (req, res) => {
 const approveSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
+  // Always required at approval, regardless of whether the draft already
+  // had one from extraction — a task can never reach "assigned" with an
+  // empty Definition of Done.
+  definitionOfDone: z.string().min(1),
   assigneeId: z.string().min(1),
   ownerId: z.string().nullable().optional(),
   deadline: z.coerce.date().optional(),
@@ -219,11 +224,21 @@ voiceRouter.post("/drafts/:id/approve", async (req, res) => {
     return res.status(400).json({ error: "Owner-ът не може да е самият изпълнител" });
   }
 
+  // Unchanged from what extraction produced → keep its source ("stated" or
+  // "ai_suggested"); anything the admin actually typed/edited becomes
+  // "admin", same rule the brief specifies for the Definition of Done.
+  const dodSource: "stated" | "ai_suggested" | "admin" =
+    parsed.data.definitionOfDone === draft.definitionOfDone
+      ? (draft.dodSource as "stated" | "ai_suggested" | "admin" | null) ?? "admin"
+      : "admin";
+
   let task;
   try {
     task = await createTaskAndNotify({
       title: parsed.data.title ?? draft.title,
       description: parsed.data.description ?? draft.description,
+      definitionOfDone: parsed.data.definitionOfDone,
+      dodSource,
       assigneeId: parsed.data.assigneeId,
       ownerId,
       deadline: parsed.data.deadline ?? draft.deadline,
@@ -239,6 +254,8 @@ voiceRouter.post("/drafts/:id/approve", async (req, res) => {
     data: {
       title: parsed.data.title ?? draft.title,
       description: parsed.data.description ?? draft.description,
+      definitionOfDone: parsed.data.definitionOfDone,
+      dodSource,
       resolvedAssigneeId: parsed.data.assigneeId,
       resolvedOwnerId: ownerId,
       deadline: parsed.data.deadline ?? draft.deadline,
@@ -283,11 +300,18 @@ voiceRouter.post("/transcripts/:id/approve-all", async (req, res) => {
       skipped.push({ draftId: draft.id, title: draft.title, reason: "Няма определен изпълнител" });
       continue;
     }
+    if (!draft.definitionOfDone) {
+      skipped.push({ draftId: draft.id, title: draft.title, reason: "Няма определение за завършена задача" });
+      continue;
+    }
     try {
       const task = await createTaskAndNotify({
         title: draft.title,
         description: draft.description,
+        definitionOfDone: draft.definitionOfDone,
+        dodSource: draft.dodSource as "stated" | "ai_suggested" | "admin" | null,
         assigneeId: draft.resolvedAssigneeId,
+        ownerId: draft.resolvedOwnerId,
         deadline: draft.deadline,
         priority: draft.priority as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
         createdById: req.user!.sub,
@@ -309,6 +333,7 @@ const chainStepApproveSchema = z.object({
   draftId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().nullable().optional(),
+  definitionOfDone: z.string().min(1),
   assigneeId: z.string().min(1),
   ownerId: z.string().nullable().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
@@ -357,15 +382,24 @@ voiceRouter.post("/chains/:chainGroupId/approve", async (req, res) => {
   try {
     result = await createProjectAndNotify({
       title: parsed.data.projectTitle,
-      steps: steps.map((s) => ({
-        assigneeId: s.assigneeId,
-        title: s.title,
-        description: s.description ?? undefined,
-        ownerId: s.ownerId ?? undefined,
-        priority: s.priority,
-        deadline: s.deadline,
-        delayDays: s.delayDays,
-      })),
+      steps: steps.map((s) => {
+        const draft = draftById.get(s.draftId)!;
+        const dodSource: "stated" | "ai_suggested" | "admin" =
+          s.definitionOfDone === draft.definitionOfDone
+            ? (draft.dodSource as "stated" | "ai_suggested" | "admin" | null) ?? "admin"
+            : "admin";
+        return {
+          assigneeId: s.assigneeId,
+          title: s.title,
+          description: s.description ?? undefined,
+          definitionOfDone: s.definitionOfDone,
+          dodSource,
+          ownerId: s.ownerId ?? undefined,
+          priority: s.priority,
+          deadline: s.deadline,
+          delayDays: s.delayDays,
+        };
+      }),
       createdById: req.user!.sub,
     });
   } catch (err) {

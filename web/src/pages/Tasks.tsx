@@ -838,6 +838,7 @@ function TaskForm({
   const isEdit = Boolean(task);
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
+  const [definitionOfDone, setDefinitionOfDone] = useState(task?.definitionOfDone ?? "");
   const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? (isAdmin ? employees[0]?.id ?? "" : user?.id ?? ""));
   const [ownerId, setOwnerId] = useState(task?.ownerId ?? "");
   const [deadline, setDeadline] = useState(task ? toLocalInputValue(task.deadline) : "");
@@ -899,6 +900,7 @@ function TaskForm({
       const body: Record<string, unknown> = {
         title,
         description: description || undefined,
+        definitionOfDone,
         assigneeId,
         ownerId: ownerId || null,
         deadline: new Date(deadline).toISOString(),
@@ -927,6 +929,16 @@ function TaskForm({
       <label>
         {t("Описание")}
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+      </label>
+      <label>
+        {t("Определение за завършена задача")}
+        <textarea
+          value={definitionOfDone}
+          onChange={(e) => setDefinitionOfDone(e.target.value)}
+          rows={2}
+          required
+          placeholder={t("Какво точно трябва да е готово, за да се счита задачата за завършена?")}
+        />
       </label>
       <div className="form-row">
         <label>
@@ -1015,6 +1027,7 @@ interface ComplexStepDraft {
   assigneeId: string;
   title: string;
   description: string;
+  definitionOfDone: string;
   ownerId: string;
   priority: Priority;
   deadline: string; // datetime-local string — step 0 only
@@ -1022,7 +1035,16 @@ interface ComplexStepDraft {
 }
 
 function emptyComplexStep(defaultAssigneeId: string): ComplexStepDraft {
-  return { assigneeId: defaultAssigneeId, title: "", description: "", ownerId: "", priority: "MEDIUM", deadline: "", delayDays: "" };
+  return {
+    assigneeId: defaultAssigneeId,
+    title: "",
+    description: "",
+    definitionOfDone: "",
+    ownerId: "",
+    priority: "MEDIUM",
+    deadline: "",
+    delayDays: "",
+  };
 }
 
 // A "сложна задача": a chain of 2-4 task steps, each with its own
@@ -1094,6 +1116,7 @@ function ComplexTaskForm({
       const step = steps[i];
       if (!step.assigneeId) return setError(t("Избери служител за стъпка {n}.", { n: i + 1 }));
       if (!step.title) return setError(t("Въведи заглавие на задачата за стъпка {n}.", { n: i + 1 }));
+      if (!step.definitionOfDone) return setError(t("Въведи определение за завършена задача за стъпка {n}.", { n: i + 1 }));
       if (i === 0 && !step.deadline) return setError(t("Първата стъпка трябва да има краен срок."));
       if (i > 0 && !step.delayDays) return setError(t("Стъпка {n} трябва да има брой дни след предходната.", { n: i + 1 }));
       const isSelfAssign = step.assigneeId === user?.id;
@@ -1110,6 +1133,7 @@ function ComplexTaskForm({
           assigneeId: step.assigneeId,
           title: step.title,
           description: step.description || undefined,
+          definitionOfDone: step.definitionOfDone,
           ownerId: step.ownerId || undefined,
           priority: step.priority,
           deadline: i === 0 ? new Date(step.deadline).toISOString() : undefined,
@@ -1159,6 +1183,15 @@ function ComplexTaskForm({
             <label>
               {t("Описание")}
               <textarea value={step.description} onChange={(e) => updateStep(i, { description: e.target.value })} rows={2} />
+            </label>
+            <label>
+              {t("Определение за завършена задача")}
+              <textarea
+                value={step.definitionOfDone}
+                onChange={(e) => updateStep(i, { definitionOfDone: e.target.value })}
+                rows={2}
+                required
+              />
             </label>
             <div className="form-row">
               <label>

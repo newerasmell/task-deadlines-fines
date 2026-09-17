@@ -54,10 +54,14 @@ export interface TaskSubmission {
   attachments: Attachment[];
 }
 
+export type DodSource = "stated" | "ai_suggested" | "admin";
+
 export interface Task {
   id: string;
   title: string;
   description: string | null;
+  definitionOfDone: string | null;
+  dodSource: DodSource | null;
   assigneeId: string;
   assignee: UserRef;
   createdBy: UserRef & { isSuperAdmin: boolean };
@@ -297,15 +301,30 @@ export interface VoiceTranscript extends VoiceTranscriptRef {
   claudeOutputTokens: number | null;
 }
 
+export interface SuggestedAssignee {
+  id: string;
+  name: string;
+  reason: string;
+}
+
 export interface VoiceTaskDraft {
   id: string;
   transcriptId: string | null;
   transcript: VoiceTranscriptRef | null;
   title: string;
   description: string | null;
+  definitionOfDone: string | null;
+  dodSource: DodSource | null;
+  // "ai_opportunity" is a problem/gap Claude noticed in the conversation
+  // but nobody explicitly turned into a task — rendered in its own section
+  // on the review screen. "extracted" is an ordinary stated task.
+  taskType: "extracted" | "ai_opportunity";
   assigneeKey: string | null;
   resolvedAssigneeId: string | null;
   resolvedAssignee: UserRef | null;
+  // Raw JSON string of SuggestedAssignee[] — only present when assigneeKey
+  // came back "unassigned"; JSON.parse before use (see VoiceReview.tsx).
+  suggestedAssignees: string | null;
   // Set only when the transcript explicitly named someone to review/approve
   // the work — most drafts leave this null (see taskExtraction.ts's owner_id).
   ownerKey: string | null;

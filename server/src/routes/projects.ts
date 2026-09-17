@@ -12,6 +12,7 @@ const stepSchema = z.object({
   assigneeId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
+  definitionOfDone: z.string().min(1),
   ownerId: z.string().min(1).optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
   // Step 1 only.

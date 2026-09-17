@@ -124,6 +124,9 @@ tasksRouter.get("/:id", async (req, res) => {
 const createSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
+  // Required for every task, manual or AI-extracted — see brief "DoD and
+  // AI suggestions". Always "admin" as the source here (a human typed it).
+  definitionOfDone: z.string().min(1),
   assigneeId: z.string().min(1),
   ownerId: z.string().min(1).optional(),
   deadline: z.coerce.date(),
@@ -183,6 +186,7 @@ tasksRouter.post("/", async (req, res) => {
 const updateSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
+  definitionOfDone: z.string().min(1).optional(),
   assigneeId: z.string().min(1).optional(),
   ownerId: z.string().nullable().optional(),
   deadline: z.coerce.date().optional(),
@@ -220,13 +224,18 @@ tasksRouter.patch("/:id", async (req, res) => {
   if (!isAdmin || locked) {
     // Employees (and a locked Admin acting only as assignee) can only start
     // work; completion goes through /submit for owner review.
-    for (const key of ["title", "description", "assigneeId", "ownerId", "deadline", "priority"]) delete data[key];
+    for (const key of ["title", "description", "definitionOfDone", "assigneeId", "ownerId", "deadline", "priority"]) delete data[key];
     if (parsed.data.status && parsed.data.status !== "IN_PROGRESS") {
       return res.status(400).json({ error: "Use POST /tasks/:id/submit to complete a task" });
     }
   }
   if (parsed.data.status === "DONE" && existing.status !== "DONE") {
     data.completedAt = new Date();
+  }
+  // Edited by a human after the fact → same "admin" source rule as at
+  // approval time, whatever it was before (stated/ai_suggested/admin).
+  if (parsed.data.definitionOfDone !== undefined && parsed.data.definitionOfDone !== existing.definitionOfDone) {
+    data.dodSource = "admin";
   }
 
   // Editing the deadline moves the task onto a new timeline — the old

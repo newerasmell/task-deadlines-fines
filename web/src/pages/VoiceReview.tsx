@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { PRIORITY_LABELS } from "../api/types";
-import type { Priority, User, VoiceDraftStatus, VoiceTaskDraft, VoiceTranscript } from "../api/types";
+import type { Priority, SuggestedAssignee, User, VoiceDraftStatus, VoiceTaskDraft, VoiceTranscript } from "../api/types";
 import { useI18n } from "../i18n/I18nContext";
 
 const STATUS_LABELS: Record<VoiceDraftStatus, string> = {
@@ -188,7 +188,7 @@ export function VoiceReview() {
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
-            {partitionChains(items).map((entry) =>
+            {partitionChains(items.filter((d) => d.taskType !== "ai_opportunity")).map((entry) =>
               entry.kind === "chain" ? (
                 <ChainCard key={entry.chainGroupId} steps={entry.steps} employees={employees} readOnly={status !== "DRAFT"} onChanged={refresh} />
               ) : (
@@ -196,6 +196,21 @@ export function VoiceReview() {
               )
             )}
           </div>
+
+          {items.some((d) => d.taskType === "ai_opportunity") && (
+            <div style={{ marginTop: 20 }}>
+              <h3 className="muted small" style={{ margin: "0 0 10px", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                {t("Предложения от AI")}
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {items
+                  .filter((d) => d.taskType === "ai_opportunity")
+                  .map((draft) => (
+                    <DraftCard key={draft.id} draft={draft} employees={employees} readOnly={status !== "DRAFT"} onChanged={refresh} />
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -239,18 +254,43 @@ function DraftCard({
   onChanged: () => void;
 }) {
   const { t } = useI18n();
+  const isOpportunity = draft.taskType === "ai_opportunity";
+  const suggestions = useMemo<SuggestedAssignee[]>(() => {
+    if (!draft.suggestedAssignees) return [];
+    try {
+      return JSON.parse(draft.suggestedAssignees) as SuggestedAssignee[];
+    } catch {
+      return [];
+    }
+  }, [draft.suggestedAssignees]);
+
   const [title, setTitle] = useState(draft.title);
   const [description, setDescription] = useState(draft.description ?? "");
-  const [assigneeId, setAssigneeId] = useState(draft.resolvedAssigneeId ?? "");
+  const [definitionOfDone, setDefinitionOfDone] = useState(draft.definitionOfDone ?? "");
+  const [dodEdited, setDodEdited] = useState(false);
+  const [assigneeId, setAssigneeId] = useState(draft.resolvedAssigneeId ?? suggestions[0]?.id ?? "");
+  // True only while the current assigneeId is still just Claude's guess,
+  // never explicitly confirmed — any interaction with the dropdown clears
+  // it, even picking the same person again, per the brief's rule.
+  const [assigneeIsSuggestion, setAssigneeIsSuggestion] = useState(!draft.resolvedAssigneeId && suggestions.length > 0);
   const [ownerId, setOwnerId] = useState(draft.resolvedOwnerId ?? "");
   const [deadline, setDeadline] = useState(draft.deadline.slice(0, 10));
   const [priority, setPriority] = useState<Priority>(draft.priority);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  function pickAssignee(id: string) {
+    setAssigneeId(id);
+    setAssigneeIsSuggestion(false);
+  }
+
   async function approve() {
     if (!assigneeId) {
       setError(t("Избери изпълнител, преди да одобриш."));
+      return;
+    }
+    if (!definitionOfDone.trim()) {
+      setError(t("Определението за завършена задача е задължително, преди да одобриш."));
       return;
     }
     if (ownerId && ownerId === assigneeId) {
@@ -265,6 +305,7 @@ function DraftCard({
         body: JSON.stringify({
           title,
           description: description || null,
+          definitionOfDone,
           assigneeId,
           ownerId: ownerId || null,
           deadline,
@@ -290,11 +331,23 @@ function DraftCard({
     }
   }
 
+  const dodIsAiSuggested = !dodEdited && draft.dodSource === "ai_suggested";
+
   return (
     <div
       className="card"
-      style={{ margin: 0, background: "var(--bg)", borderLeft: `4px solid ${PRIORITY_BAR_COLOR[draft.priority]}` }}
+      style={{
+        margin: 0,
+        background: "var(--bg)",
+        borderLeft: `4px solid ${PRIORITY_BAR_COLOR[draft.priority]}`,
+        ...(isOpportunity ? { border: "1px dashed var(--border)", borderLeftWidth: 4 } : {}),
+      }}
     >
+      {isOpportunity && (
+        <span className="badge badge-info" style={{ marginBottom: 10, display: "inline-block" }}>
+          {t("AI предложение")}
+        </span>
+      )}
       <p className="muted small" style={{ margin: "0 0 10px", fontWeight: 600 }}>
         {t("Извлечено от разговора")}:
       </p>
@@ -306,6 +359,11 @@ function DraftCard({
         <div>
           <strong>{draft.title}</strong>
           {draft.description && <p className="muted small" style={{ margin: "4px 0 10px" }}>{draft.description}</p>}
+          {draft.definitionOfDone && (
+            <p className="muted small" style={{ margin: "4px 0 10px" }}>
+              <strong>{t("Определение за завършена задача")}:</strong> {draft.definitionOfDone}
+            </p>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
             <span className="badge">
               {draft.resolvedAssignee?.name ?? t("Неопределен")}
@@ -327,10 +385,33 @@ function DraftCard({
             {t("Описание")}
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} disabled={submitting} rows={2} />
           </label>
+          <label>
+            {t("Определение за завършена задача")}
+            {dodIsAiSuggested && (
+              <span className="badge badge-info" style={{ marginLeft: 8 }}>
+                {t("AI предложение")}
+              </span>
+            )}
+            <textarea
+              value={definitionOfDone}
+              onChange={(e) => {
+                setDefinitionOfDone(e.target.value);
+                setDodEdited(true);
+              }}
+              disabled={submitting}
+              rows={2}
+              required
+            />
+          </label>
           <div className="form-row">
             <label>
               {t("Изпълнител")}
-              <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} disabled={submitting}>
+              {assigneeIsSuggestion && (
+                <span className="badge badge-info" style={{ marginLeft: 8 }}>
+                  {t("AI предложение")}
+                </span>
+              )}
+              <select value={assigneeId} onChange={(e) => pickAssignee(e.target.value)} disabled={submitting}>
                 <option value="">{t("— Избери —")}</option>
                 {employees
                   .filter((e) => e.active)
@@ -356,6 +437,19 @@ function DraftCard({
               </select>
             </label>
           </div>
+          {suggestions.length > 0 && (
+            <div className="muted small" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ fontWeight: 600 }}>{t("Предложения от AI:")}</span>
+              {suggestions.map((s) => (
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" className="small-btn secondary" disabled={submitting} onClick={() => pickAssignee(s.id)}>
+                    {s.name}
+                  </button>
+                  <span>{s.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <label>
             {t("Owner (по избор — само ако разговорът изрично спомене преглеждащ)")}
             <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} disabled={submitting}>
@@ -388,6 +482,7 @@ interface ChainStepDraft {
   draftId: string;
   title: string;
   description: string;
+  definitionOfDone: string;
   assigneeId: string;
   ownerId: string;
   priority: Priority;
@@ -413,6 +508,7 @@ function ChainCard({
       draftId: s.id,
       title: s.title,
       description: s.description ?? "",
+      definitionOfDone: s.definitionOfDone ?? "",
       assigneeId: s.resolvedAssigneeId ?? "",
       ownerId: "",
       priority: s.priority,
@@ -431,6 +527,7 @@ function ChainCard({
     for (let i = 0; i < stepDrafts.length; i++) {
       const s = stepDrafts[i];
       if (!s.assigneeId) return setError(t("Избери изпълнител за стъпка {n}.", { n: i + 1 }));
+      if (!s.definitionOfDone.trim()) return setError(t("Въведи определение за завършена задача за стъпка {n}.", { n: i + 1 }));
       if (i === 0 && !s.deadline) return setError(t("Първата стъпка трябва да има краен срок."));
       if (i > 0 && !s.delayDays) return setError(t("Стъпка {n} трябва да има брой дни след предходната.", { n: i + 1 }));
     }
@@ -445,6 +542,7 @@ function ChainCard({
             draftId: s.draftId,
             title: s.title,
             description: s.description || null,
+            definitionOfDone: s.definitionOfDone,
             assigneeId: s.assigneeId,
             ownerId: s.ownerId || null,
             priority: s.priority,
@@ -492,6 +590,11 @@ function ChainCard({
                   {i + 1}. {s.title}
                 </strong>
                 {s.description && <p className="muted small" style={{ margin: "4px 0" }}>{s.description}</p>}
+                {s.definitionOfDone && (
+                  <p className="muted small" style={{ margin: "4px 0" }}>
+                    <strong>{t("Определение за завършена задача")}:</strong> {s.definitionOfDone}
+                  </p>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
                   <span className="badge">{s.resolvedAssignee?.name ?? t("Неопределен")}</span>
                   <span className="badge">
@@ -528,6 +631,16 @@ function ChainCard({
                   <label>
                     {t("Описание")}
                     <textarea value={step.description} onChange={(e) => updateStep(i, { description: e.target.value })} disabled={submitting} rows={2} />
+                  </label>
+                  <label>
+                    {t("Определение за завършена задача")}
+                    <textarea
+                      value={step.definitionOfDone}
+                      onChange={(e) => updateStep(i, { definitionOfDone: e.target.value })}
+                      disabled={submitting}
+                      rows={2}
+                      required
+                    />
                   </label>
                   <div className="form-row">
                     <label>

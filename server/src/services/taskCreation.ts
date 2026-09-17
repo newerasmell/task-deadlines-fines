@@ -19,6 +19,10 @@ const notifiableUserSelect = {
 export interface CreateTaskInput {
   title: string;
   description?: string | null;
+  // What counts as this task being done — always required, never created
+  // without one (see the brief: a task can never reach "assigned" empty).
+  definitionOfDone: string;
+  dodSource?: "stated" | "ai_suggested" | "admin" | null;
   assigneeId: string;
   ownerId?: string | null;
   deadline: Date;
@@ -48,6 +52,8 @@ export async function createTaskAndNotify(input: CreateTaskInput) {
     data: {
       title: input.title,
       description: input.description ?? null,
+      definitionOfDone: input.definitionOfDone,
+      dodSource: input.dodSource ?? "admin",
       assigneeId: input.assigneeId,
       ownerId: input.ownerId ?? null,
       deadline: input.deadline,
