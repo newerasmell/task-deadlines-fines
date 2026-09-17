@@ -91,15 +91,65 @@ function parsePrice(text: string): number | null {
   return Number.isNaN(num) ? null : Math.round(num * 100) / 100;
 }
 
-// Finds product cards on a listing/search page: anchors to /Proizvod/<id>/,
-// with the price read from the nearest ancestor that contains one (climbs
-// up to 6 levels, mirroring the Python version's DOM-climb heuristic).
+// Confirmed live against a real jeftinije.hr listing page: one product's
+// card has SEVERAL anchors to itself — the image, the title (inside
+// `.productTitle`), the price (inside a sibling `.priceInfo`), and the
+// seller count — all pointing at the same /Proizvod/<id>/ URL. The old
+// "stop climbing once an ancestor has more than one /Proizvod/ anchor"
+// guard misread that as "this ancestor holds multiple different products"
+// and stopped one hop too early, before ever reaching `.priceInfo` — which
+// is why ~70% of a live crawl came back with no price at all. Climbing is
+// safe as long as every other /Proizvod/ anchor in the ancestor still
+// points at the SAME product; it should only stop at an ancestor that
+// genuinely contains a different one.
+function findPrice($: cheerio.CheerioAPI, $a: cheerio.Cheerio<any>, url: string): number | null {
+  // Fast, precise path: this site's real markup keeps title + price inside
+  // one shared `.innerProductBox` per product.
+  const card = $a.closest(".innerProductBox");
+  if (card.length > 0) {
+    const price = parsePrice(card.find(".priceInfo").first().text());
+    if (price !== null) return price;
+  }
+  // Fallback DOM-climb for any page layout that doesn't use that class.
+  let node = $a;
+  for (let hops = 0; hops < 8; hops++) {
+    if (hops > 0) {
+      const price = parsePrice(node.text());
+      if (price !== null) return price;
+    }
+    const parent = node.parent();
+    if (parent.length === 0) break;
+    const hasDifferentProduct = parent
+      .find('a[href*="/Proizvod/"]')
+      .toArray()
+      .some((el) => {
+        const otherHref = $(el).attr("href");
+        if (!otherHref) return false;
+        const otherUrl = (otherHref.startsWith("http") ? otherHref : BASE + otherHref).split("?")[0];
+        return otherUrl !== url;
+      });
+    if (hasDifferentProduct) break;
+    node = parent;
+  }
+  return null;
+}
+
+// Finds product cards on a listing/search page. The title specifically
+// lives in `.productTitle` — grabbing every /Proizvod/ anchor indiscrimately
+// (the old approach) also picked up the price and seller-count anchors as
+// bogus "products" (their own link text, e.g. "od 280,31 €" or
+// "u 2 trgovine", passed the same length check a real title would). Falls
+// back to scanning every anchor only if that class isn't present at all —
+// a different page layout than the one this was built against.
 export function extractProducts(html: string, pageUrl: string): JeftinijeListing[] {
   const $ = cheerio.load(html);
   const seen = new Set<string>();
   const out: JeftinijeListing[] = [];
 
-  $('a[href*="/Proizvod/"]').each((_, el) => {
+  let anchors = $('.productTitle a[href*="/Proizvod/"]');
+  if (anchors.length === 0) anchors = $('a[href*="/Proizvod/"]');
+
+  anchors.each((_, el) => {
     const $a = $(el);
     const href = $a.attr("href");
     if (!href || !/\/Proizvod\/\d+\//.test(href)) return;
@@ -107,24 +157,10 @@ export function extractProducts(html: string, pageUrl: string): JeftinijeListing
     const title = $a.text().trim() || $a.attr("title") || "";
     if (!title || title.length <= 3) return;
 
-    let node = $a;
-    let price: number | null = null;
-    for (let hops = 0; hops < 6 && price === null; hops++) {
-      if (hops > 0) price = parsePrice(node.text());
-      const parent = node.parent();
-      if (parent.length === 0) break;
-      // Stop before climbing into a container that holds more than one
-      // product card — past that point "nearest ancestor with a €" starts
-      // reading a sibling card's price instead of this one's.
-      if (parent.find('a[href*="/Proizvod/"]').length > 1) break;
-      node = parent;
-    }
-
     const key = `${url}|${title}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push({ title, url, priceEur: price });
-    }
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ title, url, priceEur: findPrice($, $a, url) });
   });
   return out;
 }
