@@ -151,7 +151,7 @@ export class BrowserSession {
     return this.browserPromise;
   }
 
-  private async newContext(): Promise<BrowserContext> {
+  async newContext(): Promise<BrowserContext> {
     const browser = await this.browser();
     const context = await browser.newContext({
       userAgent: USER_AGENT,
@@ -221,7 +221,7 @@ export class BrowserSession {
   async newPersistentPage(): Promise<PersistentPage> {
     const context = await this.newContext();
     const page = await context.newPage();
-    return new PersistentPage(context, page);
+    return new PersistentPage(this, context, page);
   }
 
   async close(): Promise<void> {
@@ -234,11 +234,38 @@ export class BrowserSession {
   }
 }
 
+// Confirmed live: this server runs on a 512MB instance, and a single
+// context/page held open across a long crawl (hundreds of navigations for
+// the full brand list) grew memory enough to get the whole process
+// OOM-killed and restarted by the platform mid-crawl — a genuinely
+// continuous session works locally on a real machine with real RAM, but
+// isn't free here. Recycling the context (fresh context + page, cookies
+// carried over) every so often bounds that growth while keeping most of
+// the same-session continuity within each stretch.
+const RECYCLE_AFTER_NAVIGATIONS = 20;
+
 export class PersistentPage {
-  constructor(private context: BrowserContext, private page: Page) {}
+  private navigationCount = 0;
+
+  constructor(private session: BrowserSession, private context: BrowserContext, private page: Page) {}
 
   async goto(url: string, timeoutMs = 30000): Promise<string> {
+    this.navigationCount++;
+    if (this.navigationCount > 1 && this.navigationCount % RECYCLE_AFTER_NAVIGATIONS === 0) {
+      await this.recycle();
+    }
     return withTimeout(loadPage(this.page, url, timeoutMs), timeoutMs + 10000, `get ${url}`);
+  }
+
+  private async recycle(): Promise<void> {
+    const cookies = await this.context.cookies().catch(() => []);
+    const oldContext = this.context;
+    this.context = await this.session.newContext();
+    if (cookies.length > 0) await this.context.addCookies(cookies).catch(() => {});
+    this.page = await this.context.newPage();
+    await oldContext.close().catch(() => {
+      // Best-effort — nothing meaningful to do if the old context won't close.
+    });
   }
 
   async close(): Promise<void> {
