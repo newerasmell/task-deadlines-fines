@@ -72,15 +72,31 @@ function isTester(title: string): boolean {
   return normalizeText(title).includes("tester");
 }
 
-// Title minus brand, ml, concentration phrases, and generic filler words —
-// what's left has to agree exactly between our product and a candidate for
-// them to count as the same fragrance (not a flanker of it).
+// All known phrasings of `brand`'s canonical brand — a competitor's title
+// might spell it as "Giorgio Armani" while our own vendor field just says
+// "Armani"; both need stripping, not just the one we were given. Confirmed
+// live: a Giorgio Armani-branded jeftinije.hr listing left "giorgio" behind
+// as an orphan token and missed an otherwise-exact match. Longest first, so
+// "giorgio armani" is removed as a whole before the bare "armani" pass would
+// leave "giorgio" behind.
+function brandAliasesFor(brand: string): string[] {
+  const canonical = canonBrand(brand);
+  const aliases = new Set([normalizeText(brand), canonical]);
+  for (const [alias, canon] of Object.entries(BRAND_ALIASES)) {
+    if (canon === canonical) aliases.add(alias);
+  }
+  return [...aliases].sort((a, b) => b.length - a.length);
+}
+
+// Title minus brand (and all its known aliases), ml, concentration phrases,
+// and generic filler words — what's left has to agree exactly between our
+// product and a candidate for them to count as the same fragrance (not a
+// flanker of it).
 function modelTokens(title: string, brand: string): string[] {
   let n = ` ${normalizeText(title)} `;
-  const b = ` ${canonBrand(brand)} `;
-  n = n.split(b).join(" ");
-  const rawBrand = ` ${normalizeText(brand)} `;
-  n = n.split(rawBrand).join(" ");
+  for (const alias of brandAliasesFor(brand)) {
+    n = n.split(` ${alias} `).join(" ");
+  }
   for (const [, patterns] of CONC_PATTERNS) {
     for (const p of patterns) n = n.split(` ${p} `).join(" ");
   }
