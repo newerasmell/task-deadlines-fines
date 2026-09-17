@@ -27,11 +27,44 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
+// Some sites (confirmed live: jeftinije.hr) run the Didomi consent-management
+// SDK and only serve certain requests normally — pagination came back 403
+// until a human clicked "Accept" on the cookie banner once in the same
+// browser — once a real user consents, the sites treat the session as
+// legitimate. Didomi's own documented global API can grant that consent
+// with no UI interaction needed: harmless no-op on any page that doesn't
+// use Didomi (window.Didomi is just undefined there).
+// String (not a TS function) since this server's tsconfig has no DOM lib —
+// the script itself still runs entirely in-browser, same pattern as the
+// navigator.webdriver override in newContext() below.
+const ACCEPT_DIDOMI_CONSENT_SCRIPT = `
+  new Promise((resolve) => {
+    if (window.Didomi) {
+      try { window.Didomi.setUserAgreeToAll(); } catch (e) {}
+      resolve();
+      return;
+    }
+    window.didomiOnReady = window.didomiOnReady || [];
+    window.didomiOnReady.push(() => {
+      try { window.Didomi.setUserAgreeToAll(); } catch (e) {}
+      resolve();
+    });
+    setTimeout(resolve, 3000);
+  })
+`;
+
+async function acceptDidomiConsent(page: Page): Promise<void> {
+  await page.evaluate(ACCEPT_DIDOMI_CONSENT_SCRIPT).catch(() => {
+    // page navigated away / context closed mid-evaluate — not fatal
+  });
+}
+
 async function loadPage(page: Page, url: string, timeoutMs: number): Promise<string> {
   const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   if (res && !res.ok()) {
     throw new Error(`HTTP ${res.status()} fetching ${url}`);
   }
+  await acceptDidomiConsent(page);
   // Best-effort wait for any follow-up XHR/fetch-rendered content (a
   // search-results page commonly loads its listings this way) — NOT a hard
   // requirement: waitUntil: "networkidle" on goto() itself was tried and
