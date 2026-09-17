@@ -688,15 +688,23 @@ function SourceForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // A brand-listing crawl is heavy enough that it shouldn't quietly start
-  // auto-refreshing just because someone picked the type from a dropdown —
-  // only nudge the default when creating a new source, never override an
-  // explicit choice on an existing one.
+  // A brand-listing crawl is heavy enough that it must never silently
+  // inherit "auto-refresh" from whatever the previous type defaulted to —
+  // confirmed live that editing a source from manual_import (which defaults
+  // autoRefresh to true) back to jeftinije_hr left the stale `true` in
+  // place, since edits otherwise never override an existing explicit
+  // choice, and the scheduler then kicked off an unwanted crawl on its next
+  // 15-minute tick. So switching TO jeftinije_hr always forces it off,
+  // whether creating new or editing — the one type where "quietly inherited
+  // true" is never an acceptable state, in trade for the admin having to
+  // re-check the box if they genuinely want it on.
   function handleTypeChange(next: SourceType) {
     setType(next);
-    if (!isEdit) {
-      setAutoRefresh(next !== "jeftinije_hr");
-      if (next === "jeftinije_hr" && !baseUrl) setBaseUrl("https://www.jeftinije.hr");
+    if (next === "jeftinije_hr") {
+      setAutoRefresh(false);
+      if (!baseUrl) setBaseUrl("https://www.jeftinije.hr");
+    } else if (!isEdit) {
+      setAutoRefresh(true);
     }
   }
 
