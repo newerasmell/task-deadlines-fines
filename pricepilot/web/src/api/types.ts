@@ -1,5 +1,5 @@
 export type PricingStrategy = "undercut_min" | "match_min" | "undercut_avg";
-export type SourceType = "shopify_json" | "scrape" | "manual_import";
+export type SourceType = "shopify_json" | "scrape" | "manual_import" | "jeftinije_hr";
 export type RowFlag = "above-market" | "competitive" | "below-market" | "below-floor" | "no-data";
 
 export interface Store {
@@ -26,13 +26,32 @@ export interface Source {
   baseUrl: string;
   searchUrlTemplate: string | null;
   active: boolean;
+  autoRefresh: boolean;
   lastRefreshedAt: string | null;
+  lastTriggeredBy: string | null;
   lastMatchedCount: number | null;
   consecutiveFailures: number;
   degraded: boolean;
   lastError: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AmbiguousMatchCandidate {
+  title: string;
+  price: number | null;
+  url: string;
+}
+
+export interface AmbiguousMatch {
+  id: string;
+  productId: string;
+  productTitle: string;
+  productVendor: string | null;
+  productSku: string | null;
+  ourPrice: number;
+  candidates: AmbiguousMatchCandidate[];
+  createdAt: string;
 }
 
 export interface SourcePriceCell {

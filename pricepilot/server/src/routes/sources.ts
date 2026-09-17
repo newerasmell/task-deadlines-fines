@@ -29,10 +29,15 @@ sourcesRouter.get("/", async (req, res) => {
 const createSchema = z.object({
   storeId: z.string().min(1),
   label: z.string().min(1),
-  type: z.enum(["shopify_json", "scrape", "manual_import"]),
+  type: z.enum(["shopify_json", "scrape", "manual_import", "jeftinije_hr"]),
   baseUrl: z.string().min(1),
   searchUrlTemplate: z.string().nullable().optional(),
   active: z.boolean().default(true),
+  // jeftinije_hr's full brand-listing crawl is heavy enough that it
+  // defaults to manual-only ("Refresh now" button, no 24h auto-tick)
+  // unless explicitly opted into the scheduler; every other type keeps
+  // today's always-automatic behavior unless told otherwise.
+  autoRefresh: z.boolean().optional(),
 });
 
 sourcesRouter.post("/", async (req, res) => {
@@ -44,7 +49,8 @@ sourcesRouter.post("/", async (req, res) => {
     return res.status(400).json({ error: `A store can have at most ${MAX_SOURCES_PER_STORE} sources` });
   }
 
-  const source = await prisma.source.create({ data: parsed.data });
+  const autoRefresh = parsed.data.autoRefresh ?? parsed.data.type !== "jeftinije_hr";
+  const source = await prisma.source.create({ data: { ...parsed.data, autoRefresh } });
   res.status(201).json(source);
 });
 
@@ -118,7 +124,10 @@ sourcesRouter.post("/:id/refresh", async (req, res) => {
   // result to the source row regardless of outcome — the client polls
   // GET /sources and reads lastRefreshedAt/lastMatchedCount/lastError from
   // there instead of waiting on this response.
-  void refreshSource(sourceId).catch((err) => {
+  // No real per-user login yet (a single shared dashboard password) — see
+  // Source.lastTriggeredBy in the schema for why this is a fixed "Admin"
+  // rather than something read off req.
+  void refreshSource(sourceId, "Admin").catch((err) => {
     console.error(`[sources] background refresh failed for ${sourceId}:`, err);
   });
 
@@ -149,6 +158,59 @@ sourcesRouter.get("/:id/attempts", async (req, res) => {
       attemptedAt: a.attemptedAt,
     }))
   );
+});
+
+// Pending candidates a jeftinije_hr-style source found more than one
+// plausible listing for — the admin picks the right one (or none) instead
+// of the crawl guessing. See AmbiguousMatch in schema.prisma.
+sourcesRouter.get("/:id/ambiguous", async (req, res) => {
+  const matches = await prisma.ambiguousMatch.findMany({
+    where: { sourceId: req.params.id, status: "pending" },
+    orderBy: { createdAt: "asc" },
+    include: { product: { select: { title: true, vendor: true, sku: true, price: true } } },
+  });
+  res.json(
+    matches.map((m) => ({
+      id: m.id,
+      productId: m.productId,
+      productTitle: m.product.title,
+      productVendor: m.product.vendor,
+      productSku: m.product.sku,
+      ourPrice: m.product.price,
+      candidates: JSON.parse(m.candidatesJson) as { title: string; price: number | null; url: string }[],
+      createdAt: m.createdAt,
+    }))
+  );
+});
+
+const confirmAmbiguousSchema = z.object({ price: z.number(), url: z.string().min(1) });
+
+sourcesRouter.post("/ambiguous/:id/confirm", async (req, res) => {
+  const parsed = confirmAmbiguousSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const match = await prisma.ambiguousMatch.findUnique({
+    where: { id: req.params.id },
+    include: { source: { include: { store: true } }, product: true },
+  });
+  if (!match) return res.status(404).json({ error: "Not found" });
+
+  await recordFoundPrice({ source: match.source, store: match.source.store, product: match.product, ...parsed.data });
+  await prisma.ambiguousMatch.update({ where: { id: match.id }, data: { status: "resolved", resolvedAt: new Date() } });
+  await resolveMatchesForStore(match.source.storeId);
+  res.json({ ok: true });
+});
+
+sourcesRouter.post("/ambiguous/:id/dismiss", async (req, res) => {
+  try {
+    await prisma.ambiguousMatch.update({
+      where: { id: req.params.id },
+      data: { status: "dismissed", resolvedAt: new Date() },
+    });
+    res.json({ ok: true });
+  } catch {
+    res.status(404).json({ error: "Not found" });
+  }
 });
 
 function csvEscape(value: unknown): string {

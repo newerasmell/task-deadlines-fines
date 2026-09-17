@@ -45,12 +45,23 @@ model Source {
   store               Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   label               String
-  type                String   // shopify_json | scrape
+  type                String   // shopify_json | scrape | manual_import | jeftinije_hr
   baseUrl             String
   searchUrlTemplate   String?  // used for type=scrape, e.g. https://x.com/search?q={EAN}
   active              Boolean  @default(true)
+  // Whether the 15-min scheduler tick auto-refreshes this source once its
+  // 24h window elapses. Defaults true (existing behavior for shopify_json/
+  // scrape); jeftinije_hr is created with this off — a full brand-listing
+  // crawl is heavy enough that someone should decide when it runs, not a
+  // timer — but any source can opt out the same way.
+  autoRefresh         Boolean  @default(true)
 
   lastRefreshedAt     DateTime?
+  // Who clicked "Refresh now" — null when the scheduler triggered it
+  // automatically. There's no real multi-user login yet (a single shared
+  // dashboard password), so this is "Admin" today; it'll hold a real name
+  // once accounts exist, no schema change needed then.
+  lastTriggeredBy     String?
   lastMatchedCount    Int?     // prices fetched on the most recent refresh, null = never refreshed
   consecutiveFailures Int      @default(0)
   degraded            Boolean  @default(false)
@@ -63,6 +74,7 @@ model Source {
   priceHistory        CompetitorPriceHistory[]
   manualMatches       ManualMatch[]
   scrapeAttempts      ScrapeAttempt[]
+  ambiguousMatches    AmbiguousMatch[]
 }
 
 // One row per Shopify VARIANT (not per product) — a product's title/vendor/
@@ -96,9 +108,35 @@ model Product {
 
   manualMatches       ManualMatch[]
   scrapeAttempts      ScrapeAttempt[]
+  ambiguousMatches    AmbiguousMatch[]
 
   @@unique([storeId, shopifyVariantId])
   @@index([storeId, barcode])
+}
+
+// A bulk-index source (jeftinije_hr) found more than one plausible
+// competitor listing for a product and can't pick confidently on its
+// own — parked here for a human to resolve instead of guessing wrong.
+// One row per (source, product); re-running the crawl updates the
+// candidate list in place as long as it's still pending, and leaves a
+// resolved/dismissed row alone unless the candidates actually changed.
+model AmbiguousMatch {
+  id             String    @id @default(cuid())
+  sourceId       String
+  source         Source    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // JSON array: [{ "title": string, "price": number | null, "url": string }]
+  candidatesJson String
+  status         String    @default("pending") // pending | resolved | dismissed
+  resolvedAt     DateTime?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([sourceId, productId])
+  @@index([sourceId, status])
 }
 
 // Imported via Settings → Import costs (CSV: sku_or_ean,cost).

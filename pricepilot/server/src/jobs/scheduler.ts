@@ -10,7 +10,7 @@ import { refreshSource } from "../services/competitorCollection";
 const SOURCE_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 async function tickSourceRefresh() {
-  const sources = await prisma.source.findMany({ where: { active: true } });
+  const sources = await prisma.source.findMany({ where: { active: true, autoRefresh: true } });
   const now = Date.now();
   for (const source of sources) {
     const due = !source.lastRefreshedAt || now - source.lastRefreshedAt.getTime() >= SOURCE_REFRESH_INTERVAL_MS;

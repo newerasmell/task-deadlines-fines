@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { api } from "../api/client";
-import type { PricingStrategy, ScrapeAttempt, Source, SourceType, Store } from "../api/types";
+import type { AmbiguousMatch, PricingStrategy, ScrapeAttempt, Source, SourceType, Store } from "../api/types";
 import { useStores } from "../context/StoreContext";
 
 export function Settings() {
@@ -265,6 +265,7 @@ function SourcesSection({ storeId }: { storeId: string }) {
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<Record<string, string>>({});
   const [showAttempts, setShowAttempts] = useState<string | null>(null);
+  const [showAmbiguous, setShowAmbiguous] = useState<string | null>(null);
 
   async function refresh(): Promise<Source[]> {
     const list = await api<Source[]>(`/sources?storeId=${storeId}`);
@@ -343,10 +344,12 @@ function SourcesSection({ storeId }: { storeId: string }) {
                 <strong>{s.label}</strong> <span className="muted small">({s.type})</span>
                 {s.degraded && <span className="tag">degraded</span>}
                 {!s.active && <span className="tag">inactive</span>}
+                {!s.autoRefresh && <span className="tag">manual only</span>}
                 <div className="small muted">{s.baseUrl}</div>
                 {s.searchUrlTemplate && <div className="small muted">{s.searchUrlTemplate}</div>}
                 <div className="small muted">
                   Last refreshed: {s.lastRefreshedAt ? new Date(s.lastRefreshedAt).toLocaleString() : "never"}
+                  {s.lastTriggeredBy && ` by ${s.lastTriggeredBy}`}
                   {s.lastMatchedCount !== null && ` (${s.lastMatchedCount} prices)`}
                 </div>
                 {s.lastError && <div className="small error-text">{s.lastError}</div>}
@@ -366,6 +369,14 @@ function SourcesSection({ storeId }: { storeId: string }) {
                     {showAttempts === s.id ? "Hide results" : "View results"}
                   </button>
                 )}
+                {s.type === "jeftinije_hr" && (
+                  <button
+                    className="small-btn secondary"
+                    onClick={() => setShowAmbiguous(showAmbiguous === s.id ? null : s.id)}
+                  >
+                    {showAmbiguous === s.id ? "Hide review queue" : "Review queue"}
+                  </button>
+                )}
                 <button className="small-btn secondary" onClick={() => setEditing(s)}>
                   Edit
                 </button>
@@ -376,6 +387,7 @@ function SourcesSection({ storeId }: { storeId: string }) {
             </div>
             {s.type === "manual_import" && <ManualImportPanel source={s} onImported={refresh} />}
             {showAttempts === s.id && <ScrapeAttemptsPanel sourceId={s.id} sourceType={s.type} />}
+            {showAmbiguous === s.id && <AmbiguousMatchesPanel sourceId={s.id} />}
           </div>
         ))}
         {sources.length === 0 && <p className="muted">No sources yet.</p>}
@@ -561,6 +573,100 @@ function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourc
   );
 }
 
+// jeftinije_hr found more than one plausible listing for these products and
+// couldn't pick confidently on its own — one candidate confirmed here goes
+// through the same recordFoundPrice() path a clean automatic match would,
+// dismissing just marks it so the crawl doesn't keep re-surfacing it.
+function AmbiguousMatchesPanel({ sourceId }: { sourceId: string }) {
+  const [matches, setMatches] = useState<AmbiguousMatch[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function refresh() {
+    setMatches(await api<AmbiguousMatch[]>(`/sources/${sourceId}/ambiguous`));
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId]);
+
+  async function confirm(matchId: string, candidate: { price: number | null; url: string }) {
+    if (candidate.price === null) return;
+    setBusyId(matchId);
+    try {
+      await api(`/sources/ambiguous/${matchId}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ price: candidate.price, url: candidate.url }),
+      });
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function dismiss(matchId: string) {
+    setBusyId(matchId);
+    try {
+      await api(`/sources/ambiguous/${matchId}/dismiss`, { method: "POST" });
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (matches === null) return <p className="muted small">Loading…</p>;
+  if (matches.length === 0) {
+    return <p className="muted small">Nothing to review — every match from the last crawl was either confident or not found.</p>;
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 4, marginBottom: 12 }}>
+      <p className="muted small">
+        {matches.length} product(s) with more than one plausible jeftinije.hr listing. Pick the right one, or dismiss if
+        none of them are actually a match — dismissing keeps it from reappearing unless the crawl finds different
+        candidates next time.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {matches.map((m) => (
+          <div key={m.id} className="card" style={{ margin: 0 }}>
+            <strong>
+              {m.productVendor ? `${m.productVendor} — ` : ""}
+              {m.productTitle}
+            </strong>{" "}
+            <span className="muted small">
+              (our price: {m.ourPrice.toFixed(2)}
+              {m.productSku ? `, ${m.productSku}` : ""})
+            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              {m.candidates.map((c, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    className="small-btn secondary"
+                    disabled={busyId === m.id || c.price === null}
+                    onClick={() => confirm(m.id, c)}
+                    title={c.price === null ? "No price on this listing — can't confirm it" : undefined}
+                  >
+                    Use this
+                  </button>
+                  <a href={c.url} target="_blank" rel="noreferrer">
+                    {c.title}
+                  </a>
+                  <span className="muted small">{c.price !== null ? c.price.toFixed(2) : "no price"}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <button className="small-btn secondary" disabled={busyId === m.id} onClick={() => dismiss(m.id)}>
+                None of these — dismiss
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SourceForm({
   storeId,
   source,
@@ -578,8 +684,21 @@ function SourceForm({
   const [baseUrl, setBaseUrl] = useState(source?.baseUrl ?? "");
   const [searchUrlTemplate, setSearchUrlTemplate] = useState(source?.searchUrlTemplate ?? "");
   const [active, setActive] = useState(source?.active ?? true);
+  const [autoRefresh, setAutoRefresh] = useState(source?.autoRefresh ?? true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // A brand-listing crawl is heavy enough that it shouldn't quietly start
+  // auto-refreshing just because someone picked the type from a dropdown —
+  // only nudge the default when creating a new source, never override an
+  // explicit choice on an existing one.
+  function handleTypeChange(next: SourceType) {
+    setType(next);
+    if (!isEdit) {
+      setAutoRefresh(next !== "jeftinije_hr");
+      if (next === "jeftinije_hr" && !baseUrl) setBaseUrl("https://www.jeftinije.hr");
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -591,8 +710,9 @@ function SourceForm({
         label,
         type,
         baseUrl,
-        searchUrlTemplate: type === "shopify_json" ? null : searchUrlTemplate || null,
+        searchUrlTemplate: type === "shopify_json" || type === "jeftinije_hr" ? null : searchUrlTemplate || null,
         active,
+        autoRefresh,
       };
       if (isEdit) await api(`/sources/${source!.id}`, { method: "PATCH", body: JSON.stringify(body) });
       else await api("/sources", { method: "POST", body: JSON.stringify(body) });
@@ -623,10 +743,11 @@ function SourceForm({
         </label>
         <label>
           Type
-          <select value={type} onChange={(e) => setType(e.target.value as SourceType)}>
+          <select value={type} onChange={(e) => handleTypeChange(e.target.value as SourceType)}>
             <option value="shopify_json">Shopify JSON (competitor runs Shopify)</option>
             <option value="scrape">Scrape (search + parse)</option>
             <option value="manual_import">Manual import (Cowork research → CSV)</option>
+            <option value="jeftinije_hr">jeftinije.hr (bulk brand-listing crawl)</option>
           </select>
         </label>
       </div>
@@ -649,9 +770,20 @@ function SourceForm({
           />
         </label>
       )}
+      {type === "jeftinije_hr" && (
+        <p className="muted small" style={{ margin: 0 }}>
+          Crawls jeftinije.hr's brand-filtered listing pages once per run (no per-product search) and matches
+          strictly against brand + ml + concentration; anything less than certain goes to the "Review queue" instead
+          of being guessed.
+        </p>
+      )}
       <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
         Active
+      </label>
+      <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
+        Auto-refresh every 24h (unchecked = only when someone clicks "Refresh now")
       </label>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">

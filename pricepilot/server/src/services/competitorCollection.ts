@@ -10,6 +10,7 @@ import {
 import { politeDelay, politeGet } from "../lib/httpClient";
 import { prisma } from "../lib/prisma";
 import { buildFallbackMatchKey, normalizeBarcode } from "../lib/textNormalize";
+import { refreshJeftinijeSource } from "./jeftinijeSource";
 import { resolveMatchesForStore } from "./matching";
 
 const DEGRADE_AFTER_FAILURES = 3;
@@ -313,7 +314,13 @@ export function isSourceRefreshing(sourceId: string): boolean {
   return inFlight.has(sourceId);
 }
 
-export async function refreshSource(sourceId: string): Promise<{ ok: boolean; matched: number; error?: string }> {
+// `triggeredBy` is who clicked "Refresh now" — omitted (→ null) when the
+// 15-min scheduler tick called this automatically, so the Sources UI can
+// tell "you did this at 14:02" apart from "this ran on its own".
+export async function refreshSource(
+  sourceId: string,
+  triggeredBy?: string
+): Promise<{ ok: boolean; matched: number; error?: string }> {
   if (inFlight.has(sourceId)) {
     return { ok: false, matched: 0, error: "Already refreshing" };
   }
@@ -331,15 +338,20 @@ export async function refreshSource(sourceId: string): Promise<{ ok: boolean; ma
     }
 
     try {
-      const matched =
-        source.type === "shopify_json"
-          ? await refreshShopifyJsonSource(source.store, source)
-          : (await refreshScrapeSource(source.store, source)).matched;
+      let matched: number;
+      if (source.type === "shopify_json") {
+        matched = await refreshShopifyJsonSource(source.store, source);
+      } else if (source.type === "jeftinije_hr") {
+        matched = (await refreshJeftinijeSource(source.store, source)).matched;
+      } else {
+        matched = (await refreshScrapeSource(source.store, source)).matched;
+      }
 
       await prisma.source.update({
         where: { id: sourceId },
         data: {
           lastRefreshedAt: new Date(),
+          lastTriggeredBy: triggeredBy ?? null,
           lastMatchedCount: matched,
           consecutiveFailures: 0,
           degraded: false,
@@ -355,6 +367,7 @@ export async function refreshSource(sourceId: string): Promise<{ ok: boolean; ma
         where: { id: sourceId },
         data: {
           lastRefreshedAt: new Date(),
+          lastTriggeredBy: triggeredBy ?? null,
           lastMatchedCount: 0,
           consecutiveFailures: failures,
           degraded: failures >= DEGRADE_AFTER_FAILURES,
