@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext, type Cookie, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -57,12 +57,46 @@ async function acceptDidomiConsent(page: Page): Promise<void> {
   await page.evaluate(ACCEPT_DIDOMI_CONSENT_SCRIPT).catch(() => {
     // page navigated away / context closed mid-evaluate — not fatal
   });
+  // Confirmed live: the banner can still be visibly on screen on some page
+  // loads even after the API call above (Didomi not finishing init within
+  // the 3s that call waits, most likely) — a direct click on the actual
+  // "Prihvaćam i zatvori" button is the fallback for whenever that happens.
+  await page
+    .locator("button:has-text('Prihvaćam')")
+    .first()
+    .click({ timeout: 2000 })
+    .catch(() => {
+      // no banner on screen this time — normal, not an error
+    });
+}
+
+// jeftinije.hr sits behind Cloudflare; some requests land on its
+// "Just a moment..." interstitial instead of the real page. That page runs
+// its own JS challenge and replaces itself automatically within a few
+// seconds for a real browser that just lets it run — this only waits for
+// that (the same patience an actual visitor has), with a hard timeout so a
+// challenge that never clears can't hang the caller. Not an attempt to
+// defeat or solve the challenge, just to wait it out.
+async function waitOutCloudflareChallenge(page: Page, timeoutMs = 20000): Promise<boolean> {
+  try {
+    await page.waitForFunction("document.title !== 'Just a moment...'", null, { timeout: timeoutMs });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function loadPage(page: Page, url: string, timeoutMs: number): Promise<string> {
-  const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  let res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   if (res && !res.ok()) {
-    throw new Error(`HTTP ${res.status()} fetching ${url}`);
+    const title = await page.title().catch(() => "");
+    if (title === "Just a moment...") {
+      const cleared = await waitOutCloudflareChallenge(page);
+      if (!cleared) throw new Error(`HTTP ${res.status()} (Cloudflare challenge) fetching ${url}`);
+      res = null; // challenge cleared itself; fall through to read the real content
+    } else {
+      throw new Error(`HTTP ${res.status()} fetching ${url}`);
+    }
   }
   await acceptDidomiConsent(page);
   // Best-effort wait for any follow-up XHR/fetch-rendered content (a
@@ -173,30 +207,21 @@ export class BrowserSession {
   // A fresh incognito context per single navigation (what get() above does)
   // means every request — including page 2 of the same listing a real
   // visitor just paginated into from page 1 — shows up as a brand-new,
-  // cookie-less "first visit", which some sites use as a bot signal.
-  // getWithCookies() carries a caller-held cookie jar forward across
-  // otherwise-separate get() calls (seeding each fresh context with the
-  // cookies the previous one collected) — real session continuity without
-  // keeping any single page/context alive across the whole crawl. A
-  // PersistentPage approach (one page reused for hundreds of navigations)
-  // was tried first and confirmed live to risk exactly the indefinite hang
-  // withTimeout() above now guards against — a fresh, disposable context
-  // per request bounds each request's blast radius to just that request.
-  async getWithCookies(
-    url: string,
-    cookies: Cookie[],
-    timeoutMs = 30000
-  ): Promise<{ html: string; cookies: Cookie[] }> {
+  // cookie-less "first visit", which some sites use as a bot signal. A
+  // PersistentPage keeps ONE context/page (and its cookies) alive across
+  // every navigation the caller makes with it instead, so a multi-page
+  // crawl looks like one continuous browsing session. Confirmed live on
+  // jeftinije.hr: this is what an actual clean, complete crawl needed — a
+  // fresh-context-per-request design was tried afterwards specifically to
+  // bound a stuck page's blast radius (after a very first PersistentPage
+  // attempt, before Cloudflare-challenge handling existed, hung for 2+
+  // hours), but real runs favor the persistent session enough to go back
+  // to it now that loadPage() waits out a Cloudflare challenge with its own
+  // hard timeout and withTimeout() below bounds the whole call regardless.
+  async newPersistentPage(): Promise<PersistentPage> {
     const context = await this.newContext();
-    try {
-      if (cookies.length > 0) await context.addCookies(cookies);
-      const page = await context.newPage();
-      const html = await withTimeout(loadPage(page, url, timeoutMs), timeoutMs + 10000, `get ${url}`);
-      const newCookies = await context.cookies();
-      return { html, cookies: newCookies };
-    } finally {
-      await context.close();
-    }
+    const page = await context.newPage();
+    return new PersistentPage(context, page);
   }
 
   async close(): Promise<void> {
@@ -206,5 +231,17 @@ export class BrowserSession {
     await browser.close().catch(() => {
       // Best-effort — nothing meaningful to do if shutdown itself fails.
     });
+  }
+}
+
+export class PersistentPage {
+  constructor(private context: BrowserContext, private page: Page) {}
+
+  async goto(url: string, timeoutMs = 30000): Promise<string> {
+    return withTimeout(loadPage(this.page, url, timeoutMs), timeoutMs + 10000, `get ${url}`);
+  }
+
+  async close(): Promise<void> {
+    await this.context.close();
   }
 }
