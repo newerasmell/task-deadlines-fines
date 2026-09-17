@@ -1,7 +1,31 @@
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Cookie, type Page } from "playwright";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+// Playwright's own per-call timeouts (goto, waitForLoadState) have been
+// observed live to not always bound the actual wall-clock time — confirmed
+// live on jeftinije.hr's crawl, a run just stopped producing any output for
+// 2+ hours with no error, most likely a native JS dialog (cookie/age
+// consent) blocking navigation that nothing was there to dismiss. This
+// wraps a promise in an unconditional external timeout so a single stuck
+// page can never hang the caller past the time it was told to wait,
+// whatever the internal cause.
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms: ${label}`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
 
 async function loadPage(page: Page, url: string, timeoutMs: number): Promise<string> {
   const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
@@ -89,6 +113,17 @@ export class BrowserSession {
       }
       return route.continue();
     });
+    // Auto-dismiss any native dialog (cookie/age-consent confirm(), a
+    // beforeunload prompt) the moment it appears — confirmed live that an
+    // unhandled one can block navigation indefinitely, past even goto()'s
+    // own timeout, since nothing here was answering it. Belt-and-braces
+    // alongside the external withTimeout() wrapper below, not a substitute
+    // for it — this only helps when the block IS a dialog.
+    context.on("page", (page) => {
+      page.on("dialog", (dialog) => {
+        dialog.dismiss().catch(() => {});
+      });
+    });
     return context;
   }
 
@@ -96,7 +131,7 @@ export class BrowserSession {
     const context = await this.newContext();
     try {
       const page = await context.newPage();
-      return await loadPage(page, url, timeoutMs);
+      return await withTimeout(loadPage(page, url, timeoutMs), timeoutMs + 10000, `get ${url}`);
     } finally {
       await context.close();
     }
@@ -105,16 +140,30 @@ export class BrowserSession {
   // A fresh incognito context per single navigation (what get() above does)
   // means every request — including page 2 of the same listing a real
   // visitor just paginated into from page 1 — shows up as a brand-new,
-  // cookie-less "first visit". Confirmed live against jeftinije.hr: that
-  // pattern gets 403'd on some requests that succeed fine when opened by
-  // hand, where a hand-opened browser naturally carries cookies/session
-  // continuity across pages. A PersistentPage instead keeps ONE context (and
-  // its cookies) alive across every navigation the caller makes with it, so
-  // a multi-page crawl actually looks like one continuous browsing session.
-  async newPersistentPage(): Promise<PersistentPage> {
+  // cookie-less "first visit", which some sites use as a bot signal.
+  // getWithCookies() carries a caller-held cookie jar forward across
+  // otherwise-separate get() calls (seeding each fresh context with the
+  // cookies the previous one collected) — real session continuity without
+  // keeping any single page/context alive across the whole crawl. A
+  // PersistentPage approach (one page reused for hundreds of navigations)
+  // was tried first and confirmed live to risk exactly the indefinite hang
+  // withTimeout() above now guards against — a fresh, disposable context
+  // per request bounds each request's blast radius to just that request.
+  async getWithCookies(
+    url: string,
+    cookies: Cookie[],
+    timeoutMs = 30000
+  ): Promise<{ html: string; cookies: Cookie[] }> {
     const context = await this.newContext();
-    const page = await context.newPage();
-    return new PersistentPage(context, page);
+    try {
+      if (cookies.length > 0) await context.addCookies(cookies);
+      const page = await context.newPage();
+      const html = await withTimeout(loadPage(page, url, timeoutMs), timeoutMs + 10000, `get ${url}`);
+      const newCookies = await context.cookies();
+      return { html, cookies: newCookies };
+    } finally {
+      await context.close();
+    }
   }
 
   async close(): Promise<void> {
@@ -124,17 +173,5 @@ export class BrowserSession {
     await browser.close().catch(() => {
       // Best-effort — nothing meaningful to do if shutdown itself fails.
     });
-  }
-}
-
-export class PersistentPage {
-  constructor(private context: BrowserContext, private page: Page) {}
-
-  async goto(url: string, timeoutMs = 30000): Promise<string> {
-    return loadPage(this.page, url, timeoutMs);
-  }
-
-  async close(): Promise<void> {
-    await this.context.close();
   }
 }

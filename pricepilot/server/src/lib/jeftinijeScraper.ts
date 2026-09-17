@@ -5,8 +5,19 @@
 // tracked brand's whole catalog there; matching against our own products
 // happens afterward in jeftinijeMatcher.ts.
 import * as cheerio from "cheerio";
-import { BrowserSession, type PersistentPage } from "./browserFetch";
+import type { Cookie } from "playwright";
+import { BrowserSession } from "./browserFetch";
 import { sleep } from "./httpClient";
+
+// Mutable across the whole crawl: each fetch seeds its (disposable, fresh)
+// context with whatever cookies the previous fetch collected, then updates
+// this with what it collected itself — real session continuity across
+// requests without keeping any single browser page/context alive for the
+// crawl's whole duration (see getWithCookies() in browserFetch.ts for why
+// that's the safer trade).
+interface CookieJar {
+  current: Cookie[];
+}
 
 const BASE = "https://www.jeftinije.hr";
 
@@ -121,17 +132,17 @@ export function extractProducts(html: string, pageUrl: string): JeftinijeListing
 // jeftinije.hr 403s a plain HTTP client outright — confirmed live, same
 // TLS/header fingerprinting douglas.hr already forced a real-browser fetch
 // for (see browserFetch.ts) — so this crawl goes through a real headless
-// Chromium. Uses ONE PersistentPage (shared cookies) for the whole crawl,
-// not a fresh incognito context per request: confirmed live that a
-// cookie-less "new visitor" on every single navigation — including page 2
-// of a listing a real visitor just paginated into from page 1 — gets 403'd
-// on requests that succeed fine opened by hand, where a hand-opened browser
-// naturally carries session continuity across pages.
-async function fetchWithRetry(page: PersistentPage, url: string): Promise<string | null> {
+// Chromium, carrying cookies forward between requests via `jar` (see
+// getWithCookies() in browserFetch.ts) so pagination looks like one
+// continuous session rather than a fresh cookie-less "first visit" on every
+// single navigation.
+async function fetchWithRetry(browser: BrowserSession, jar: CookieJar, url: string): Promise<string | null> {
   let lastMessage = "unknown error";
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await page.goto(url);
+      const { html, cookies } = await browser.getWithCookies(url, jar.current);
+      jar.current = cookies;
+      return html;
     } catch (err) {
       lastMessage = err instanceof Error ? err.message : String(err);
       if (lastMessage.includes("403") || lastMessage.includes("429")) {
@@ -150,7 +161,8 @@ async function fetchWithRetry(page: PersistentPage, url: string): Promise<string
 // detect-by-diffing approach as the Python version, since the working
 // param isn't guaranteed the same across every listing.
 async function detectPageParam(
-  page: PersistentPage,
+  browser: BrowserSession,
+  jar: CookieJar,
   baseUrl: string,
   firstPageProducts: JeftinijeListing[]
 ): Promise<string | null> {
@@ -159,7 +171,7 @@ async function detectPageParam(
   for (const param of ["p", "page", "stran"]) {
     const testUrl = `${baseUrl}${sep}${param}=2`;
     await sleep(1200);
-    const html = await fetchWithRetry(page, testUrl);
+    const html = await fetchWithRetry(browser, jar, testUrl);
     if (!html) continue;
     const products = extractProducts(html, testUrl);
     const urls = new Set(products.map((p) => p.url));
@@ -172,20 +184,25 @@ async function detectPageParam(
 // Returns whether the listing's first page was reachable at all — lets the
 // caller tell "this one listing had no pages" apart from "the site stopped
 // answering us", which is the signal a run-wide circuit breaker needs.
-async function crawlListing(page: PersistentPage, baseUrl: string, out: JeftinijeListing[]): Promise<boolean> {
-  const first = await fetchWithRetry(page, baseUrl);
+async function crawlListing(
+  browser: BrowserSession,
+  jar: CookieJar,
+  baseUrl: string,
+  out: JeftinijeListing[]
+): Promise<boolean> {
+  const first = await fetchWithRetry(browser, jar, baseUrl);
   if (!first) return false;
   const firstProducts = extractProducts(first, baseUrl);
   out.push(...firstProducts);
 
-  const pageFmt = await detectPageParam(page, baseUrl, firstProducts);
+  const pageFmt = await detectPageParam(browser, jar, baseUrl, firstProducts);
   if (!pageFmt) return true;
 
   let prevUrls = new Set(firstProducts.map((p) => p.url));
   for (let n = 2; n <= 200; n++) {
     const url = `${baseUrl}${pageFmt.replace("{n}", String(n))}`;
     await sleep(1200);
-    const html = await fetchWithRetry(page, url);
+    const html = await fetchWithRetry(browser, jar, url);
     if (!html) break;
     const products = extractProducts(html, url);
     const urls = new Set(products.map((p) => p.url));
@@ -213,39 +230,39 @@ export async function buildJeftinijeIndex(brands: string[] = Object.keys(BRAND_I
   let attempted = 0;
   console.log(`[jeftinije] starting crawl: ${brands.length} brands x ${CATEGORIES.length} categories`);
 
-  // One headless Chromium AND one persistent page/context (cookies kept)
-  // for the entire crawl — launched lazily on first use, closed below.
+  // One headless Chromium for the whole crawl (launched lazily on first
+  // use, closed below); each request gets its own fresh, disposable
+  // context (bounding any single stuck page to just that one request — see
+  // browserFetch.ts for why a single page reused across the whole crawl was
+  // confirmed live to risk an indefinite hang), with cookies carried
+  // forward via `jar` for session continuity across requests anyway.
   const browser = new BrowserSession();
+  const jar: CookieJar = { current: [] };
   try {
-    const page = await browser.newPersistentPage();
-    try {
-      for (const category of CATEGORIES) {
-        const categoryBase = `${BASE}/L3/${category.id}/${category.slug}`;
-        for (const brand of brands) {
-          const ids = BRAND_IDS[brand];
-          if (!ids) continue;
-          for (const pbra of ids) {
-            if (attempted > 0) await sleep(1200);
-            attempted++;
-            const ok = await crawlListing(page, `${categoryBase}?pbra=${pbra}`, out);
-            if (!ok) {
-              consecutiveFailures++;
-              console.warn(
-                `[jeftinije] listing unreachable: brand=${brand} pbra=${pbra} category=${category.slug} (${consecutiveFailures} in a row)`
+    for (const category of CATEGORIES) {
+      const categoryBase = `${BASE}/L3/${category.id}/${category.slug}`;
+      for (const brand of brands) {
+        const ids = BRAND_IDS[brand];
+        if (!ids) continue;
+        for (const pbra of ids) {
+          if (attempted > 0) await sleep(1200);
+          attempted++;
+          const ok = await crawlListing(browser, jar, `${categoryBase}?pbra=${pbra}`, out);
+          if (!ok) {
+            consecutiveFailures++;
+            console.warn(
+              `[jeftinije] listing unreachable: brand=${brand} pbra=${pbra} category=${category.slug} (${consecutiveFailures} in a row)`
+            );
+            if (consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
+              throw new Error(
+                `jeftinije.hr rejected ${CONSECUTIVE_FAILURE_LIMIT} consecutive requests — it's likely blocking this server. Aborted after ${attempted} of ~${brands.length * CATEGORIES.length} listing pages (${out.length} products collected before the block).`
               );
-              if (consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
-                throw new Error(
-                  `jeftinije.hr rejected ${CONSECUTIVE_FAILURE_LIMIT} consecutive requests — it's likely blocking this server. Aborted after ${attempted} of ~${brands.length * CATEGORIES.length} listing pages (${out.length} products collected before the block).`
-                );
-              }
-            } else {
-              consecutiveFailures = 0;
             }
+          } else {
+            consecutiveFailures = 0;
           }
         }
       }
-    } finally {
-      await page.close();
     }
   } finally {
     await browser.close();
