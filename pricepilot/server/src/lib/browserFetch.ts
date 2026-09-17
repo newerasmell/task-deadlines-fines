@@ -1,7 +1,25 @@
-import { chromium, type Browser, type BrowserContext } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+async function loadPage(page: Page, url: string, timeoutMs: number): Promise<string> {
+  const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  if (res && !res.ok()) {
+    throw new Error(`HTTP ${res.status()} fetching ${url}`);
+  }
+  // Best-effort wait for any follow-up XHR/fetch-rendered content (a
+  // search-results page commonly loads its listings this way) — NOT a hard
+  // requirement: waitUntil: "networkidle" on goto() itself was tried and
+  // confirmed live to time out entirely on real sites with persistent
+  // background connections (analytics, ads) that never go fully idle,
+  // failing the whole fetch even though the actual content had rendered
+  // long before. Capped short and swallowed on timeout so a page that never
+  // idles just falls through to whatever's already in the DOM instead of
+  // failing the attempt.
+  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+  return await page.content();
+}
 
 // Headless Chromium instead of a plain HTTP request for scrape sources: some
 // competitor sites block non-browser clients outright via TLS/header
@@ -42,9 +60,9 @@ export class BrowserSession {
     return this.browserPromise;
   }
 
-  async get(url: string, timeoutMs = 30000): Promise<string> {
+  private async newContext(): Promise<BrowserContext> {
     const browser = await this.browser();
-    const context: BrowserContext = await browser.newContext({
+    const context = await browser.newContext({
       userAgent: USER_AGENT,
       locale: "hr-HR",
       viewport: { width: 1280, height: 800 },
@@ -71,26 +89,32 @@ export class BrowserSession {
       }
       return route.continue();
     });
+    return context;
+  }
+
+  async get(url: string, timeoutMs = 30000): Promise<string> {
+    const context = await this.newContext();
     try {
       const page = await context.newPage();
-      const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-      if (res && !res.ok()) {
-        throw new Error(`HTTP ${res.status()} fetching ${url}`);
-      }
-      // Best-effort wait for any follow-up XHR/fetch-rendered content (a
-      // search-results page commonly loads its listings this way) — NOT a
-      // hard requirement: waitUntil: "networkidle" on goto() itself was
-      // tried and confirmed live to time out entirely on real sites with
-      // persistent background connections (analytics, ads) that never go
-      // fully idle, failing the whole fetch even though the actual content
-      // had rendered long before. Capped short and swallowed on timeout so
-      // a page that never idles just falls through to whatever's already
-      // in the DOM instead of failing the attempt.
-      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
-      return await page.content();
+      return await loadPage(page, url, timeoutMs);
     } finally {
       await context.close();
     }
+  }
+
+  // A fresh incognito context per single navigation (what get() above does)
+  // means every request — including page 2 of the same listing a real
+  // visitor just paginated into from page 1 — shows up as a brand-new,
+  // cookie-less "first visit". Confirmed live against jeftinije.hr: that
+  // pattern gets 403'd on some requests that succeed fine when opened by
+  // hand, where a hand-opened browser naturally carries cookies/session
+  // continuity across pages. A PersistentPage instead keeps ONE context (and
+  // its cookies) alive across every navigation the caller makes with it, so
+  // a multi-page crawl actually looks like one continuous browsing session.
+  async newPersistentPage(): Promise<PersistentPage> {
+    const context = await this.newContext();
+    const page = await context.newPage();
+    return new PersistentPage(context, page);
   }
 
   async close(): Promise<void> {
@@ -100,5 +124,17 @@ export class BrowserSession {
     await browser.close().catch(() => {
       // Best-effort — nothing meaningful to do if shutdown itself fails.
     });
+  }
+}
+
+export class PersistentPage {
+  constructor(private context: BrowserContext, private page: Page) {}
+
+  async goto(url: string, timeoutMs = 30000): Promise<string> {
+    return loadPage(this.page, url, timeoutMs);
+  }
+
+  async close(): Promise<void> {
+    await this.context.close();
   }
 }
