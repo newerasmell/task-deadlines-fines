@@ -65,9 +65,24 @@ export function VoiceReview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
+  async function refreshRecentTranscripts() {
+    setRecentTranscripts(await api<RecentTranscript[]>("/voice/transcripts?limit=20"));
+  }
+
   useEffect(() => {
-    api<RecentTranscript[]>("/voice/transcripts?limit=20").then(setRecentTranscripts);
+    refreshRecentTranscripts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Meet auto-import never re-downloads a Drive file it already has a
+  // transcript row for — deleting that row here is how to clear one that
+  // came from a broken run so the next sync picks the file up again.
+  async function deleteTranscript(id: string) {
+    if (!window.confirm(t("Изтрий този транскрипт? При следваща синхронизация записът ще се обработи наново."))) return;
+    await api(`/voice/transcripts/${id}`, { method: "DELETE" });
+    setExpandedTranscript((cur) => (cur === id ? null : cur));
+    refreshRecentTranscripts();
+  }
 
   async function toggleTranscript(id: string | null) {
     if (!id) return;
@@ -141,6 +156,11 @@ export function VoiceReview() {
                   <button className="small-btn secondary" onClick={() => toggleTranscript(tr.id)}>
                     {expandedTranscript === tr.id ? t("Скрий транскрипта") : t("Покажи транскрипта")}
                   </button>
+                  {tr.source === "MEET" && (
+                    <button className="small-btn secondary" onClick={() => deleteTranscript(tr.id)} title={t("Изтрий, за да се обработи наново при следваща синхронизация")}>
+                      {t("Изтрий")}
+                    </button>
+                  )}
                 </div>
                 {expandedTranscript === tr.id && (
                   <p

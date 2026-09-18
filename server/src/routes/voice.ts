@@ -105,6 +105,17 @@ voiceRouter.get("/transcripts/:id", async (req, res) => {
   res.json(transcript);
 });
 
+// Meet auto-import dedups by meetRecordingId (never re-download/re-transcribe
+// the same Drive file twice) — deleting the row here is how to clear a bad
+// transcript from an old broken run (e.g. one imported before a fix) so the
+// next sync treats that Drive file as new again and actually re-processes it.
+voiceRouter.delete("/transcripts/:id", async (req, res) => {
+  const transcript = await prisma.voiceTranscript.findUnique({ where: { id: req.params.id } });
+  if (!transcript) return res.status(404).json({ error: "Not found" });
+  await prisma.voiceTranscript.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
 // Most recent transcripts regardless of how many drafts they produced —
 // the drafts-grouped list on the review page has nothing to show for a
 // recording that extracted zero tasks, which makes "why did this find
@@ -454,9 +465,9 @@ voiceRouter.get("/meet/status", (_req, res) => {
 // runGoogleMeetSync() the scheduler calls, awaited so the response reflects
 // what actually happened rather than firing-and-forgetting a poll the admin
 // can't see the result of.
-voiceRouter.post("/meet/poll-now", async (_req, res) => {
+voiceRouter.post("/meet/poll-now", async (req, res) => {
   try {
-    const result = await runGoogleMeetSync();
+    const result = await runGoogleMeetSync(req.body?.force === true);
     res.json({ ok: true, result });
   } catch (err) {
     res.status(502).json({ ok: false, error: err instanceof Error ? err.message : "Грешка при синхронизация" });

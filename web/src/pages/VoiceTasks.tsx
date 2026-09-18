@@ -26,11 +26,11 @@ function GoogleMeetPanel() {
     void loadStatus();
   }, []);
 
-  async function syncNow() {
+  async function syncNow(force = false) {
     setSyncing(true);
     setError(null);
     try {
-      await api("/voice/meet/poll-now", { method: "POST" });
+      await api("/voice/meet/poll-now", { method: "POST", body: JSON.stringify({ force }) });
       await loadStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("Грешка при синхронизация."));
@@ -60,9 +60,19 @@ function GoogleMeetPanel() {
     <div className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <span className="badge badge-info">Google Meet</span>
-        <button className="small-btn secondary" onClick={syncNow} disabled={syncing || status.inProgress}>
-          {syncing || status.inProgress ? t("Синхронизира се…") : t("Синхронизирай сега")}
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="small-btn secondary" onClick={() => syncNow(false)} disabled={syncing || status.inProgress}>
+            {syncing || status.inProgress ? t("Синхронизира се…") : t("Синхронизирай сега")}
+          </button>
+          <button
+            className="small-btn secondary"
+            onClick={() => syncNow(true)}
+            disabled={syncing || status.inProgress}
+            title={t("Изтегля наново и презаписва вече обработени записи — за случай, че стар опит е взел лош/празен транскрипт")}
+          >
+            {t("Пресинхронизирай отначало")}
+          </button>
+        </div>
       </div>
       <p className="muted small" style={{ margin: 0 }}>
         {t("Папка в Drive")}: <strong>{status.folderName}</strong>

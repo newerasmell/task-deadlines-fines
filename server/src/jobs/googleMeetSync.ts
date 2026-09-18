@@ -70,8 +70,15 @@ async function processRecording(file: DriveFile): Promise<void> {
  * Sequential and awaited per file — this already runs inside a background
  * cron tick, so there's no caller left waiting on it, and running Whisper/
  * Claude calls one at a time avoids bursting rate limits on a backlog.
+ *
+ * `force` (only ever passed from the manual "Sync now" action, never the
+ * routine cron tick) re-downloads and re-transcribes every recording found,
+ * discarding whatever VoiceTranscript row already exists for it first —
+ * the escape hatch for a recording that was already (mis-)imported by an
+ * older, buggier version of this sync, which dedup would otherwise hide
+ * from every future sync forever.
  */
-export async function runGoogleMeetSync(): Promise<GoogleMeetSyncResult> {
+export async function runGoogleMeetSync(force = false): Promise<GoogleMeetSyncResult> {
   if (syncInProgress) {
     return lastResult ?? { folderFound: false, seen: 0, processed: 0, skipped: 0, lastError: "Вече тече синхронизация" };
   }
@@ -111,8 +118,11 @@ export async function runGoogleMeetSync(): Promise<GoogleMeetSyncResult> {
 
       const already = await prisma.voiceTranscript.findUnique({ where: { meetRecordingId: file.id } });
       if (already) {
-        result.skipped++;
-        continue;
+        if (!force) {
+          result.skipped++;
+          continue;
+        }
+        await prisma.voiceTranscript.delete({ where: { id: already.id } });
       }
 
       await processRecording(file);
