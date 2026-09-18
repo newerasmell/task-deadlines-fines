@@ -144,8 +144,20 @@ export async function buildNotinoIndex(
             break; // give up on this brand, move to the next
           }
           consecutiveFailures = 0;
-          brandListings.push(...extractProducts(html));
-          url = findNextPageUrl(html);
+          const pageProducts = extractProducts(html);
+          const nextUrl = findNextPageUrl(html);
+          // Diagnostic: the first live run stalled at page 2 with 0 extra
+          // products and no further pagination link, and it wasn't obvious
+          // from the outside whether that page actually rendered (real
+          // content, just no rel=next — a genuine last page) or came back
+          // effectively empty (still mid-render, soft-blocked, etc.) — this
+          // makes that visible in the next run's logs without needing
+          // another manual HTML capture.
+          console.log(
+            `[notino] page ${pageNum + 1} (${url}): ${html.length} bytes, ${pageProducts.length} products, next=${nextUrl ? "yes" : "no"}`
+          );
+          brandListings.push(...pageProducts);
+          url = nextUrl;
         }
         out.push(...brandListings);
         // Only persist a brand whose crawl actually produced something —

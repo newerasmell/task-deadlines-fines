@@ -41,6 +41,11 @@ export interface AmbiguousMatchCandidate {
   title: string;
   price: number | null;
   url: string;
+  // True when the listing's title had no extractable size — its shown
+  // price can belong to a different variant than the one being matched
+  // (confirmed live on notino.hr), so it isn't safe to trust without
+  // checking the actual product page first.
+  sizeUnconfirmed?: boolean;
 }
 
 export interface AmbiguousMatch {

@@ -179,7 +179,12 @@ sourcesRouter.get("/:id/ambiguous", async (req, res) => {
       productVendor: m.product.vendor,
       productSku: m.product.sku,
       ourPrice: m.product.price,
-      candidates: JSON.parse(m.candidatesJson) as { title: string; price: number | null; url: string }[],
+      candidates: JSON.parse(m.candidatesJson) as {
+        title: string;
+        price: number | null;
+        url: string;
+        sizeUnconfirmed?: boolean;
+      }[],
       createdAt: m.createdAt,
     }))
   );

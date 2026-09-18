@@ -114,6 +114,14 @@ export interface MatchCandidate {
   title: string;
   price: number | null;
   url: string;
+  // True when this candidate's title had no extractable ml and the pool
+  // filter let it through anyway (see matchProduct's pool-filtering
+  // comment) — confirmed live on notino.hr that such a candidate's listed
+  // price can belong to a DIFFERENT size than the one being matched (a
+  // multi-variant product's card shows one price for its whole family, not
+  // necessarily the size in our catalog), so the price shown here is not
+  // safe to trust without checking the actual product page first.
+  sizeUnconfirmed?: boolean;
 }
 
 export type MatchResult =
@@ -204,14 +212,14 @@ export function matchProduct(
     // No price on the exact match(es) — fold in any near candidates too
     // (e.g. the EXTRAIT sibling of a PARFUM exact match) so the admin has
     // real alternatives to pick between, not just the one unpriced listing.
-    return { status: "ambiguous", candidates: [...exact, ...near].slice(0, 5).map(toCandidate) };
+    return { status: "ambiguous", candidates: [...exact, ...near].slice(0, 5).map((c) => toCandidate(c, ml)) };
   }
   if (near.length > 0) {
-    return { status: "ambiguous", candidates: near.slice(0, 5).map(toCandidate) };
+    return { status: "ambiguous", candidates: near.slice(0, 5).map((c) => toCandidate(c, ml)) };
   }
   return { status: "not_found" };
 }
 
-function toCandidate(c: IndexEntry): MatchCandidate {
-  return { title: c.title, price: c.priceEur, url: c.url };
+function toCandidate(c: IndexEntry, ourMl: number | null): MatchCandidate {
+  return { title: c.title, price: c.priceEur, url: c.url, sizeUnconfirmed: ourMl !== null && c.ml === null };
 }

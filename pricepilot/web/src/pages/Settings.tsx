@@ -693,6 +693,11 @@ function AmbiguousMatchesPanel({ sourceId }: { sourceId: string }) {
                     {c.title}
                   </a>
                   <span className="muted small">{c.price !== null ? c.price.toFixed(2) : "no price"}</span>
+                  {c.sizeUnconfirmed && (
+                    <span className="small error-text" title="This listing's title didn't show a size — the price above may be for a different variant than ours. Open the link and check before using it.">
+                      ⚠ size not confirmed — check page before using
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
