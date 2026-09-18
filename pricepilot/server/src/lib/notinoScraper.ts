@@ -78,12 +78,21 @@ function findNextPageUrl(html: string): string | null {
 // card selector itself is the fix; see loadPage()'s waitForSelector in
 // browserFetch.ts for the general mechanism.
 const PRODUCT_CARD_SELECTOR = '[data-testid="product-container"]';
+// Confirmed live: an 8s wait for that selector wasn't enough — page 2 came
+// back a genuinely un-hydrated 28KB shell (vs. ~480KB rendered) even after
+// 15s total. Render's shared/weaker CPU is the likely reason a heavy React
+// app's hydration that feels instant on a real machine doesn't here.
+const PRODUCT_CARD_TIMEOUT_MS = 25000;
 
 async function fetchWithRetry(page: PersistentPage, url: string): Promise<string | null> {
   let lastMessage = "unknown error";
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await page.goto(url, 30000, PRODUCT_CARD_SELECTOR);
+      // The nav timeout (first arg after url) needs enough headroom for
+      // PRODUCT_CARD_TIMEOUT_MS on top of it, since goto()'s own external
+      // safety net is timeoutMs + 10s and the selector wait happens AFTER
+      // navigation completes, not nested inside it.
+      return await page.goto(url, 30000, PRODUCT_CARD_SELECTOR, PRODUCT_CARD_TIMEOUT_MS);
     } catch (err) {
       lastMessage = err instanceof Error ? err.message : String(err);
       if (lastMessage.includes("403") || lastMessage.includes("429")) {

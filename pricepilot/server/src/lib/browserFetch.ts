@@ -86,7 +86,13 @@ async function waitOutCloudflareChallenge(page: Page, timeoutMs = 20000): Promis
   }
 }
 
-async function loadPage(page: Page, url: string, timeoutMs: number, waitForSelector?: string): Promise<string> {
+async function loadPage(
+  page: Page,
+  url: string,
+  timeoutMs: number,
+  waitForSelector?: string,
+  waitForSelectorTimeoutMs = 8000
+): Promise<string> {
   let res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   if (res && !res.ok()) {
     const title = await page.title().catch(() => "");
@@ -110,9 +116,12 @@ async function loadPage(page: Page, url: string, timeoutMs: number, waitForSelec
     // silently looks like "this is the last page" instead of the truth
     // ("we read it too soon"). Waiting for a selector the caller knows
     // marks real content is a much more direct signal than networkidle for
-    // pages like this.
+    // pages like this. Confirmed live: an 8s budget wasn't enough on
+    // Render's much weaker/shared CPU than a real machine — that page came
+    // back a genuinely tiny, un-hydrated 28KB shell (vs. ~480KB once
+    // rendered) — so this is caller-configurable rather than a fixed 8s.
     contentConfirmed = await page
-      .waitForSelector(waitForSelector, { timeout: 8000 })
+      .waitForSelector(waitForSelector, { timeout: waitForSelectorTimeoutMs })
       .then(() => true)
       .catch(() => false);
   }
@@ -306,12 +315,16 @@ export class PersistentPage {
 
   constructor(private session: BrowserSession, private context: BrowserContext, private page: Page) {}
 
-  async goto(url: string, timeoutMs = 30000, waitForSelector?: string): Promise<string> {
+  async goto(url: string, timeoutMs = 30000, waitForSelector?: string, waitForSelectorTimeoutMs?: number): Promise<string> {
     this.navigationCount++;
     if (this.navigationCount > 1 && this.navigationCount % RECYCLE_AFTER_NAVIGATIONS === 0) {
       await this.recycle();
     }
-    return withTimeout(loadPage(this.page, url, timeoutMs, waitForSelector), timeoutMs + 10000, `get ${url}`);
+    return withTimeout(
+      loadPage(this.page, url, timeoutMs, waitForSelector, waitForSelectorTimeoutMs),
+      timeoutMs + 10000,
+      `get ${url}`
+    );
   }
 
   private async recycle(): Promise<void> {
