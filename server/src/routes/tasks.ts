@@ -13,6 +13,7 @@ import { broadcastToAdmins } from "../notifications/adminBroadcast";
 import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
 import { spawnRecurringOccurrencesThrottled } from "../jobs/recurringTasks";
 import { createTaskAndNotify } from "../services/taskCreation";
+import { deadlineFieldSchema } from "../lib/deadlineInput";
 
 export const tasksRouter = Router();
 
@@ -129,7 +130,7 @@ const createSchema = z.object({
   definitionOfDone: z.string().min(1),
   assigneeId: z.string().min(1),
   ownerId: z.string().min(1).optional(),
-  deadline: z.coerce.date(),
+  deadline: deadlineFieldSchema,
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
 });
 
@@ -189,7 +190,7 @@ const updateSchema = z.object({
   definitionOfDone: z.string().min(1).optional(),
   assigneeId: z.string().min(1).optional(),
   ownerId: z.string().nullable().optional(),
-  deadline: z.coerce.date().optional(),
+  deadline: deadlineFieldSchema.optional(),
   // Required whenever deadline actually changes (checked below, not by zod,
   // since it's only mandatory conditionally) — never stored on the Task
   // itself, only used for the audit-log entry and the Ultimate Admin alert.

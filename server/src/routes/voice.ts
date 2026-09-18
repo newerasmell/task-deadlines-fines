@@ -15,6 +15,7 @@ import {
   type VoiceSource,
 } from "../services/voiceProcessing";
 import { env } from "../lib/env";
+import { deadlineFieldSchema } from "../lib/deadlineInput";
 import { getLastGoogleMeetSyncResult, runGoogleMeetSync } from "../jobs/googleMeetSync";
 
 export const voiceRouter = Router();
@@ -172,7 +173,7 @@ const patchSchema = z.object({
   description: z.string().nullable().optional(),
   definitionOfDone: z.string().min(1).optional(),
   assigneeId: z.string().nullable().optional(),
-  deadline: z.coerce.date().optional(),
+  deadline: deadlineFieldSchema.optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
 });
 
@@ -202,7 +203,7 @@ const approveSchema = z.object({
   definitionOfDone: z.string().min(1),
   assigneeId: z.string().min(1),
   ownerId: z.string().nullable().optional(),
-  deadline: z.coerce.date().optional(),
+  deadline: deadlineFieldSchema.optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
 });
 
@@ -338,7 +339,7 @@ const chainStepApproveSchema = z.object({
   ownerId: z.string().nullable().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
   // Step 1 only.
-  deadline: z.coerce.date().optional(),
+  deadline: deadlineFieldSchema.optional(),
   // Steps 2+ only.
   delayDays: z.number().int().min(1).max(90).optional(),
 });
