@@ -10,17 +10,20 @@ import multer from "multer";
 // hasn't mattered yet; a 30+ minute Meet recording might need it later).
 const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 
+// Whisper's API accepts these video containers directly (it just extracts
+// the audio track itself) — mp4 in particular is the default export format
+// for most screen/meeting recordings, so restricting uploads to audio-only
+// mimetypes was blocking the single most common file people actually have.
+const SUPPORTED_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/mpeg", "video/webm"]);
+
 export const uploadAudio = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_AUDIO_BYTES, files: 1 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith("video/")) {
-      return cb(new Error("Видео файлове не се поддържат — качи само аудио (mp3, m4a, wav, webm, ogg)."));
+    if (file.mimetype.startsWith("audio/") || SUPPORTED_VIDEO_MIME_TYPES.has(file.mimetype)) {
+      return cb(null, true);
     }
-    if (!file.mimetype.startsWith("audio/")) {
-      return cb(new Error(`Неподдържан тип файл: ${file.mimetype}. Приемат се mp3, m4a, wav, webm, ogg.`));
-    }
-    cb(null, true);
+    cb(new Error(`Неподдържан тип файл: ${file.mimetype}. Приемат се mp3, m4a, wav, webm, ogg, mp4, mpeg.`));
   },
 });
 

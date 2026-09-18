@@ -198,7 +198,7 @@ export function VoiceTasks() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".mp3,.m4a,.wav,.webm,.ogg,audio/*"
+            accept=".mp3,.m4a,.wav,.webm,.ogg,.mp4,.mpeg,audio/*,video/mp4,video/mpeg,video/webm"
             onChange={handleFile}
             disabled={busy || recording}
             style={{ display: "none" }}

@@ -25,13 +25,19 @@ export function getLastGoogleMeetSyncResult(): { result: GoogleMeetSyncResult | 
 // "Transcript" tab, not its "Notes" tab, is what's actually read). Processing
 // every file in the subfolder as its own independent "meeting" both wastes
 // Whisper/Claude calls and risks extracting nothing from the one that
-// matters, so exactly one representative file is picked per subfolder: the
-// Doc when present (already-transcribed text, no Whisper call needed),
-// otherwise the raw recording, otherwise a plain-text file.
+// matters, so exactly one representative file is picked per subfolder.
+//
+// The raw recording comes first: Meet/Gemini's own built-in transcription
+// (both the "Notes" AI summary and, it turns out, the "Transcript" tab's
+// actual speech-to-text) is unreliable for Bulgarian — it can come back
+// empty even when the recording has plenty of real Bulgarian speech in it.
+// Whisper handles Bulgarian properly, so the recording (transcribed by us)
+// is preferred whenever it's present; the Doc is only a fallback for the
+// rare case where no recording file exists in the folder.
 function pickBestMeetingFile(files: DriveFile[]): DriveFile | null {
   return (
-    files.find((f) => isGoogleDoc(f.mimeType)) ??
     files.find((f) => f.mimeType.startsWith("audio/") || f.mimeType.startsWith("video/")) ??
+    files.find((f) => isGoogleDoc(f.mimeType)) ??
     files.find((f) => f.mimeType === "text/plain") ??
     null
   );
