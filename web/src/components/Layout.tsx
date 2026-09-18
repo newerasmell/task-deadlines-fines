@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { Avatar } from "./Avatar";
@@ -123,13 +123,13 @@ export function Layout() {
             </button>
           </div>
           {user && (
-            <div className="user-chip">
+            <Link to="/profile" className="user-chip" title={t("Профил")}>
               <Avatar id={user.id} name={user.name} />
               <div>
                 <div className="user-name">{user.name}</div>
                 <div className="user-role">{user.role === "ADMIN" ? t("Администратор") : t("Служител")}</div>
               </div>
-            </div>
+            </Link>
           )}
           <button className="link-btn" onClick={logout}>
             {t("Изход")}

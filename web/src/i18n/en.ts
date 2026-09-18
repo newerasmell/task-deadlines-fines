@@ -497,4 +497,34 @@ export const en: Record<string, string> = {
   "Owner: {name}": "Owner: {name}",
   "Одобри веригата": "Approve the chain",
   "Отхвърли веригата": "Reject the chain",
+
+  // Profile / "Push to Calendar" (per-user Google Calendar connection)
+  "Профил": "Profile",
+  "Google Calendar": "Google Calendar",
+  'Свържи собствения си Google Calendar, за да можеш да изпращаш задачи там директно от бутона "Push to Calendar".':
+    'Connect your own Google Calendar to push tasks there directly from the "Push to Calendar" button.',
+  "Успешно свързан Google Calendar.": "Google Calendar connected successfully.",
+  "Свързването с Google Calendar не бе успешно. Опитай отново.": "Connecting Google Calendar failed. Try again.",
+  "Google Calendar не е конфигуриран на сървъра — свържи се с администратор.":
+    "Google Calendar isn't configured on the server — contact an administrator.",
+  "Свързан": "Connected",
+  "Прекъсване…": "Disconnecting…",
+  "Прекъсни връзката": "Disconnect",
+  "Свързване…": "Connecting…",
+  "Свържи Google Calendar": "Connect Google Calendar",
+  "Наистина ли да прекъснеш връзката с Google Calendar? Вече изпратените събития няма да бъдат изтрити.":
+    "Really disconnect Google Calendar? Events already pushed won't be deleted.",
+  "Push to Calendar": "Push to Calendar",
+  "Кога да започнеш": "When to start",
+  "За колко време": "For how long",
+  "Днес следобед": "This afternoon",
+  "Сега": "Now",
+  "Утре сутрин ({h}:00)": "Tomorrow morning ({h}:00)",
+  "{n} дни преди срока": "{n} days before the deadline",
+  "В деня на срока": "On the deadline day",
+  "Друго…": "Other…",
+  "Изпрати в календара": "Send to calendar",
+  "В календара: {date}": "In calendar: {date}",
+  "Премахни от календара": "Remove from calendar",
+  "Свържи Google Calendar от профила си": "Connect Google Calendar from your profile",
 };

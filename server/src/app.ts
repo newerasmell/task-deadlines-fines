@@ -5,6 +5,7 @@ import { auditLogRouter } from "./routes/auditLog";
 import { authRouter } from "./routes/auth";
 import { fineRulesRouter } from "./routes/fineRules";
 import { finesRouter } from "./routes/fines";
+import { googleCalendarRouter } from "./routes/googleCalendar";
 import { leavesRouter, rescheduleRequestsRouter } from "./routes/leaves";
 import { notificationsRouter } from "./routes/notifications";
 import { projectsRouter } from "./routes/projects";
@@ -29,6 +30,7 @@ export function createApp() {
   app.use("/api/task-templates", taskTemplatesRouter);
   app.use("/api/fines", finesRouter);
   app.use("/api/fine-rules", fineRulesRouter);
+  app.use("/api/google-calendar", googleCalendarRouter);
   app.use("/api/leaves", leavesRouter);
   app.use("/api/reschedule-requests", rescheduleRequestsRouter);
   app.use("/api/subscriptions", subscriptionsRouter);

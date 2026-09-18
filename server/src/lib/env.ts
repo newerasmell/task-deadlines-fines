@@ -11,6 +11,11 @@ function req(name: string, fallback?: string): string {
 export const env = {
   port: Number(process.env.PORT ?? 4000),
   jwtSecret: req("JWT_SECRET", "dev-secret-change-me"),
+  // AES-256-GCM key (lib/crypto.ts) for a user's Google Calendar OAuth
+  // refresh token at rest — 64-char hex string (32 bytes). Dev fallback
+  // below is NOT safe for production; generate a real one with
+  // `openssl rand -hex 32` and set ENCRYPTION_KEY before deploying.
+  encryptionKey: req("ENCRYPTION_KEY", "0".repeat(64)),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   // Timezone used to format dates/times in notification text — the server
   // itself typically runs in UTC (e.g. on Render), so without this every
@@ -62,6 +67,16 @@ export const env = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? "",
   googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN ?? "",
+  // Separate redirect URI for the per-user "Push to Calendar" OAuth flow
+  // (routes/googleCalendar.ts) — same OAuth client (GOOGLE_CLIENT_ID/
+  // SECRET above) as the admin-level Drive/Calendar integration, but this
+  // one must be added as an additional Authorized redirect URI on that
+  // same Google Cloud OAuth client, since it's a different callback route
+  // and a narrower scope (calendar.events only, not Drive).
+  googleCalendarRedirectUri: process.env.GOOGLE_CALENDAR_REDIRECT_URI ?? "",
+  // Minutes before an event's start to fire its popup reminder, for a task
+  // pushed via "Push to Calendar" (routes/tasks.ts).
+  googleCalendarReminderMinutes: Number(process.env.GOOGLE_CALENDAR_REMINDER_MINUTES ?? 10),
   // Override points for local/CI testing against a mock server — never set
   // in production, where these just default to the real Google endpoints.
   googleOauthBaseUrl: process.env.GOOGLE_OAUTH_BASE_URL ?? "https://oauth2.googleapis.com",

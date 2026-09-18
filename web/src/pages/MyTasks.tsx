@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
-import type { Task } from "../api/types";
+import type { GoogleCalendarStatus, Task } from "../api/types";
 import { Avatar } from "../components/Avatar";
+import { PushToCalendarButton } from "../components/PushToCalendarButton";
 import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
@@ -21,6 +22,11 @@ export function MyTasks() {
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
+  const [googleConnected, setGoogleConnected] = useState(false);
+
+  function updateTaskInPlace(updated: Task) {
+    setTasks((cur) => cur.map((tk) => (tk.id === updated.id ? updated : tk)));
+  }
 
   function toggleDesc(id: string) {
     setExpandedDescIds((cur) => {
@@ -37,7 +43,9 @@ export function MyTasks() {
   }
 
   useEffect(() => {
-    refresh().finally(() => setLoading(false));
+    Promise.all([refresh(), api<GoogleCalendarStatus>("/google-calendar/status").then((s) => setGoogleConnected(s.connected))]).finally(() =>
+      setLoading(false)
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -169,6 +177,9 @@ export function MyTasks() {
                     {fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}
                   </div>
                   <div className="grid-cell grid-cell-actions">
+                    {tk.status !== "BLOCKED" && (
+                      <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={updateTaskInPlace} />
+                    )}
                     <RowMenu label={t("Действия")}>
                       {isAssignee && tk.status === "PENDING" && (
                         <RowMenuItem onClick={() => startWork(tk.id)}>{t("Започни")}</RowMenuItem>

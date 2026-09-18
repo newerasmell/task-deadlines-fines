@@ -52,6 +52,14 @@ model User {
   viberUserId      String?
   googleCalendarId String?
 
+  // Per-user "Push to Calendar" OAuth connection (distinct from
+  // googleCalendarId above, which is the ADMIN-level shared-calendar
+  // broadcast target — this is each person's own personal calendar
+  // connection). Refresh token is AES-256-GCM encrypted at rest, see
+  // lib/crypto.ts; null/null together mean "not connected".
+  googleRefreshToken String?
+  googleConnectedAt  DateTime?
+
   // Free-text description of what this person does / their expertise —
   // shown to Claude when extracting tasks from a voice recording, so it can
   // pick the best-fit assignee for a task that doesn't name anyone
@@ -280,6 +288,14 @@ model Task {
   lastFinedAmount        Float?
   completedAt            DateTime?
   deletedAt              DateTime?
+
+  // "Push to Calendar": the assignee's own personal Google Calendar event
+  // for this task (created via their OAuth connection — see User's
+  // googleRefreshToken). Set together, cleared together; googleEventId is
+  // what a PATCH turns into an events.update instead of events.insert.
+  googleEventId            String?
+  pushedStart              DateTime?
+  pushedDurationMinutes    Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

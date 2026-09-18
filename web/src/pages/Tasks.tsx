@@ -2,9 +2,10 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { api, apiUpload, attachmentUrl } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
-import type { Priority, Task, TaskSubmission, User } from "../api/types";
+import type { GoogleCalendarStatus, Priority, Task, TaskSubmission, User } from "../api/types";
 import { Avatar } from "../components/Avatar";
 import { IconSearch } from "../components/icons";
+import { PushToCalendarButton } from "../components/PushToCalendarButton";
 import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
@@ -60,6 +61,11 @@ export function Tasks() {
   const [filterPriority, setFilterPriority] = useState<Priority | "">("");
   const [filterStatus, setFilterStatus] = useState<Task["status"] | "">("");
   const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
+  const [googleConnected, setGoogleConnected] = useState(false);
+
+  function updateTaskInPlace(updated: Task) {
+    setTasks((cur) => cur.map((tk) => (tk.id === updated.id ? updated : tk)));
+  }
 
   function toggleDesc(id: string) {
     setExpandedDescIds((cur) => {
@@ -76,7 +82,11 @@ export function Tasks() {
   }
 
   useEffect(() => {
-    Promise.all([refresh(), api<User[]>("/users").then(setEmployees)]).finally(() => setLoading(false));
+    Promise.all([
+      refresh(),
+      api<User[]>("/users").then(setEmployees),
+      api<GoogleCalendarStatus>("/google-calendar/status").then((s) => setGoogleConnected(s.connected)),
+    ]).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -197,6 +207,8 @@ export function Tasks() {
             onStatusChange={handleBoardStatusChange}
             onComplete={completeTask}
             isLockedTask={isLockedTask}
+            googleConnected={googleConnected}
+            onTaskUpdated={updateTaskInPlace}
           />
           {expanded && expandedTask && expanded.mode === "edit" && isAdmin && (
             <TaskForm
@@ -362,6 +374,9 @@ export function Tasks() {
                       {fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}
                     </div>
                     <div className="grid-cell grid-cell-actions">
+                      {tk.status !== "BLOCKED" && (
+                        <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={updateTaskInPlace} />
+                      )}
                       <RowMenu label={t("Действия")}>
                         {isAssignee && tk.status === "PENDING" && (
                           <RowMenuItem onClick={() => startWork(tk.id)}>{t("Започни")}</RowMenuItem>
@@ -450,6 +465,8 @@ function TaskBoard({
   onStatusChange,
   onComplete,
   isLockedTask,
+  googleConnected,
+  onTaskUpdated,
 }: {
   tasks: Task[];
   currentUserId: string | undefined;
@@ -461,6 +478,8 @@ function TaskBoard({
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   onComplete: (tk: Task) => void;
   isLockedTask: (tk: Task) => boolean;
+  googleConnected: boolean;
+  onTaskUpdated: (task: Task) => void;
 }) {
   const { t, lang } = useI18n();
   const locale = lang === "en" ? "en-GB" : "bg-BG";
@@ -607,6 +626,11 @@ function TaskBoard({
                               <span className="badge badge-danger board-card-fine">
                                 {fineTotal.toFixed(2)} {activeFines[0].currency}
                               </span>
+                            )}
+                            {tk.status !== "BLOCKED" && (
+                              <div className="board-card-actions" onClick={(e) => e.stopPropagation()}>
+                                <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={onTaskUpdated} />
+                              </div>
                             )}
                             {(canStart || canSubmitCard || canReviewCard || canComplete) && (
                               <div className="board-card-actions">

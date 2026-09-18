@@ -154,6 +154,14 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 4px;
+  margin: -4px;
+}
+
+.user-chip:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .user-name {
@@ -252,6 +260,31 @@ button.secondary:hover {
   padding: 5px 10px;
   font-size: 0.8rem;
   margin-right: 6px;
+}
+
+.chip {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #374151;
+}
+
+.chip:hover {
+  border-color: var(--primary);
+}
+
+.chip-selected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.push-calendar-popover {
+  margin: 0;
+  box-shadow: 0 8px 24px rgba(41, 47, 76, 0.16);
 }
 
 .card {

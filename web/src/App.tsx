@@ -10,6 +10,7 @@ import { Fines } from "./pages/Fines";
 import { Leave } from "./pages/Leave";
 import { Login } from "./pages/Login";
 import { Meeting } from "./pages/Meeting";
+import { Profile } from "./pages/Profile";
 import { Subscriptions } from "./pages/Subscriptions";
 import { MyTasks } from "./pages/MyTasks";
 import { RecurringTasks } from "./pages/RecurringTasks";
@@ -50,6 +51,7 @@ function AppRoutes() {
         }
       >
         <Route path="/" element={<Dashboard />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/my-tasks" element={<MyTasks />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/recurring" element={<RecurringTasks />} />

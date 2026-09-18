@@ -14,6 +14,12 @@ import { dispatchToAllChannels, toNotificationTarget } from "../notifications/di
 import { spawnRecurringOccurrencesThrottled } from "../jobs/recurringTasks";
 import { createTaskAndNotify } from "../services/taskCreation";
 import { deadlineFieldSchema } from "../lib/deadlineInput";
+import {
+  GoogleCalendarNotConnectedError,
+  GoogleCalendarTokenRevokedError,
+  deleteEventForUser,
+  pushEventForUser,
+} from "../lib/googleCalendarOAuth";
 
 export const tasksRouter = Router();
 
@@ -627,4 +633,84 @@ tasksRouter.post("/:id/submissions/:submissionId/reject", uploadAttachments.arra
   });
 
   res.json({ ok: true });
+});
+
+// "Push to Calendar": creates/updates an event on the CURRENT user's own
+// Google Calendar (their personal connection, see routes/googleCalendar.ts)
+// for this task — any user who can see the task can push it to their own
+// calendar, not just the assignee (e.g. an Owner adding a reminder to check
+// in on it). Idempotent: a second push for the same task updates the same
+// event (task.googleEventId) instead of creating a duplicate, per the brief.
+const pushToCalendarSchema = z
+  .object({
+    start: z.coerce.date(),
+    durationMinutes: z.number().int().positive().optional(),
+    allDay: z.boolean().optional(),
+  })
+  .refine((v) => v.allDay || v.durationMinutes !== undefined, {
+    message: "Посочи продължителност или избери 'Цял ден'.",
+  });
+
+tasksRouter.post("/:id/push-to-calendar", async (req, res) => {
+  const parsed = pushToCalendarSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+  if (!task || task.deletedAt) return res.status(404).json({ error: "Not found" });
+
+  const { start, allDay } = parsed.data;
+  const durationMinutes = allDay ? 24 * 60 : parsed.data.durationMinutes!;
+  const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+
+  try {
+    const eventId = await pushEventForUser({
+      userId: req.user!.sub,
+      eventId: task.googleEventId,
+      summary: task.title,
+      description: [task.description, `Срок в TODF: ${formatDateTime(task.deadline)}`, `${env.corsOrigin}/tasks`]
+        .filter(Boolean)
+        .join("\n\n"),
+      start,
+      end,
+      reminderMinutesBefore: env.googleCalendarReminderMinutes,
+    });
+    const updated = await prisma.task.update({
+      where: { id: task.id },
+      data: { googleEventId: eventId, pushedStart: start, pushedDurationMinutes: durationMinutes },
+      include: taskInclude,
+    });
+    res.json(updated);
+  } catch (err) {
+    if (err instanceof GoogleCalendarNotConnectedError || err instanceof GoogleCalendarTokenRevokedError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("[tasks] push-to-calendar failed:", err);
+    res.status(502).json({ error: "Грешка при връзка с Google Calendar." });
+  }
+});
+
+tasksRouter.delete("/:id/push-to-calendar", async (req, res) => {
+  const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+  if (!task) return res.status(404).json({ error: "Not found" });
+
+  if (task.googleEventId) {
+    try {
+      await deleteEventForUser(req.user!.sub, task.googleEventId);
+    } catch (err) {
+      // A revoked/missing connection means there's nothing left to clean up
+      // on Google's side either way — still clear our own fields below
+      // rather than leaving the task stuck "pushed" with no way to retry.
+      if (!(err instanceof GoogleCalendarNotConnectedError || err instanceof GoogleCalendarTokenRevokedError)) {
+        console.error("[tasks] push-to-calendar delete failed:", err);
+        return res.status(502).json({ error: "Грешка при връзка с Google Calendar." });
+      }
+    }
+  }
+
+  const updated = await prisma.task.update({
+    where: { id: task.id },
+    data: { googleEventId: null, pushedStart: null, pushedDurationMinutes: null },
+    include: taskInclude,
+  });
+  res.json(updated);
 });

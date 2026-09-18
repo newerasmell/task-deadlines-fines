@@ -82,6 +82,11 @@ export interface Task {
   chainOrder?: number | null;
   delayDaysAfterPrevious?: number | null;
   previousStepId?: string | null;
+  // "Push to Calendar" — set once this task has been pushed to whoever
+  // pushed it's own Google Calendar; null/null/null means never pushed.
+  googleEventId?: string | null;
+  pushedStart?: string | null;
+  pushedDurationMinutes?: number | null;
 }
 
 export interface Project {
@@ -89,6 +94,12 @@ export interface Project {
   title: string;
   createdById: string;
   createdAt: string;
+}
+
+export interface GoogleCalendarStatus {
+  configured: boolean;
+  connected: boolean;
+  connectedAt: string | null;
 }
 
 export interface Leave {
