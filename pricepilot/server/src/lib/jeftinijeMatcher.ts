@@ -159,7 +159,13 @@ export function matchProduct(
 
   let pool = index.filter((c) => c.nTitle.includes(brandFirstWord));
   if (brand.includes(" ")) pool = pool.filter((c) => c.nTitle.includes(brand));
-  if (ml !== null) pool = pool.filter((c) => c.ml === ml);
+  // A candidate with no extractable ml isn't necessarily a size mismatch —
+  // confirmed live on notino.hr, whose listing cards often omit the size
+  // entirely (it only shows once you open the actual product page) — so
+  // dropping it here would silently lose real matches instead of at least
+  // offering them for a human to confirm. Kept in the pool, but tracked so
+  // it can never be promoted to an automatic "found" below.
+  if (ml !== null) pool = pool.filter((c) => c.ml === ml || c.ml === null);
   if (pool.length === 0) return { status: "not_found" };
 
   const exact: IndexEntry[] = [];
@@ -172,9 +178,11 @@ export function matchProduct(
       const pair = new Set([ourConc, c.conc]);
       if (!(pair.has("PARFUM") && pair.has("EXTRAIT"))) continue;
     }
+    const mlUnconfirmed = ml !== null && c.ml === null;
     const cModel = modelTokens(c.title, product.vendor ?? "");
     if (sameTokens(cModel, ourModel)) {
-      if (ourConc && c.conc && ourConc === c.conc) exact.push(c);
+      if (mlUnconfirmed) near.push(c); // model agrees but size was never confirmed — needs a human look
+      else if (ourConc && c.conc && ourConc === c.conc) exact.push(c);
       else if (!ourConc && !c.conc) exact.push(c);
       else near.push(c); // model matches, one side missing concentration
     } else {

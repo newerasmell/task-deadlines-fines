@@ -86,7 +86,7 @@ async function waitOutCloudflareChallenge(page: Page, timeoutMs = 20000): Promis
   }
 }
 
-async function loadPage(page: Page, url: string, timeoutMs: number): Promise<string> {
+async function loadPage(page: Page, url: string, timeoutMs: number, waitForSelector?: string): Promise<string> {
   let res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   if (res && !res.ok()) {
     const title = await page.title().catch(() => "");
@@ -99,6 +99,19 @@ async function loadPage(page: Page, url: string, timeoutMs: number): Promise<str
     }
   }
   await acceptDidomiConsent(page);
+  if (waitForSelector) {
+    // Confirmed live on notino.hr: page 2+ of a brand's listing (navigated
+    // to directly by URL, not by clicking "next" in a real session) can
+    // still be mid-render when networkidle below already looks quiet —
+    // domcontentloaded fires before the SPA has fetched/rendered its
+    // product grid, so reading page.content() a moment too early yields a
+    // real 200 page with zero product cards and no pagination link, which
+    // silently looks like "this is the last page" instead of the truth
+    // ("we read it too soon"). Waiting for a selector the caller knows
+    // marks real content is a much more direct signal than networkidle for
+    // pages like this.
+    await page.waitForSelector(waitForSelector, { timeout: 8000 }).catch(() => {});
+  }
   // Best-effort wait for any follow-up XHR/fetch-rendered content (a
   // search-results page commonly loads its listings this way) — NOT a hard
   // requirement: waitUntil: "networkidle" on goto() itself was tried and
@@ -249,12 +262,12 @@ export class PersistentPage {
 
   constructor(private session: BrowserSession, private context: BrowserContext, private page: Page) {}
 
-  async goto(url: string, timeoutMs = 30000): Promise<string> {
+  async goto(url: string, timeoutMs = 30000, waitForSelector?: string): Promise<string> {
     this.navigationCount++;
     if (this.navigationCount > 1 && this.navigationCount % RECYCLE_AFTER_NAVIGATIONS === 0) {
       await this.recycle();
     }
-    return withTimeout(loadPage(this.page, url, timeoutMs), timeoutMs + 10000, `get ${url}`);
+    return withTimeout(loadPage(this.page, url, timeoutMs, waitForSelector), timeoutMs + 10000, `get ${url}`);
   }
 
   private async recycle(): Promise<void> {

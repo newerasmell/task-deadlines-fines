@@ -68,11 +68,22 @@ function findNextPageUrl(html: string): string | null {
   return href ? (href.startsWith("http") ? href : BASE + href) : null;
 }
 
+// Confirmed live: notino.hr's page 1 (the brand landing page itself) is
+// SSR'd and ready by the time domcontentloaded fires, but page 2+
+// (navigated to directly by URL rather than clicked from page 1 in a real
+// session) can still be fetching/rendering its product grid client-side at
+// that point — reading page.content() then yields a real 200 response with
+// zero product cards and no further pagination link, which the crawl loop
+// can't tell apart from "this really is the last page". Waiting for the
+// card selector itself is the fix; see loadPage()'s waitForSelector in
+// browserFetch.ts for the general mechanism.
+const PRODUCT_CARD_SELECTOR = '[data-testid="product-container"]';
+
 async function fetchWithRetry(page: PersistentPage, url: string): Promise<string | null> {
   let lastMessage = "unknown error";
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await page.goto(url);
+      return await page.goto(url, 30000, PRODUCT_CARD_SELECTOR);
     } catch (err) {
       lastMessage = err instanceof Error ? err.message : String(err);
       if (lastMessage.includes("403") || lastMessage.includes("429")) {
