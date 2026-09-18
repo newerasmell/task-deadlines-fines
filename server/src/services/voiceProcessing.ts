@@ -143,6 +143,10 @@ async function resolveSuggestedAssignees(
  */
 export async function extractAndCreateDrafts(transcriptId: string): Promise<number> {
   const transcript = await prisma.voiceTranscript.findUniqueOrThrow({ where: { id: transcriptId } });
+  // A silent/near-empty recording (Whisper heard no speech) leaves
+  // transcriptText empty — Claude's API rejects an empty user message
+  // outright, so there's nothing to extract from and no point asking.
+  if (!transcript.transcriptText.trim()) return 0;
   const extraction = await extractTasks(transcript.transcriptText);
 
   await prisma.voiceTranscript.update({
