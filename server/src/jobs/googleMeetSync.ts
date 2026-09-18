@@ -43,14 +43,21 @@ function pickRecordingFile(files: DriveFile[]): DriveFile | null {
 // last chunk.
 async function processRecording(file: DriveFile): Promise<void> {
   const buffer = await downloadFileBuffer(file.id);
-  const chunks = buffer.length > MAX_AUDIO_BYTES_LIMIT ? await prepareAudioChunks(buffer, MAX_AUDIO_BYTES_LIMIT) : [buffer];
+  // Always transcoded, even when already under the size cap: Whisper
+  // determines the file format from the filename's extension, not the
+  // multipart Content-Type — and Drive's own file.name for a Meet
+  // recording usually has no extension at all (e.g. "kfs-iivr-ewa
+  // (2026-09-18 11:14 GMT)"), which Whisper flatly rejects as
+  // "Unrecognized file format" no matter what mimeType says. Every chunk
+  // this produces gets a real ".mp3" name, sidestepping that entirely.
+  const chunks = await prepareAudioChunks(buffer, MAX_AUDIO_BYTES_LIMIT);
   const sessionId = chunks.length > 1 ? file.id : null;
 
   for (let i = 0; i < chunks.length; i++) {
     const input: TranscribeInput = {
       buffer: chunks[i],
-      filename: chunks.length > 1 ? `${file.name} (${i + 1}/${chunks.length}).mp3` : file.name,
-      mimeType: chunks.length > 1 ? "audio/mpeg" : file.mimeType,
+      filename: chunks.length > 1 ? `${file.name} (${i + 1}/${chunks.length}).mp3` : `${file.name}.mp3`,
+      mimeType: "audio/mpeg",
       source: "MEET",
       createdById: null,
       // Only the first chunk tags the dedup key — later chunks are folded
