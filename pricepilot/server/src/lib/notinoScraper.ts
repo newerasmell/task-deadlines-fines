@@ -165,6 +165,20 @@ export async function buildNotinoIndex(
           console.log(
             `[notino] page ${pageNum + 1} (${url}): ${html.length} bytes, ${pageProducts.length} products, next=${nextUrl ? "yes" : "no"}`
           );
+          // The identical byte count (28745) on two separate live runs with
+          // very different wait budgets (8s then 25s) rules out "still
+          // rendering, just needs longer" — whatever this page is, it's a
+          // stable, finished response. Dumping its <title> and a cleaned
+          // text excerpt is the fastest way to see WHAT it actually is
+          // (a bot-check page, an empty-results message, a genuine error)
+          // without another manual HTML capture round-trip.
+          if (pageProducts.length === 0) {
+            const $debug = cheerio.load(html);
+            const title = $debug("title").first().text().trim();
+            const bodyText = $debug("body").text().replace(/\s+/g, " ").trim().slice(0, 600);
+            console.log(`[notino] page ${pageNum + 1} had 0 products — <title>: "${title}"`);
+            console.log(`[notino] page ${pageNum + 1} body text excerpt: "${bodyText}"`);
+          }
           brandListings.push(...pageProducts);
           url = nextUrl;
         }
