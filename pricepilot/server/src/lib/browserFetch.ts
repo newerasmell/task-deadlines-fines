@@ -70,16 +70,32 @@ async function acceptDidomiConsent(page: Page): Promise<void> {
     });
 }
 
-// jeftinije.hr sits behind Cloudflare; some requests land on its
-// "Just a moment..." interstitial instead of the real page. That page runs
-// its own JS challenge and replaces itself automatically within a few
+// jeftinije.hr and notino.hr both sit behind Cloudflare; some requests land
+// on its managed-challenge interstitial instead of the real page. That page
+// runs its own JS challenge and replaces itself automatically within a few
 // seconds for a real browser that just lets it run — this only waits for
 // that (the same patience an actual visitor has), with a hard timeout so a
 // challenge that never clears can't hang the caller. Not an attempt to
 // defeat or solve the challenge, just to wait it out.
+//
+// Detected by content marker, not by the page's title text — confirmed live
+// that this is NOT safe to key off an exact title string: jeftinije.hr's
+// challenge page titles itself "Just a moment..." (English), but notino.hr's
+// showed the Croatian "Pričekajte trenutak..." instead, served with a plain
+// 200 OK HTTP status (not even a non-ok response, which the original check
+// also required). `_cf_chl_opt` and the challenges.cloudflare.com script are
+// Cloudflare's own internal markers, present regardless of the page's
+// display language.
+const CLOUDFLARE_CHALLENGE_CHECK =
+  "document.documentElement.outerHTML.includes('_cf_chl_opt') || document.documentElement.outerHTML.includes('challenges.cloudflare.com')";
+
+async function isCloudflareChallenge(page: Page): Promise<boolean> {
+  return page.evaluate(CLOUDFLARE_CHALLENGE_CHECK).then(Boolean).catch(() => false);
+}
+
 async function waitOutCloudflareChallenge(page: Page, timeoutMs = 20000): Promise<boolean> {
   try {
-    await page.waitForFunction("document.title !== 'Just a moment...'", null, { timeout: timeoutMs });
+    await page.waitForFunction(`!(${CLOUDFLARE_CHALLENGE_CHECK})`, null, { timeout: timeoutMs });
     return true;
   } catch {
     return false;
@@ -93,16 +109,16 @@ async function loadPage(
   waitForSelector?: string,
   waitForSelectorTimeoutMs = 8000
 ): Promise<string> {
-  let res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-  if (res && !res.ok()) {
-    const title = await page.title().catch(() => "");
-    if (title === "Just a moment...") {
-      const cleared = await waitOutCloudflareChallenge(page);
-      if (!cleared) throw new Error(`HTTP ${res.status()} (Cloudflare challenge) fetching ${url}`);
-      res = null; // challenge cleared itself; fall through to read the real content
-    } else {
-      throw new Error(`HTTP ${res.status()} fetching ${url}`);
+  const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  // Checked regardless of HTTP status — see CLOUDFLARE_CHALLENGE_CHECK's
+  // comment above for why a status/title check alone isn't enough.
+  if (await isCloudflareChallenge(page)) {
+    const cleared = await waitOutCloudflareChallenge(page);
+    if (!cleared) {
+      throw new Error(`Cloudflare challenge never cleared fetching ${url}${res ? ` (HTTP ${res.status()})` : ""}`);
     }
+  } else if (res && !res.ok()) {
+    throw new Error(`HTTP ${res.status()} fetching ${url}`);
   }
   await acceptDidomiConsent(page);
   let contentConfirmed = false;
