@@ -289,7 +289,7 @@ export function Tasks() {
           <div className="table-wrap">
           <div
             className="grid-table"
-            style={{ gridTemplateColumns: "minmax(220px, 2fr) 150px 120px 160px 100px 110px 90px 56px" }}
+            style={{ gridTemplateColumns: "minmax(220px, 2fr) 150px 120px 160px 100px 110px 90px 88px" }}
           >
             <div className="grid-table-header">{t("Задача")}</div>
             <div className="grid-table-header">{t("Служител")}</div>
@@ -375,7 +375,7 @@ export function Tasks() {
                     </div>
                     <div className="grid-cell grid-cell-actions">
                       {tk.status !== "BLOCKED" && (
-                        <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={updateTaskInPlace} />
+                        <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={updateTaskInPlace} compact />
                       )}
                       <RowMenu label={t("Действия")}>
                         {isAssignee && tk.status === "PENDING" && (

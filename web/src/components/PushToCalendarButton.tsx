@@ -86,10 +86,15 @@ export function PushToCalendarButton({
   task,
   googleConnected,
   onUpdated,
+  compact,
 }: {
   task: Task;
   googleConnected: boolean;
   onUpdated: (task: Task) => void;
+  // Icon-only trigger (for tight spaces like the list-view actions column) —
+  // same popover, just a narrower button so it doesn't overflow its grid
+  // column and bleed into the neighboring cell.
+  compact?: boolean;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -180,10 +185,18 @@ export function PushToCalendarButton({
   }
 
   if (task.googleEventId && task.pushedStart) {
+    const pushedLabel = t("В календара: {date}", { date: new Date(task.pushedStart).toLocaleString() });
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <button ref={triggerRef} type="button" className="small-btn secondary" onClick={openPopover} disabled={!googleConnected}>
-          {t("В календара: {date}", { date: new Date(task.pushedStart).toLocaleString() })}
+        <button
+          ref={triggerRef}
+          type="button"
+          className="small-btn secondary"
+          onClick={openPopover}
+          disabled={!googleConnected}
+          title={compact ? pushedLabel : undefined}
+        >
+          {compact ? "📅" : pushedLabel}
         </button>
         <button type="button" className="small-btn secondary" onClick={remove} disabled={removing} title={t("Премахни от календара")}>
           ✕
@@ -218,9 +231,9 @@ export function PushToCalendarButton({
         className="small-btn secondary"
         onClick={openPopover}
         disabled={!googleConnected}
-        title={googleConnected ? undefined : t('Свържи Google Calendar от профила си')}
+        title={googleConnected ? (compact ? t("Push to Calendar") : undefined) : t('Свържи Google Calendar от профила си')}
       >
-        {t("Push to Calendar")}
+        {compact ? "📅" : t("Push to Calendar")}
       </button>
       {open &&
         pos &&
