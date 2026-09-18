@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { formatDateTime } from "../lib/dateFormat";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
@@ -34,8 +35,11 @@ function isDueOn(template: { frequency: string; daysOfWeek: string; dayOfMonth: 
  * (and eligible for the normal pre-deadline reminder) well before their own
  * deadline, instead of only appearing the day they're due. A template with no
  * end date just keeps producing new occurrences forever, one lookahead window
- * at a time. daysOfWeek/timeOfDay are interpreted in the server process's
- * local time zone.
+ * at a time. daysOfWeek is matched against the server process's own local
+ * calendar day (today/dayStart below); timeOfDay is interpreted in the
+ * TEAM's zone (env.timezone) — confirmed live that using the server's own
+ * zone here (Render runs in UTC) put every occurrence's deadline hours off
+ * from the timeOfDay an admin actually configured.
  */
 let lastThrottledSpawnAt = 0;
 const SPAWN_THROTTLE_MS = 60_000;
@@ -80,7 +84,10 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
       const dayStart = new Date(today.getTime() + offset * 24 * 60 * 60 * 1000);
       if (!isDueOn(template, dayStart)) continue;
 
-      const deadline = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), hh, mm, 0, 0);
+      const deadline = DateTime.fromObject(
+        { year: dayStart.getFullYear(), month: dayStart.getMonth() + 1, day: dayStart.getDate(), hour: hh, minute: mm },
+        { zone: env.timezone }
+      ).toJSDate();
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
       const existing = await prisma.task.findFirst({

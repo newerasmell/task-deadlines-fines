@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import { z } from "zod";
 import { addWorkingDays } from "./bulgarianDeadlines";
 import { env } from "./env";
@@ -236,21 +237,34 @@ export async function extractTasks(transcriptText: string): Promise<ExtractionRe
  * VOICE_DEFAULT_DEADLINE_WORKING_DAYS (skipping weekends/BG holidays) when
  * the model didn't return a date, or returned something unparseable/in the
  * past — a bad date from the model shouldn't silently become "yesterday".
+ *
+ * "Local" here means the TEAM's zone (env.timezone, Europe/Sofia by
+ * default) — confirmed live that every voice-created task landed at a
+ * wildly wrong hour because this used the plain `Date(y, m, d, 18, ...)`
+ * constructor, which JS interprets in the SERVER PROCESS's own local zone,
+ * not the team's. Render runs that process in UTC (see dateFormat.ts's
+ * own comment on the same mismatch), so "18:00" was actually being stored
+ * as 18:00 UTC — visibly wrong once anything formats it in Sofia time.
+ * Luxon's zone-aware DateTime avoids that ambiguity entirely, the same way
+ * businessHours.ts already does for review deadlines.
  */
 export function resolveDeadline(rawDeadline: string | null | undefined, now: Date = new Date()): Date {
   if (rawDeadline) {
     const match = rawDeadline.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (match) {
       const [, y, m, d] = match;
-      const candidate = new Date(Number(y), Number(m) - 1, Number(d), 18, 0, 0, 0);
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const candidate = DateTime.fromObject(
+        { year: Number(y), month: Number(m), day: Number(d), hour: 18 },
+        { zone: env.timezone }
+      ).toJSDate();
+      const startOfToday = DateTime.fromJSDate(now, { zone: env.timezone }).startOf("day").toJSDate();
       if (candidate.getTime() >= startOfToday.getTime()) {
         return candidate;
       }
     }
   }
   const fallbackDay = addWorkingDays(now, env.voiceDefaultDeadlineWorkingDays);
-  return new Date(fallbackDay.getFullYear(), fallbackDay.getMonth(), fallbackDay.getDate(), 18, 0, 0, 0);
+  return DateTime.fromJSDate(fallbackDay, { zone: env.timezone }).set({ hour: 18, minute: 0, second: 0, millisecond: 0 }).toJSDate();
 }
 
 export function priorityToTaskPriority(p: ExtractedTask["priority"]): "LOW" | "MEDIUM" | "HIGH" {
