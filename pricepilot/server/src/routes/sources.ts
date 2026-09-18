@@ -29,14 +29,16 @@ sourcesRouter.get("/", async (req, res) => {
 const createSchema = z.object({
   storeId: z.string().min(1),
   label: z.string().min(1),
-  type: z.enum(["shopify_json", "scrape", "manual_import", "jeftinije_hr"]),
+  type: z.enum(["shopify_json", "scrape", "manual_import", "jeftinije_hr", "notino_hr"]),
   baseUrl: z.string().min(1),
   searchUrlTemplate: z.string().nullable().optional(),
   active: z.boolean().default(true),
   // jeftinije_hr's full brand-listing crawl is heavy enough that it
   // defaults to manual-only ("Refresh now" button, no 24h auto-tick)
   // unless explicitly opted into the scheduler; every other type keeps
-  // today's always-automatic behavior unless told otherwise.
+  // today's always-automatic behavior unless told otherwise. notino_hr is
+  // the same style of brand-listing crawl (currently a single-brand test),
+  // manual-only for the same reason.
   autoRefresh: z.boolean().optional(),
 });
 
@@ -49,7 +51,7 @@ sourcesRouter.post("/", async (req, res) => {
     return res.status(400).json({ error: `A store can have at most ${MAX_SOURCES_PER_STORE} sources` });
   }
 
-  const autoRefresh = parsed.data.autoRefresh ?? parsed.data.type !== "jeftinije_hr";
+  const autoRefresh = parsed.data.autoRefresh ?? (parsed.data.type !== "jeftinije_hr" && parsed.data.type !== "notino_hr");
   const source = await prisma.source.create({ data: { ...parsed.data, autoRefresh } });
   res.status(201).json(source);
 });

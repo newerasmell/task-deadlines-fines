@@ -11,6 +11,7 @@ import { politeDelay, politeGet } from "../lib/httpClient";
 import { prisma } from "../lib/prisma";
 import { buildFallbackMatchKey, normalizeBarcode } from "../lib/textNormalize";
 import { refreshJeftinijeSource } from "./jeftinijeSource";
+import { refreshNotinoSource } from "./notinoSource";
 import { resolveMatchesForStore } from "./matching";
 
 const DEGRADE_AFTER_FAILURES = 3;
@@ -343,6 +344,8 @@ export async function refreshSource(
         matched = await refreshShopifyJsonSource(source.store, source);
       } else if (source.type === "jeftinije_hr") {
         matched = (await refreshJeftinijeSource(source.store, source)).matched;
+      } else if (source.type === "notino_hr") {
+        matched = (await refreshNotinoSource(source.store, source)).matched;
       } else {
         matched = (await refreshScrapeSource(source.store, source)).matched;
       }

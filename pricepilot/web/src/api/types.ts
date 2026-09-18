@@ -1,5 +1,5 @@
 export type PricingStrategy = "undercut_min" | "match_min" | "undercut_avg";
-export type SourceType = "shopify_json" | "scrape" | "manual_import" | "jeftinije_hr";
+export type SourceType = "shopify_json" | "scrape" | "manual_import" | "jeftinije_hr" | "notino_hr";
 export type RowFlag = "above-market" | "competitive" | "below-market" | "below-floor" | "no-data";
 
 export interface Store {

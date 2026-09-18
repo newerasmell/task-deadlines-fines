@@ -369,7 +369,7 @@ function SourcesSection({ storeId }: { storeId: string }) {
                     {showAttempts === s.id ? "Hide results" : "View results"}
                   </button>
                 )}
-                {(s.type === "jeftinije_hr" || s.type === "manual_import") && (
+                {(s.type === "jeftinije_hr" || s.type === "notino_hr" || s.type === "manual_import") && (
                   <button
                     className="small-btn secondary"
                     onClick={() => setShowAmbiguous(showAmbiguous === s.id ? null : s.id)}
@@ -735,15 +735,16 @@ function SourceForm({
   // autoRefresh to true) back to jeftinije_hr left the stale `true` in
   // place, since edits otherwise never override an existing explicit
   // choice, and the scheduler then kicked off an unwanted crawl on its next
-  // 15-minute tick. So switching TO jeftinije_hr always forces it off,
-  // whether creating new or editing — the one type where "quietly inherited
-  // true" is never an acceptable state, in trade for the admin having to
-  // re-check the box if they genuinely want it on.
+  // 15-minute tick. So switching TO jeftinije_hr (or notino_hr, the same
+  // style of brand-listing crawl) always forces it off, whether creating
+  // new or editing — the one type where "quietly inherited true" is never
+  // an acceptable state, in trade for the admin having to re-check the box
+  // if they genuinely want it on.
   function handleTypeChange(next: SourceType) {
     setType(next);
-    if (next === "jeftinije_hr") {
+    if (next === "jeftinije_hr" || next === "notino_hr") {
       setAutoRefresh(false);
-      if (!baseUrl) setBaseUrl("https://www.jeftinije.hr");
+      if (!baseUrl) setBaseUrl(next === "jeftinije_hr" ? "https://www.jeftinije.hr" : "https://www.notino.hr");
     } else if (!isEdit) {
       setAutoRefresh(true);
     }
@@ -759,7 +760,8 @@ function SourceForm({
         label,
         type,
         baseUrl,
-        searchUrlTemplate: type === "shopify_json" || type === "jeftinije_hr" ? null : searchUrlTemplate || null,
+        searchUrlTemplate:
+          type === "shopify_json" || type === "jeftinije_hr" || type === "notino_hr" ? null : searchUrlTemplate || null,
         active,
         autoRefresh,
       };
@@ -797,6 +799,7 @@ function SourceForm({
             <option value="scrape">Scrape (search + parse)</option>
             <option value="manual_import">Manual import (Cowork research → CSV)</option>
             <option value="jeftinije_hr">jeftinije.hr (bulk brand-listing crawl)</option>
+            <option value="notino_hr">notino.hr (per-brand listing crawl — test)</option>
           </select>
         </label>
       </div>
@@ -824,6 +827,12 @@ function SourceForm({
           Crawls jeftinije.hr's brand-filtered listing pages once per run (no per-product search) and matches
           strictly against brand + ml + concentration; anything less than certain goes to the "Review queue" instead
           of being guessed.
+        </p>
+      )}
+      {type === "notino_hr" && (
+        <p className="muted small" style={{ margin: 0 }}>
+          Test source: crawls a single brand's listing page on notino.hr (currently just DIOR — see BRAND_SLUGS in
+          notinoScraper.ts to add more) and matches the same way as jeftinije.hr.
         </p>
       )}
       <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>

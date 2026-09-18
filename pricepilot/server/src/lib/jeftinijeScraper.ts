@@ -290,7 +290,12 @@ export async function buildJeftinijeIndex(
           }
         }
         out.push(...brandListings);
-        if (onBrandDone) await onBrandDone(brand, brandListings);
+        // Only persist a brand whose crawl actually produced something —
+        // calling onBrandDone with an empty list after every one of its
+        // listings failed would have the caller record every one of that
+        // brand's products as "not found", when the honest state is "we
+        // couldn't reach the site", not "we looked and it's not there".
+        if (onBrandDone && brandListings.length > 0) await onBrandDone(brand, brandListings);
       }
     } finally {
       await page.close();
