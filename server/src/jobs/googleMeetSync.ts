@@ -1,5 +1,5 @@
 import { env } from "../lib/env";
-import { downloadFileBuffer, exportDocAsText, findMeetFolderId, isFolder, isGoogleDoc, listFilesInFolder } from "../lib/googleDrive";
+import { downloadFileBuffer, exportDocTranscriptText, findMeetFolderId, isFolder, isGoogleDoc, listFilesInFolder } from "../lib/googleDrive";
 import type { DriveFile } from "../lib/googleDrive";
 import { prisma } from "../lib/prisma";
 import { processJobInBackground, type TranscribeInput } from "../services/voiceProcessing";
@@ -20,6 +20,23 @@ export function getLastGoogleMeetSyncResult(): { result: GoogleMeetSyncResult | 
   return { result: lastResult, ranAt: lastRunAt, inProgress: syncInProgress };
 }
 
+// A per-meeting Drive subfolder can hold several files (the raw recording
+// plus a Meet/Gemini Doc — see exportDocTranscriptText for why that Doc's
+// "Transcript" tab, not its "Notes" tab, is what's actually read). Processing
+// every file in the subfolder as its own independent "meeting" both wastes
+// Whisper/Claude calls and risks extracting nothing from the one that
+// matters, so exactly one representative file is picked per subfolder: the
+// Doc when present (already-transcribed text, no Whisper call needed),
+// otherwise the raw recording, otherwise a plain-text file.
+function pickBestMeetingFile(files: DriveFile[]): DriveFile | null {
+  return (
+    files.find((f) => isGoogleDoc(f.mimeType)) ??
+    files.find((f) => f.mimeType.startsWith("audio/") || f.mimeType.startsWith("video/")) ??
+    files.find((f) => f.mimeType === "text/plain") ??
+    null
+  );
+}
+
 // audio/video recordings need Whisper; a native Google Doc (Meet's own
 // auto-generated transcript) and plain-text files already have their words
 // on the page, so those skip transcription entirely via pregivenTranscriptText.
@@ -29,7 +46,7 @@ async function buildTranscribeInputForFile(file: {
   mimeType: string;
 }): Promise<TranscribeInput | null> {
   if (isGoogleDoc(file.mimeType)) {
-    const text = await exportDocAsText(file.id);
+    const text = await exportDocTranscriptText(file.id);
     if (!text.trim()) return null;
     return {
       buffer: Buffer.alloc(0),
@@ -99,12 +116,15 @@ export async function runGoogleMeetSync(): Promise<GoogleMeetSyncResult> {
     // Google Meet nests each recording under its own per-meeting subfolder
     // (named after the meeting code, e.g. "kfs-iivr-ewa - <timestamp>")
     // rather than dropping files directly into the configured folder, so one
-    // level of folders needs expanding into their actual contents.
+    // level of folders needs expanding into their actual contents — picking
+    // just the one best representative file per subfolder (see
+    // pickBestMeetingFile), not every file inside it.
     const topLevel = await listFilesInFolder(folderId, env.googleMeetMaxPerPoll * 3);
     const files: DriveFile[] = [];
     for (const item of topLevel) {
       if (isFolder(item.mimeType)) {
-        files.push(...(await listFilesInFolder(item.id, 20)));
+        const best = pickBestMeetingFile(await listFilesInFolder(item.id, 20));
+        if (best) files.push(best);
       } else {
         files.push(item);
       }

@@ -121,3 +121,73 @@ export async function exportDocAsText(fileId: string): Promise<string> {
   const res = await driveGet(`/drive/v3/files/${fileId}/export`, { mimeType: "text/plain" });
   return res.text();
 }
+
+interface DocsApiTextRun {
+  textRun?: { content?: string };
+}
+interface DocsApiParagraphElement {
+  paragraph?: { elements?: DocsApiTextRun[] };
+  table?: { tableRows?: { tableCells?: { content?: DocsApiParagraphElement[] }[] }[] };
+}
+interface DocsApiTab {
+  tabProperties?: { title?: string };
+  documentTab?: { body?: { content?: DocsApiParagraphElement[] } };
+  childTabs?: DocsApiTab[];
+}
+interface DocsApiDocument {
+  tabs?: DocsApiTab[];
+}
+
+function textFromContent(content: DocsApiParagraphElement[] | undefined): string {
+  if (!content) return "";
+  let text = "";
+  for (const el of content) {
+    for (const run of el.paragraph?.elements ?? []) {
+      text += run.textRun?.content ?? "";
+    }
+    for (const row of el.table?.tableRows ?? []) {
+      for (const cell of row.tableCells ?? []) {
+        text += textFromContent(cell.content);
+      }
+    }
+  }
+  return text;
+}
+
+// Flattens every tab (recursing into child tabs), one at a time.
+function flattenTabs(tabs: DocsApiTab[] | undefined): { title: string; text: string }[] {
+  if (!tabs) return [];
+  const out: { title: string; text: string }[] = [];
+  for (const tab of tabs) {
+    out.push({ title: tab.tabProperties?.title ?? "", text: textFromContent(tab.documentTab?.body?.content) });
+    out.push(...flattenTabs(tab.childTabs));
+  }
+  return out;
+}
+
+/**
+ * A Google Doc created by Meet/Gemini for a meeting typically has multiple
+ * TABS within the same file — e.g. a "Notes" tab (Gemini's AI summary,
+ * which comes back empty/boilerplate for non-English meetings) and a
+ * separate "Transcript" tab (the actual word-for-word speech-to-text,
+ * which works regardless of language). Drive's plain files.export only
+ * ever returns the default/first tab's content, silently dropping every
+ * other tab — this instead goes through the Google Docs API, which
+ * returns the full tab tree, and prefers a tab literally named
+ * "Transcript" (falling back to concatenating every tab's text if none
+ * matches, so it still degrades gracefully for a differently-shaped doc).
+ */
+export async function exportDocTranscriptText(fileId: string): Promise<string> {
+  const token = await getAccessToken();
+  const url = `https://docs.googleapis.com/v1/documents/${fileId}?includeTabsContent=true`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Google Docs API HTTP ${res.status}: ${body.slice(0, 500)}`);
+  }
+  const doc = (await res.json()) as DocsApiDocument;
+  const tabs = flattenTabs(doc.tabs);
+  const transcriptTab = tabs.find((t) => /transcript/i.test(t.title));
+  if (transcriptTab && transcriptTab.text.trim()) return transcriptTab.text;
+  return tabs.map((t) => t.text).join("\n\n");
+}
