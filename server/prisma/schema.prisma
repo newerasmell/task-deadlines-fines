@@ -570,6 +570,12 @@ model VoiceTaskDraft {
   suggestedAssignees String?
 
   deadline    DateTime
+  // true when nobody actually said a time in the conversation and the
+  // hour/minute is just resolveDeadline's own default — the review screen
+  // uses this to flag "check/adjust the time" instead of presenting a
+  // made-up hour as if it were stated. Cleared (false) the moment an admin
+  // touches the deadline on the review screen (see PATCH/approve).
+  deadlineTimeAssumed Boolean @default(true)
   priority    String   @default("MEDIUM")
   status      String   @default("DRAFT")
   // The exact transcript sentence(s) this task was derived from — mandatory

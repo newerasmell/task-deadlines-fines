@@ -342,6 +342,10 @@ export interface VoiceTaskDraft {
   resolvedOwnerId: string | null;
   resolvedOwner: UserRef | null;
   deadline: string;
+  // true when nobody in the conversation actually said a time and the hour
+  // is just the server's own default — the review screen flags this so the
+  // admin knows to glance at/adjust it rather than trusting it as stated.
+  deadlineTimeAssumed: boolean;
   priority: Priority;
   status: VoiceDraftStatus;
   sourceQuote: string;

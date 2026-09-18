@@ -199,7 +199,13 @@ voiceRouter.patch("/drafts/:id", async (req, res) => {
   const { assigneeId, ...rest } = parsed.data;
   const draft = await prisma.voiceTaskDraft.update({
     where: { id: req.params.id },
-    data: { ...rest, ...(assigneeId !== undefined ? { resolvedAssigneeId: assigneeId } : {}) },
+    data: {
+      ...rest,
+      ...(assigneeId !== undefined ? { resolvedAssigneeId: assigneeId } : {}),
+      // A deadline the admin explicitly set (even to the same value) is no
+      // longer "just a default the AI assumed" — clear the review-screen hint.
+      ...(rest.deadline !== undefined ? { deadlineTimeAssumed: false } : {}),
+    },
     include: draftInclude,
   });
   res.json(draft);
@@ -271,6 +277,7 @@ voiceRouter.post("/drafts/:id/approve", async (req, res) => {
       resolvedAssigneeId: parsed.data.assigneeId,
       resolvedOwnerId: ownerId,
       deadline: parsed.data.deadline ?? draft.deadline,
+      deadlineTimeAssumed: parsed.data.deadline !== undefined ? false : draft.deadlineTimeAssumed,
       priority: parsed.data.priority ?? draft.priority,
       status: "APPROVED",
       approvedAt: new Date(),

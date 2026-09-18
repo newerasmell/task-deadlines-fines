@@ -171,6 +171,7 @@ export async function extractAndCreateDrafts(transcriptId: string): Promise<numb
     // assignee_id somehow did resolve, the admin already has a real pick,
     // so don't also show a "guess" alongside it.
     const suggestedAssignees = resolvedAssigneeId ? null : await resolveSuggestedAssignees(item.suggested_assignees);
+    const { date: deadline, timeWasAssumed: deadlineTimeAssumed } = resolveDeadline(item.deadline, item.deadline_time);
     await prisma.voiceTaskDraft.create({
       data: {
         transcriptId,
@@ -184,7 +185,8 @@ export async function extractAndCreateDrafts(transcriptId: string): Promise<numb
         suggestedAssignees,
         ownerKey: item.owner_id ?? null,
         resolvedOwnerId,
-        deadline: resolveDeadline(item.deadline),
+        deadline,
+        deadlineTimeAssumed,
         priority: priorityToTaskPriority(item.priority),
         sourceQuote: item.source_quote,
         createdByAi: true,

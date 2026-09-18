@@ -295,6 +295,14 @@ function DraftCard({
   const [assigneeIsSuggestion, setAssigneeIsSuggestion] = useState(!draft.resolvedAssigneeId && suggestions.length > 0);
   const [ownerId, setOwnerId] = useState(draft.resolvedOwnerId ?? "");
   const [deadline, setDeadline] = useState(draft.deadline.slice(0, 10));
+  // Pre-filled from the browser's own local rendering of draft.deadline —
+  // same assumption the rest of this page already makes (e.g. the
+  // toLocaleDateString() badges below) that the browser's zone matches the
+  // team's, so this lines up with whatever hour resolveDeadline picked.
+  const [deadlineTime, setDeadlineTime] = useState(() => {
+    const d = new Date(draft.deadline);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  });
   const [priority, setPriority] = useState<Priority>(draft.priority);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -328,7 +336,12 @@ function DraftCard({
           definitionOfDone,
           assigneeId,
           ownerId: ownerId || null,
-          deadline,
+          // A full local datetime string (not just the date) — the server
+          // only defaults an unstated deadline to a fixed hour when it gets
+          // a bare date, so carrying the time explicitly is what makes this
+          // form's own time field (and the AI-assumed one it starts from)
+          // actually stick instead of silently landing elsewhere.
+          deadline: `${deadline}T${deadlineTime}:00`,
           priority,
         }),
       });
@@ -391,7 +404,12 @@ function DraftCard({
             {draft.resolvedOwner && (
               <span className="badge badge-info">{t("Owner: {name}", { name: draft.resolvedOwner.name })}</span>
             )}
-            <span className="badge">{new Date(draft.deadline).toLocaleDateString()}</span>
+            <span className="badge">{new Date(draft.deadline).toLocaleString()}</span>
+            {draft.deadlineTimeAssumed && (
+              <span className="badge badge-warning" title={t("Часът не е споменат в разговора — по подразбиране")}>
+                {t("часът е по подразбиране")}
+              </span>
+            )}
             <span className={PRIORITY_BADGE_CLASS[draft.priority]}>{t(PRIORITY_LABELS[draft.priority])}</span>
           </div>
         </div>
@@ -444,7 +462,21 @@ function DraftCard({
             </label>
             <label>
               {t("Срок")}
-              <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} disabled={submitting} />
+              <div style={{ display: "flex", gap: 6 }}>
+                <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} disabled={submitting} style={{ flex: 1 }} />
+                <input
+                  type="time"
+                  value={deadlineTime}
+                  onChange={(e) => setDeadlineTime(e.target.value)}
+                  disabled={submitting}
+                  style={{ width: 100 }}
+                />
+              </div>
+              {draft.deadlineTimeAssumed && (
+                <span className="badge badge-warning" style={{ marginTop: 4, alignSelf: "flex-start" }}>
+                  {t("Часът не е споменат в разговора — {h} е по подразбиране, провери/промени", { h: deadlineTime })}
+                </span>
+              )}
             </label>
             <label>
               {t("Приоритет")}

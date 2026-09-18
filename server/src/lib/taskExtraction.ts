@@ -39,6 +39,14 @@ const extractedTaskSchema = z.object({
   // rarer, always-explicit thing to say out loud. null otherwise.
   owner_id: z.string().nullable().optional(),
   deadline: z.string().nullable().optional(),
+  // 24h "HH:MM" — only when the conversation actually states a time
+  // ("до петък в 15:30", "утре следобед в 14 часа"); null otherwise (the
+  // server picks a default hour rather than guessing one here).
+  deadline_time: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .nullable()
+    .optional(),
   priority: z.enum(["low", "normal", "high"]).default("normal"),
   source_quote: z.string().min(1),
   // Set together, only when the conversation explicitly says one task must
@@ -123,6 +131,7 @@ ${globalRules ? `\nОбщи правила за разпределяне (важ
 
 - "owner_id": попълни го САМО ако разговорът изрично казва, че готовата работа трябва да мине през преглед/одобрение от конкретен човек (напр. "предай на Ани за преглед", "Мила да провери и одобри", "изпрати резултата на Мартин за одобрение"). Това НЕ е същото като assignee_id — owner_id е преглеждащият, assignee_id е изпълнителят, и те не могат да съвпадат. Никога не гадай owner_id по описание на отговорности, само при изрично казано в разговора; в противен случай null.
 - "deadline": ISO дата (YYYY-MM-DD), изчислена спрямо днешната дата (${todayIso()}). Примери: "до петък" → следващия петък; "утре" → утрешната дата; "до края на седмицата" → тази или следващата петък (в зависимост от контекста); "до края на месеца" → последният ден на текущия месец; "спешно"/"днес" → днешната дата. Ако в записа изобщо не е спомената дата, върни null (сървърът ще сложи разумен срок по подразбиране).
+- "deadline_time": ако разговорът изрично казва час ("до петък в 15:30", "утре сутрин в 9", "до 14 часа днес") — върни го като "HH:MM" в 24-часов формат (напр. "15:30", "09:00", "14:00"). Ако НЕ е споменат конкретен час, върни null — сървърът ще сложи час по подразбиране, не гадай час сам.
 - "priority": "low" | "normal" | "high" — по подразбиране "normal"; "high" при спешност/спомената дума като "спешно", "днес", "веднага".
 - "source_quote": точният цитат (изречение/изречения) от транскрипта, от който произлиза тази задача — задължително поле, нужно е да се провери, че AI-то е разбрало правилно.
 
@@ -231,12 +240,28 @@ export async function extractTasks(transcriptText: string): Promise<ExtractionRe
   throw new ExtractionParseError("Claude не върна валиден JSON и след повторен опит.", retry.text);
 }
 
+// Used whenever the conversation names a date/deadline but never states a
+// time out loud — an early-afternoon default reads as "sometime today",
+// not "end of workday" like the old fixed 18:00 did, and is what the
+// review screen's "time assumed" hint (see deadlineTimeAssumed) is about:
+// a stand-in the admin is expected to glance at, not a real deadline.
+const DEFAULT_DEADLINE_HOUR = 14;
+
+export interface ResolvedDeadline {
+  date: Date;
+  // true when rawTime was missing/unparseable and DEFAULT_DEADLINE_HOUR was
+  // used instead of an hour the conversation actually stated.
+  timeWasAssumed: boolean;
+}
+
 /**
- * Resolves an extracted task's deadline string into a real Date, 18:00
- * local (end-of-workday) on that day. Falls back to today +
- * VOICE_DEFAULT_DEADLINE_WORKING_DAYS (skipping weekends/BG holidays) when
- * the model didn't return a date, or returned something unparseable/in the
- * past — a bad date from the model shouldn't silently become "yesterday".
+ * Resolves an extracted task's deadline (date + optional spoken time) into
+ * a real Date. Falls back to today + VOICE_DEFAULT_DEADLINE_WORKING_DAYS
+ * (skipping weekends/BG holidays) when the model didn't return a date, or
+ * returned something unparseable/in the past — a bad date from the model
+ * shouldn't silently become "yesterday". The hour/minute come from rawTime
+ * when the conversation actually stated one, otherwise DEFAULT_DEADLINE_HOUR
+ * — same fallback either way, whether or not a date was found.
  *
  * "Local" here means the TEAM's zone (env.timezone, Europe/Sofia by
  * default) — confirmed live that every voice-created task landed at a
@@ -248,23 +273,35 @@ export async function extractTasks(transcriptText: string): Promise<ExtractionRe
  * Luxon's zone-aware DateTime avoids that ambiguity entirely, the same way
  * businessHours.ts already does for review deadlines.
  */
-export function resolveDeadline(rawDeadline: string | null | undefined, now: Date = new Date()): Date {
+export function resolveDeadline(
+  rawDeadline: string | null | undefined,
+  rawTime: string | null | undefined,
+  now: Date = new Date()
+): ResolvedDeadline {
+  const timeMatch = rawTime?.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  const hour = timeMatch ? Number(timeMatch[1]) : DEFAULT_DEADLINE_HOUR;
+  const minute = timeMatch ? Number(timeMatch[2]) : 0;
+  const timeWasAssumed = !timeMatch;
+
   if (rawDeadline) {
     const match = rawDeadline.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (match) {
       const [, y, m, d] = match;
       const candidate = DateTime.fromObject(
-        { year: Number(y), month: Number(m), day: Number(d), hour: 18 },
+        { year: Number(y), month: Number(m), day: Number(d), hour, minute },
         { zone: env.timezone }
       ).toJSDate();
       const startOfToday = DateTime.fromJSDate(now, { zone: env.timezone }).startOf("day").toJSDate();
       if (candidate.getTime() >= startOfToday.getTime()) {
-        return candidate;
+        return { date: candidate, timeWasAssumed };
       }
     }
   }
   const fallbackDay = addWorkingDays(now, env.voiceDefaultDeadlineWorkingDays);
-  return DateTime.fromJSDate(fallbackDay, { zone: env.timezone }).set({ hour: 18, minute: 0, second: 0, millisecond: 0 }).toJSDate();
+  const date = DateTime.fromJSDate(fallbackDay, { zone: env.timezone })
+    .set({ hour, minute, second: 0, millisecond: 0 })
+    .toJSDate();
+  return { date, timeWasAssumed };
 }
 
 export function priorityToTaskPriority(p: ExtractedTask["priority"]): "LOW" | "MEDIUM" | "HIGH" {
