@@ -1,6 +1,8 @@
+import { prepareAudioChunks } from "../lib/audioChunking";
 import { env } from "../lib/env";
-import { downloadFileBuffer, exportDocTranscriptText, findMeetFolderId, isFolder, isGoogleDoc, listFilesInFolder } from "../lib/googleDrive";
+import { downloadFileBuffer, findMeetFolderId, isFolder, listFilesInFolder } from "../lib/googleDrive";
 import type { DriveFile } from "../lib/googleDrive";
+import { MAX_AUDIO_BYTES_LIMIT } from "../lib/voiceUploads";
 import { prisma } from "../lib/prisma";
 import { processJobInBackground, type TranscribeInput } from "../services/voiceProcessing";
 
@@ -20,85 +22,51 @@ export function getLastGoogleMeetSyncResult(): { result: GoogleMeetSyncResult | 
   return { result: lastResult, ranAt: lastRunAt, inProgress: syncInProgress };
 }
 
-// A per-meeting Drive subfolder can hold several files (the raw recording
-// plus a Meet/Gemini Doc — see exportDocTranscriptText for why that Doc's
-// "Transcript" tab, not its "Notes" tab, is what's actually read). Processing
-// every file in the subfolder as its own independent "meeting" both wastes
-// Whisper/Claude calls and risks extracting nothing from the one that
-// matters, so exactly one representative file is picked per subfolder.
-//
-// The raw recording comes first: Meet/Gemini's own built-in transcription
-// (both the "Notes" AI summary and, it turns out, the "Transcript" tab's
-// actual speech-to-text) is unreliable for Bulgarian — it can come back
-// empty even when the recording has plenty of real Bulgarian speech in it.
-// Whisper handles Bulgarian properly, so the recording (transcribed by us)
-// is preferred whenever it's present; the Doc is only a fallback for the
-// rare case where no recording file exists in the folder.
-function pickBestMeetingFile(files: DriveFile[]): DriveFile | null {
-  return (
-    files.find((f) => f.mimeType.startsWith("audio/") || f.mimeType.startsWith("video/")) ??
-    files.find((f) => isGoogleDoc(f.mimeType)) ??
-    files.find((f) => f.mimeType === "text/plain") ??
-    null
-  );
+// A per-meeting Drive subfolder can hold several files (the raw recording,
+// plus Meet/Gemini's own auto-generated Docs) — only the raw recording is
+// used. Meet/Gemini's own transcription is unreliable for Bulgarian (it can
+// come back empty even when the recording has plenty of real speech in it),
+// so those Docs are never read at all; Whisper, run ourselves on the actual
+// recording, is what handles Bulgarian correctly.
+function pickRecordingFile(files: DriveFile[]): DriveFile | null {
+  return files.find((f) => f.mimeType.startsWith("audio/") || f.mimeType.startsWith("video/")) ?? null;
 }
 
-// audio/video recordings need Whisper; a native Google Doc (Meet's own
-// auto-generated transcript) and plain-text files already have their words
-// on the page, so those skip transcription entirely via pregivenTranscriptText.
-async function buildTranscribeInputForFile(file: {
-  id: string;
-  name: string;
-  mimeType: string;
-}): Promise<TranscribeInput | null> {
-  if (isGoogleDoc(file.mimeType)) {
-    const text = await exportDocTranscriptText(file.id);
-    if (!text.trim()) return null;
-    return {
-      buffer: Buffer.alloc(0),
-      filename: file.name,
-      mimeType: file.mimeType,
+// A recording straight from Drive can be well over Whisper's hard per-file
+// cap (it's raw video, not something already compressed down to just
+// audio) — prepareAudioChunks transcodes it down and, if it's still too
+// big, splits it into several chunks. Each chunk is transcribed and
+// appended as its own VoiceProcessingJob sharing one meetingSessionId (the
+// same mechanism Meeting.tsx's client-side chunked in-app recording already
+// uses — see transcribeAndStore), with extraction running once, after the
+// last chunk.
+async function processRecording(file: DriveFile): Promise<void> {
+  const buffer = await downloadFileBuffer(file.id);
+  const chunks = buffer.length > MAX_AUDIO_BYTES_LIMIT ? await prepareAudioChunks(buffer, MAX_AUDIO_BYTES_LIMIT) : [buffer];
+  const sessionId = chunks.length > 1 ? file.id : null;
+
+  for (let i = 0; i < chunks.length; i++) {
+    const input: TranscribeInput = {
+      buffer: chunks[i],
+      filename: chunks.length > 1 ? `${file.name} (${i + 1}/${chunks.length}).mp3` : file.name,
+      mimeType: chunks.length > 1 ? "audio/mpeg" : file.mimeType,
       source: "MEET",
       createdById: null,
-      meetRecordingId: file.id,
-      pregivenTranscriptText: text,
+      // Only the first chunk tags the dedup key — later chunks are folded
+      // into that same VoiceTranscript row by meetingSessionId instead.
+      meetRecordingId: i === 0 ? file.id : null,
+      meetingSessionId: sessionId,
+      isFinalSegment: i === chunks.length - 1,
     };
+    const job = await prisma.voiceProcessingJob.create({ data: { source: "MEET", status: "PENDING", createdById: null } });
+    await processJobInBackground(job.id, input);
   }
-
-  if (file.mimeType === "text/plain") {
-    const buffer = await downloadFileBuffer(file.id);
-    const text = buffer.toString("utf-8");
-    if (!text.trim()) return null;
-    return {
-      buffer: Buffer.alloc(0),
-      filename: file.name,
-      mimeType: file.mimeType,
-      source: "MEET",
-      createdById: null,
-      meetRecordingId: file.id,
-      pregivenTranscriptText: text,
-    };
-  }
-
-  if (file.mimeType.startsWith("audio/") || file.mimeType.startsWith("video/")) {
-    const buffer = await downloadFileBuffer(file.id);
-    return {
-      buffer,
-      filename: file.name,
-      mimeType: file.mimeType,
-      source: "MEET",
-      createdById: null,
-      meetRecordingId: file.id,
-    };
-  }
-
-  return null; // unsupported file type in the folder — silently skipped
 }
 
 /**
- * Polls the configured Drive folder for new Meet recordings/transcripts not
- * yet imported (dedup via VoiceTranscript.meetRecordingId), and runs each
- * one through the same transcribe→extract→draft pipeline uploads use.
+ * Polls the configured Drive folder for new Meet recordings not yet
+ * imported (dedup via VoiceTranscript.meetRecordingId), and runs each one
+ * through the same transcribe→extract→draft pipeline uploads use.
  * Sequential and awaited per file — this already runs inside a background
  * cron tick, so there's no caller left waiting on it, and running Whisper/
  * Claude calls one at a time avoids bursting rate limits on a backlog.
@@ -123,15 +91,15 @@ export async function runGoogleMeetSync(): Promise<GoogleMeetSyncResult> {
     // (named after the meeting code, e.g. "kfs-iivr-ewa - <timestamp>")
     // rather than dropping files directly into the configured folder, so one
     // level of folders needs expanding into their actual contents — picking
-    // just the one best representative file per subfolder (see
-    // pickBestMeetingFile), not every file inside it.
+    // just the recording file per subfolder (see pickRecordingFile), not
+    // every file inside it.
     const topLevel = await listFilesInFolder(folderId, env.googleMeetMaxPerPoll * 3);
     const files: DriveFile[] = [];
     for (const item of topLevel) {
       if (isFolder(item.mimeType)) {
-        const best = pickBestMeetingFile(await listFilesInFolder(item.id, 20));
-        if (best) files.push(best);
-      } else {
+        const recording = pickRecordingFile(await listFilesInFolder(item.id, 20));
+        if (recording) files.push(recording);
+      } else if (item.mimeType.startsWith("audio/") || item.mimeType.startsWith("video/")) {
         files.push(item);
       }
     }
@@ -147,14 +115,7 @@ export async function runGoogleMeetSync(): Promise<GoogleMeetSyncResult> {
         continue;
       }
 
-      const input = await buildTranscribeInputForFile(file);
-      if (!input) {
-        result.skipped++;
-        continue;
-      }
-
-      const job = await prisma.voiceProcessingJob.create({ data: { source: "MEET", status: "PENDING", createdById: null } });
-      await processJobInBackground(job.id, input);
+      await processRecording(file);
       processedThisRun++;
       result.processed++;
     }
