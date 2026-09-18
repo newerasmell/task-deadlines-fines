@@ -1,5 +1,6 @@
 import { env } from "../lib/env";
-import { downloadFileBuffer, exportDocAsText, findMeetFolderId, isGoogleDoc, listFilesInFolder } from "../lib/googleDrive";
+import { downloadFileBuffer, exportDocAsText, findMeetFolderId, isFolder, isGoogleDoc, listFilesInFolder } from "../lib/googleDrive";
+import type { DriveFile } from "../lib/googleDrive";
 import { prisma } from "../lib/prisma";
 import { processJobInBackground, type TranscribeInput } from "../services/voiceProcessing";
 
@@ -95,7 +96,19 @@ export async function runGoogleMeetSync(): Promise<GoogleMeetSyncResult> {
     }
     result.folderFound = true;
 
-    const files = await listFilesInFolder(folderId, env.googleMeetMaxPerPoll * 3);
+    // Google Meet nests each recording under its own per-meeting subfolder
+    // (named after the meeting code, e.g. "kfs-iivr-ewa - <timestamp>")
+    // rather than dropping files directly into the configured folder, so one
+    // level of folders needs expanding into their actual contents.
+    const topLevel = await listFilesInFolder(folderId, env.googleMeetMaxPerPoll * 3);
+    const files: DriveFile[] = [];
+    for (const item of topLevel) {
+      if (isFolder(item.mimeType)) {
+        files.push(...(await listFilesInFolder(item.id, 20)));
+      } else {
+        files.push(item);
+      }
+    }
     result.seen = files.length;
 
     let processedThisRun = 0;

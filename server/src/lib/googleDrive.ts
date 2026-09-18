@@ -104,6 +104,12 @@ export function isGoogleDoc(mimeType: string): boolean {
   return mimeType === GOOGLE_DOC_MIME_TYPE;
 }
 
+const FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
+
+export function isFolder(mimeType: string): boolean {
+  return mimeType === FOLDER_MIME_TYPE;
+}
+
 /** Downloads a regular (non-Google-native) file's raw bytes. */
 export async function downloadFileBuffer(fileId: string): Promise<Buffer> {
   const res = await driveGet(`/drive/v3/files/${fileId}`, { alt: "media" });
