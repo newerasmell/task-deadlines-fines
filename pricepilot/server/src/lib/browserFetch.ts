@@ -99,6 +99,7 @@ async function loadPage(page: Page, url: string, timeoutMs: number, waitForSelec
     }
   }
   await acceptDidomiConsent(page);
+  let contentConfirmed = false;
   if (waitForSelector) {
     // Confirmed live on notino.hr: page 2+ of a brand's listing (navigated
     // to directly by URL, not by clicking "next" in a real session) can
@@ -110,7 +111,10 @@ async function loadPage(page: Page, url: string, timeoutMs: number, waitForSelec
     // ("we read it too soon"). Waiting for a selector the caller knows
     // marks real content is a much more direct signal than networkidle for
     // pages like this.
-    await page.waitForSelector(waitForSelector, { timeout: 8000 }).catch(() => {});
+    contentConfirmed = await page
+      .waitForSelector(waitForSelector, { timeout: 8000 })
+      .then(() => true)
+      .catch(() => false);
   }
   // Best-effort wait for any follow-up XHR/fetch-rendered content (a
   // search-results page commonly loads its listings this way) — NOT a hard
@@ -120,8 +124,14 @@ async function loadPage(page: Page, url: string, timeoutMs: number, waitForSelec
   // failing the whole fetch even though the actual content had rendered
   // long before. Capped short and swallowed on timeout so a page that never
   // idles just falls through to whatever's already in the DOM instead of
-  // failing the attempt.
-  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+  // failing the attempt. Skipped once waitForSelector already confirmed the
+  // real content is there — confirmed live that stacking both waits back to
+  // back on a heavy React app (notino.hr) held the page/its background
+  // connections open long enough to be part of what got this server
+  // OOM-killed on a 512MB instance; there's nothing left worth waiting for.
+  if (!contentConfirmed) {
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+  }
   return await page.content();
 }
 
@@ -186,10 +196,44 @@ export class BrowserSession {
     // 512MB instance; Chromium alone commonly uses 150-300MB, and a full
     // page load — images, web fonts, CSS — pushes both memory and time per
     // page well past what's actually needed here). Cuts both.
+    //
+    // Also block well-known analytics/ad/tag-manager hosts outright —
+    // confirmed live that a modern React storefront (notino.hr) OOM-killed
+    // this same 512MB instance on just its 2nd page, something jeftinije.hr's
+    // much plainer markup never did even across a long multi-brand crawl.
+    // These trackers run continuous background JS/XHR work that's pure
+    // overhead for scraping text content, and (unlike a real visitor) we
+    // have no use for any of it.
+    const BLOCKED_HOSTS = [
+      "google-analytics.com",
+      "googletagmanager.com",
+      "doubleclick.net",
+      "facebook.net",
+      "facebook.com",
+      "connect.facebook.net",
+      "hotjar.com",
+      "clarity.ms",
+      "segment.com",
+      "segment.io",
+      "criteo.com",
+      "criteo.net",
+      "adnxs.com",
+      "bing.com",
+      "tiktok.com",
+    ];
     await context.route("**/*", (route) => {
-      const type = route.request().resourceType();
+      const request = route.request();
+      const type = request.resourceType();
       if (type === "image" || type === "font" || type === "media" || type === "stylesheet") {
         return route.abort();
+      }
+      try {
+        const host = new URL(request.url()).hostname;
+        if (BLOCKED_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`))) {
+          return route.abort();
+        }
+      } catch {
+        // Malformed/unparseable URL — not our concern here, let it through.
       }
       return route.continue();
     });
