@@ -85,10 +85,11 @@ function GoogleMeetPanel() {
       {result && (
         <p className="small" style={{ margin: 0 }}>
           {result.folderFound
-            ? t("Намерени: {seen}, обработени: {processed}, пропуснати: {skipped}", {
+            ? t("Намерени: {seen}, обработени: {processed}, пропуснати: {skipped}, неуспешни: {failed}", {
                 seen: result.seen,
                 processed: result.processed,
                 skipped: result.skipped,
+                failed: result.failed,
               })
             : t("Папката не е намерена в Google Drive.")}
         </p>

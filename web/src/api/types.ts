@@ -372,6 +372,7 @@ export interface GoogleMeetSyncResult {
   seen: number;
   processed: number;
   skipped: number;
+  failed: number;
   lastError: string | null;
 }
 

@@ -11,6 +11,7 @@ export interface GoogleMeetSyncResult {
   seen: number;
   processed: number;
   skipped: number;
+  failed: number;
   lastError: string | null;
 }
 
@@ -60,6 +61,17 @@ async function processRecording(file: DriveFile): Promise<void> {
     };
     const job = await prisma.voiceProcessingJob.create({ data: { source: "MEET", status: "PENDING", createdById: null } });
     await processJobInBackground(job.id, input);
+    // processJobInBackground catches its own errors and only ever records
+    // them on the job row (see its own doc comment — nothing else is
+    // awaiting it directly in the manual-upload path it was written for),
+    // so a Whisper/Claude failure here would otherwise vanish silently:
+    // "processed" would still count the file, but no VoiceTranscript row
+    // — and no visible error anywhere — would exist for it. Re-reading the
+    // job and re-throwing surfaces that failure to the caller instead.
+    const finished = await prisma.voiceProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
+    if (finished.status === "FAILED") {
+      throw new Error(finished.errorMessage ?? `Неуспешна обработка на "${file.name}".`);
+    }
   }
 }
 
@@ -80,11 +92,11 @@ async function processRecording(file: DriveFile): Promise<void> {
  */
 export async function runGoogleMeetSync(force = false): Promise<GoogleMeetSyncResult> {
   if (syncInProgress) {
-    return lastResult ?? { folderFound: false, seen: 0, processed: 0, skipped: 0, lastError: "Вече тече синхронизация" };
+    return lastResult ?? { folderFound: false, seen: 0, processed: 0, skipped: 0, failed: 0, lastError: "Вече тече синхронизация" };
   }
 
   syncInProgress = true;
-  const result: GoogleMeetSyncResult = { folderFound: false, seen: 0, processed: 0, skipped: 0, lastError: null };
+  const result: GoogleMeetSyncResult = { folderFound: false, seen: 0, processed: 0, skipped: 0, failed: 0, lastError: null };
 
   try {
     const folderId = await findMeetFolderId();
@@ -125,9 +137,18 @@ export async function runGoogleMeetSync(force = false): Promise<GoogleMeetSyncRe
         await prisma.voiceTranscript.delete({ where: { id: already.id } });
       }
 
-      await processRecording(file);
-      processedThisRun++;
-      result.processed++;
+      try {
+        await processRecording(file);
+        processedThisRun++;
+        result.processed++;
+      } catch (err) {
+        // One bad recording (a Whisper/ffmpeg failure) shouldn't abort the
+        // whole batch — note it and move on to the next file, same as a
+        // routine skip, just with the reason visible instead of silent.
+        result.failed++;
+        result.lastError = `"${file.name}": ${err instanceof Error ? err.message : "Неизвестна грешка"}`;
+        console.error(`[googleMeetSync] failed to process ${file.name}:`, err);
+      }
     }
   } catch (err) {
     result.lastError = err instanceof Error ? err.message : "Неизвестна грешка";
