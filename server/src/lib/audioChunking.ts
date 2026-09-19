@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "fs/promises";
+import { mkdtemp, readdir, rm, stat } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import ffmpegPath from "ffmpeg-static";
@@ -35,32 +35,43 @@ async function probeDurationSeconds(filePath: string): Promise<number> {
   return seconds;
 }
 
+export interface AudioChunks {
+  // Absolute paths, in order — each a real .mp3 file under maxBytes.
+  paths: string[];
+  // Removes the temp directory these live in. Always call this once done
+  // reading them, success or failure.
+  cleanup: () => Promise<void>;
+}
+
 /**
- * Turns a downloaded recording into one or more audio chunks, each safely
- * under Whisper's hard per-file cap. Meet/Drive recordings arrive as raw
- * video with no chunking/compression step upstream, so this always
- * transcodes to mono, low-bitrate MP3 first — dropping the video track
- * alone is usually enough to get well under the cap on its own — and only
- * splits into multiple segments if the transcoded audio is still too big.
- * Byte-slicing the original container instead (skipping ffmpeg) would
- * produce invalid, undecodable fragments for formats like mp4/webm, so
- * every path here goes through a real transcode.
+ * Turns a downloaded recording (already on disk — see downloadFileToTempFile,
+ * never a Buffer: a Meet recording can be a long video, and loading that
+ * whole thing into memory risks an OOM crash well before this even gets to
+ * shrink it down) into one or more audio chunk files, each safely under
+ * Whisper's hard per-file cap. Always transcodes to mono, low-bitrate MP3
+ * first — dropping the video track alone is usually enough to get well
+ * under the cap on its own — and only splits into multiple segments if the
+ * transcoded audio is still too big. Byte-slicing the original container
+ * instead (skipping ffmpeg) would produce invalid, undecodable fragments
+ * for formats like mp4/webm, so every path here goes through a real
+ * transcode. Returns file paths rather than loaded buffers so a long
+ * recording's many chunks are never all resident in memory at once — the
+ * caller reads (and can discard) one at a time.
  */
-export async function prepareAudioChunks(buffer: Buffer, maxBytes: number): Promise<Buffer[]> {
+export async function prepareAudioChunks(inputPath: string, maxBytes: number): Promise<AudioChunks> {
   if (!ffmpegPath) throw new Error("ffmpeg-static не намери ffmpeg binary за тази платформа.");
 
   const dir = await mkdtemp(path.join(tmpdir(), "voice-chunk-"));
-  try {
-    const inputPath = path.join(dir, "input");
-    await writeFile(inputPath, buffer);
+  const cleanup = () => rm(dir, { recursive: true, force: true });
 
+  try {
     const fullMp3Path = path.join(dir, "full.mp3");
     await run(ffmpegPath, ["-y", "-i", inputPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", fullMp3Path]);
-    const fullMp3 = await readFile(fullMp3Path);
-    if (fullMp3.length <= maxBytes) return [fullMp3];
+    const fullMp3Size = (await stat(fullMp3Path)).size;
+    if (fullMp3Size <= maxBytes) return { paths: [fullMp3Path], cleanup };
 
     const durationSeconds = await probeDurationSeconds(fullMp3Path);
-    const chunkCount = Math.ceil(fullMp3.length / maxBytes);
+    const chunkCount = Math.ceil(fullMp3Size / maxBytes);
     // A floor keeps a single-frame remainder from ffmpeg's segment muxer's
     // own overhead from ever pushing a chunk back over maxBytes.
     const chunkSeconds = Math.max(30, Math.floor(durationSeconds / chunkCount));
@@ -68,12 +79,11 @@ export async function prepareAudioChunks(buffer: Buffer, maxBytes: number): Prom
     const segmentPattern = path.join(dir, "chunk_%04d.mp3");
     await run(ffmpegPath, ["-y", "-i", fullMp3Path, "-f", "segment", "-segment_time", String(chunkSeconds), "-c", "copy", segmentPattern]);
 
-    const chunkFiles = (await readdir(dir))
-      .filter((f) => f.startsWith("chunk_"))
-      .sort();
+    const chunkFiles = (await readdir(dir)).filter((f) => f.startsWith("chunk_")).sort();
     if (chunkFiles.length === 0) throw new Error("ffmpeg не произведе части от записа.");
-    return await Promise.all(chunkFiles.map((f) => readFile(path.join(dir, f))));
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+    return { paths: chunkFiles.map((f) => path.join(dir, f)), cleanup };
+  } catch (err) {
+    await cleanup();
+    throw err;
   }
 }

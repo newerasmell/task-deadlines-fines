@@ -1,3 +1,9 @@
+import { createWriteStream } from "fs";
+import { mkdtemp } from "fs/promises";
+import { tmpdir } from "os";
+import path from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { env } from "./env";
 
 export interface DriveFile {
@@ -101,9 +107,22 @@ export function isFolder(mimeType: string): boolean {
   return mimeType === FOLDER_MIME_TYPE;
 }
 
-/** Downloads a regular (non-Google-native) file's raw bytes. */
-export async function downloadFileBuffer(fileId: string): Promise<Buffer> {
+/**
+ * Streams a regular (non-Google-native) file's raw bytes straight to a temp
+ * file on disk — never buffers the whole thing in memory. A Meet recording
+ * can run hundreds of MB to a couple GB for a long meeting; loading that
+ * into one Buffer (the old approach) risked an OOM crash well before ffmpeg
+ * even got a chance to shrink it down to just audio. The caller owns
+ * cleanup (delete the returned path's parent directory when done).
+ */
+export async function downloadFileToTempFile(fileId: string): Promise<string> {
   const res = await driveGet(`/drive/v3/files/${fileId}`, { alt: "media" });
-  return Buffer.from(await res.arrayBuffer());
+  if (!res.body) {
+    throw new Error("Google Drive API върна празен отговор при изтегляне на файла.");
+  }
+  const dir = await mkdtemp(path.join(tmpdir(), "drive-dl-"));
+  const destPath = path.join(dir, "recording");
+  await pipeline(Readable.fromWeb(res.body), createWriteStream(destPath));
+  return destPath;
 }
 

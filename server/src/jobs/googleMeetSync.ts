@@ -1,6 +1,8 @@
+import { readFile, rm } from "fs/promises";
+import path from "path";
 import { prepareAudioChunks } from "../lib/audioChunking";
 import { env } from "../lib/env";
-import { downloadFileBuffer, findMeetFolderId, isFolder, listFilesInFolder } from "../lib/googleDrive";
+import { downloadFileToTempFile, findMeetFolderId, isFolder, listFilesInFolder } from "../lib/googleDrive";
 import type { DriveFile } from "../lib/googleDrive";
 import { MAX_AUDIO_BYTES_LIMIT } from "../lib/voiceUploads";
 import { prisma } from "../lib/prisma";
@@ -42,43 +44,63 @@ function pickRecordingFile(files: DriveFile[]): DriveFile | null {
 // uses — see transcribeAndStore), with extraction running once, after the
 // last chunk.
 async function processRecording(file: DriveFile): Promise<void> {
-  const buffer = await downloadFileBuffer(file.id);
-  // Always transcoded, even when already under the size cap: Whisper
-  // determines the file format from the filename's extension, not the
-  // multipart Content-Type — and Drive's own file.name for a Meet
-  // recording usually has no extension at all (e.g. "kfs-iivr-ewa
-  // (2026-09-18 11:14 GMT)"), which Whisper flatly rejects as
-  // "Unrecognized file format" no matter what mimeType says. Every chunk
-  // this produces gets a real ".mp3" name, sidestepping that entirely.
-  const chunks = await prepareAudioChunks(buffer, MAX_AUDIO_BYTES_LIMIT);
-  const sessionId = chunks.length > 1 ? file.id : null;
+  // Streamed straight to disk, never buffered in memory — a 40+ minute Meet
+  // recording is easily several hundred MB of raw video, and holding that
+  // in one Buffer risked an OOM crash on Render before ffmpeg even got a
+  // chance to shrink it down to just audio (confirmed live: syncs on real
+  // longer recordings were taking the whole server down mid-request).
+  const downloadedPath = await downloadFileToTempFile(file.id);
+  try {
+    // Always transcoded, even when already under the size cap: Whisper
+    // determines the file format from the filename's extension, not the
+    // multipart Content-Type — and Drive's own file.name for a Meet
+    // recording usually has no extension at all (e.g. "kfs-iivr-ewa
+    // (2026-09-18 11:14 GMT)"), which Whisper flatly rejects as
+    // "Unrecognized file format" no matter what mimeType says. Every chunk
+    // this produces gets a real ".mp3" name, sidestepping that entirely.
+    const { paths: chunkPaths, cleanup: cleanupChunks } = await prepareAudioChunks(downloadedPath, MAX_AUDIO_BYTES_LIMIT);
+    try {
+      const sessionId = chunkPaths.length > 1 ? file.id : null;
 
-  for (let i = 0; i < chunks.length; i++) {
-    const input: TranscribeInput = {
-      buffer: chunks[i],
-      filename: chunks.length > 1 ? `${file.name} (${i + 1}/${chunks.length}).mp3` : `${file.name}.mp3`,
-      mimeType: "audio/mpeg",
-      source: "MEET",
-      createdById: null,
-      // Only the first chunk tags the dedup key — later chunks are folded
-      // into that same VoiceTranscript row by meetingSessionId instead.
-      meetRecordingId: i === 0 ? file.id : null,
-      meetingSessionId: sessionId,
-      isFinalSegment: i === chunks.length - 1,
-    };
-    const job = await prisma.voiceProcessingJob.create({ data: { source: "MEET", status: "PENDING", createdById: null } });
-    await processJobInBackground(job.id, input);
-    // processJobInBackground catches its own errors and only ever records
-    // them on the job row (see its own doc comment — nothing else is
-    // awaiting it directly in the manual-upload path it was written for),
-    // so a Whisper/Claude failure here would otherwise vanish silently:
-    // "processed" would still count the file, but no VoiceTranscript row
-    // — and no visible error anywhere — would exist for it. Re-reading the
-    // job and re-throwing surfaces that failure to the caller instead.
-    const finished = await prisma.voiceProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
-    if (finished.status === "FAILED") {
-      throw new Error(finished.errorMessage ?? `Неуспешна обработка на "${file.name}".`);
+      for (let i = 0; i < chunkPaths.length; i++) {
+        // Read one chunk at a time (each already bounded to
+        // MAX_AUDIO_BYTES_LIMIT) rather than all of them up front — a long
+        // recording can produce several chunks, and there's no reason to
+        // hold them all in memory simultaneously.
+        const buffer = await readFile(chunkPaths[i]);
+        const input: TranscribeInput = {
+          buffer,
+          filename: chunkPaths.length > 1 ? `${file.name} (${i + 1}/${chunkPaths.length}).mp3` : `${file.name}.mp3`,
+          mimeType: "audio/mpeg",
+          source: "MEET",
+          createdById: null,
+          // Only the first chunk tags the dedup key — later chunks are
+          // folded into that same VoiceTranscript row by meetingSessionId
+          // instead.
+          meetRecordingId: i === 0 ? file.id : null,
+          meetingSessionId: sessionId,
+          isFinalSegment: i === chunkPaths.length - 1,
+        };
+        const job = await prisma.voiceProcessingJob.create({ data: { source: "MEET", status: "PENDING", createdById: null } });
+        await processJobInBackground(job.id, input);
+        // processJobInBackground catches its own errors and only ever
+        // records them on the job row (see its own doc comment — nothing
+        // else is awaiting it directly in the manual-upload path it was
+        // written for), so a Whisper/Claude failure here would otherwise
+        // vanish silently: "processed" would still count the file, but no
+        // VoiceTranscript row — and no visible error anywhere — would
+        // exist for it. Re-reading the job and re-throwing surfaces that
+        // failure to the caller instead.
+        const finished = await prisma.voiceProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
+        if (finished.status === "FAILED") {
+          throw new Error(finished.errorMessage ?? `Неуспешна обработка на "${file.name}".`);
+        }
+      }
+    } finally {
+      await cleanupChunks();
     }
+  } finally {
+    await rm(path.dirname(downloadedPath), { recursive: true, force: true });
   }
 }
 
