@@ -16,7 +16,7 @@ import {
 } from "../services/voiceProcessing";
 import { env } from "../lib/env";
 import { deadlineFieldSchema } from "../lib/deadlineInput";
-import { getLastGoogleMeetSyncResult, runGoogleMeetSync } from "../jobs/googleMeetSync";
+import { getLastGoogleMeetSyncResult, getRecordingSyncState, listMeetRecordings, runGoogleMeetSync, syncOneRecording } from "../jobs/googleMeetSync";
 
 export const voiceRouter = Router();
 
@@ -484,6 +484,33 @@ voiceRouter.post("/meet/poll-now", (req, res) => {
     console.error("[voice] meet/poll-now background sync crashed:", err);
   });
   res.json({ ok: true, started: true });
+});
+
+// Lists the recordings currently sitting in the Drive folder (one per
+// meeting), each flagged with whether it's already been imported — the
+// admin picks exactly which one to sync instead of the bulk sync either
+// pulling everything found or nothing at all.
+voiceRouter.get("/meet/recordings", async (_req, res) => {
+  try {
+    const recordings = await listMeetRecordings();
+    res.json({ ok: true, recordings });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err instanceof Error ? err.message : "Грешка при извличане на списъка със записи" });
+  }
+});
+
+// Same "fire and poll status" shape as /meet/poll-now, but for exactly one
+// recording — a single long recording can just as easily outlast a
+// request timeout as a full batch sync can.
+voiceRouter.post("/meet/recordings/:fileId/sync", (req, res) => {
+  syncOneRecording(req.params.fileId, req.body?.force === true).catch((err) => {
+    console.error(`[voice] meet/recordings/${req.params.fileId}/sync background sync crashed:`, err);
+  });
+  res.json({ ok: true, started: true });
+});
+
+voiceRouter.get("/meet/recordings/:fileId/sync-status", (req, res) => {
+  res.json({ ok: true, state: getRecordingSyncState(req.params.fileId) });
 });
 
 // Re-runs Claude extraction on an already-stored transcript — useful when

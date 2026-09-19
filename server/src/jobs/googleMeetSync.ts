@@ -2,7 +2,7 @@ import { readFile, rm } from "fs/promises";
 import path from "path";
 import { prepareAudioChunks } from "../lib/audioChunking";
 import { env } from "../lib/env";
-import { downloadFileToTempFile, findMeetFolderId, isFolder, listFilesInFolder } from "../lib/googleDrive";
+import { downloadFileToTempFile, findMeetFolderId, getFile, isFolder, listFilesInFolder } from "../lib/googleDrive";
 import type { DriveFile } from "../lib/googleDrive";
 import { MAX_AUDIO_BYTES_LIMIT } from "../lib/voiceUploads";
 import { prisma } from "../lib/prisma";
@@ -33,6 +33,55 @@ export function getLastGoogleMeetSyncResult(): { result: GoogleMeetSyncResult | 
 // recording, is what handles Bulgarian correctly.
 function pickRecordingFile(files: DriveFile[]): DriveFile | null {
   return files.find((f) => f.mimeType.startsWith("audio/") || f.mimeType.startsWith("video/")) ?? null;
+}
+
+/**
+ * Every recording candidate currently sitting in the configured Drive
+ * folder (one per per-meeting subfolder, plus any file dropped directly
+ * into the folder) — shared by the bulk sync below and by the "list
+ * recordings so the admin can pick one" panel, so both always agree on
+ * what counts as "a recording".
+ */
+async function listCandidateRecordingFiles(maxCount: number): Promise<DriveFile[]> {
+  const folderId = await findMeetFolderId();
+  if (!folderId) return [];
+
+  const topLevel = await listFilesInFolder(folderId, maxCount * 3);
+  const files: DriveFile[] = [];
+  for (const item of topLevel) {
+    if (isFolder(item.mimeType)) {
+      const recording = pickRecordingFile(await listFilesInFolder(item.id, 20));
+      if (recording) files.push(recording);
+    } else if (item.mimeType.startsWith("audio/") || item.mimeType.startsWith("video/")) {
+      files.push(item);
+    }
+  }
+  return files;
+}
+
+export interface MeetRecordingSummary {
+  id: string;
+  name: string;
+  createdTime: string;
+  sizeBytes: number | null;
+  imported: boolean;
+}
+
+/** Lists available recordings without downloading/processing any of them, for a "pick one" UI. */
+export async function listMeetRecordings(): Promise<MeetRecordingSummary[]> {
+  const files = await listCandidateRecordingFiles(env.googleMeetMaxPerPoll * 5);
+  const summaries: MeetRecordingSummary[] = [];
+  for (const file of files) {
+    const already = await prisma.voiceTranscript.findUnique({ where: { meetRecordingId: file.id } });
+    summaries.push({
+      id: file.id,
+      name: file.name,
+      createdTime: file.createdTime,
+      sizeBytes: file.size ? Number(file.size) : null,
+      imported: Boolean(already),
+    });
+  }
+  return summaries;
 }
 
 // A recording straight from Drive can be well over Whisper's hard per-file
@@ -104,6 +153,55 @@ async function processRecording(file: DriveFile): Promise<void> {
   }
 }
 
+export interface RecordingSyncState {
+  status: "PENDING" | "DONE" | "FAILED";
+  error: string | null;
+  startedAt: Date;
+}
+
+// Per-recording sync state, keyed by Drive file id — separate from
+// syncInProgress/lastResult above (which track the bulk "Sync now"/cron
+// pass), so picking one recording from the list and syncing just it
+// doesn't get confused with, or blocked by, a full sync.
+const recordingSyncStates = new Map<string, RecordingSyncState>();
+
+export function getRecordingSyncState(fileId: string): RecordingSyncState | null {
+  return recordingSyncStates.get(fileId) ?? null;
+}
+
+/**
+ * Syncs exactly one recording the admin picked from listMeetRecordings(),
+ * by Drive file id — the answer to "it only ever syncs everything or
+ * nothing" (a batch sync has no way to target a single meeting, and
+ * skips/never-finds ones the admin actually cares about while burning
+ * time on ones they don't). Not awaited by its caller (same reasoning as
+ * runGoogleMeetSync — downloading/transcoding/transcribing one real
+ * recording can easily outlast a request timeout); progress is tracked in
+ * recordingSyncStates instead, for GET .../sync-status to poll.
+ */
+export async function syncOneRecording(fileId: string, force = false): Promise<void> {
+  recordingSyncStates.set(fileId, { status: "PENDING", error: null, startedAt: new Date() });
+  try {
+    const already = await prisma.voiceTranscript.findUnique({ where: { meetRecordingId: fileId } });
+    if (already) {
+      if (!force) {
+        recordingSyncStates.set(fileId, { status: "DONE", error: null, startedAt: new Date() });
+        return;
+      }
+      await prisma.voiceTranscript.delete({ where: { id: already.id } });
+    }
+    const file = await getFile(fileId);
+    await processRecording(file);
+    recordingSyncStates.set(fileId, { status: "DONE", error: null, startedAt: new Date() });
+  } catch (err) {
+    recordingSyncStates.set(fileId, {
+      status: "FAILED",
+      error: err instanceof Error ? err.message : "Неизвестна грешка",
+      startedAt: new Date(),
+    });
+  }
+}
+
 /**
  * Polls the configured Drive folder for new Meet recordings not yet
  * imported (dedup via VoiceTranscript.meetRecordingId), and runs each one
@@ -141,16 +239,7 @@ export async function runGoogleMeetSync(force = false): Promise<GoogleMeetSyncRe
     // level of folders needs expanding into their actual contents — picking
     // just the recording file per subfolder (see pickRecordingFile), not
     // every file inside it.
-    const topLevel = await listFilesInFolder(folderId, env.googleMeetMaxPerPoll * 3);
-    const files: DriveFile[] = [];
-    for (const item of topLevel) {
-      if (isFolder(item.mimeType)) {
-        const recording = pickRecordingFile(await listFilesInFolder(item.id, 20));
-        if (recording) files.push(recording);
-      } else if (item.mimeType.startsWith("audio/") || item.mimeType.startsWith("video/")) {
-        files.push(item);
-      }
-    }
+    const files = await listCandidateRecordingFiles(env.googleMeetMaxPerPoll);
     result.seen = files.length;
 
     let processedThisRun = 0;

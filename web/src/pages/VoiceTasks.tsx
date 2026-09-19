@@ -1,12 +1,114 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { api } from "../api/client";
-import type { GoogleMeetStatus } from "../api/types";
+import type { GoogleMeetStatus, MeetRecordingSummary, RecordingSyncState } from "../api/types";
 import { VoiceOutcome } from "../components/VoiceOutcome";
 import { IconGlobe, IconInbox, IconMic } from "../components/icons";
 import { useVoiceUpload } from "../hooks/useVoiceUpload";
 import { useI18n } from "../i18n/I18nContext";
 import { formatDuration } from "../utils/format";
+
+function formatBytes(bytes: number | null): string {
+  if (bytes === null) return "";
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// One row in the "pick a recording" list — its own sync button + status
+// poll, independent of every other row and of the bulk-sync panel above it.
+function RecordingRow({ recording, onSynced }: { recording: MeetRecordingSummary; onSynced: () => void }) {
+  const { t } = useI18n();
+  const [syncing, setSyncing] = useState(false);
+  const [state, setState] = useState<RecordingSyncState | null>(null);
+
+  async function sync(force: boolean) {
+    setSyncing(true);
+    setState(null);
+    try {
+      await api(`/voice/meet/recordings/${recording.id}/sync`, { method: "POST", body: JSON.stringify({ force }) });
+    } catch (err) {
+      setState({ status: "FAILED", error: err instanceof Error ? err.message : t("Грешка"), startedAt: new Date().toISOString() });
+      setSyncing(false);
+      return;
+    }
+    for (let i = 0; i < 150; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      try {
+        const res = await api<{ state: RecordingSyncState | null }>(`/voice/meet/recordings/${recording.id}/sync-status`);
+        if (res.state) {
+          setState(res.state);
+          if (res.state.status !== "PENDING") break;
+        }
+      } catch {
+        // A single dropped status check doesn't mean the sync itself failed — keep polling.
+      }
+    }
+    setSyncing(false);
+    onSynced();
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div className="small">{recording.name}</div>
+        <div className="muted small">
+          {new Date(recording.createdTime).toLocaleString()}
+          {recording.sizeBytes !== null && ` · ${formatBytes(recording.sizeBytes)}`}
+        </div>
+      </div>
+      {recording.imported && !state && <span className="badge badge-success">{t("Внесен")}</span>}
+      {state?.status === "DONE" && <span className="badge badge-success">{t("Готово")}</span>}
+      {state?.status === "PENDING" && <span className="badge badge-info">{t("Обработва се…")}</span>}
+      {state?.status === "FAILED" && (
+        <span className="badge badge-danger" title={state.error ?? undefined}>
+          {t("Грешка")}
+        </span>
+      )}
+      <button className="small-btn secondary" onClick={() => sync(false)} disabled={syncing}>
+        {recording.imported ? t("Синхронизирай пак") : t("Синхронизирай")}
+      </button>
+      {state?.status === "FAILED" && <div className="error-text small" style={{ width: "100%" }}>{state.error}</div>}
+    </div>
+  );
+}
+
+function RecordingsList() {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [recordings, setRecordings] = useState<MeetRecordingSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      const res = await api<{ recordings: MeetRecordingSummary[] }>("/voice/meet/recordings");
+      setRecordings(res.recordings);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Грешка при зареждане на списъка със записи."));
+    }
+  }
+
+  useEffect(() => {
+    if (open && !recordings) void load();
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button className="small-btn secondary" onClick={() => setOpen((o) => !o)}>
+        {open ? t("Скрий записите") : t("Избери конкретен запис…")}
+      </button>
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          {error && <div className="error-text small">{error}</div>}
+          {recordings === null && !error && <p className="muted small">{t("Зареждане…")}</p>}
+          {recordings?.length === 0 && <p className="muted small">{t("Няма намерени записи в папката.")}</p>}
+          {recordings?.map((r) => (
+            <RecordingRow key={r.id} recording={r} onSynced={load} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function GoogleMeetPanel() {
   const { t } = useI18n();
@@ -116,6 +218,7 @@ function GoogleMeetPanel() {
         </p>
       )}
       {(result?.lastError || error) && <div className="error-text small">✕ {result?.lastError ?? error}</div>}
+      <RecordingsList />
     </div>
   );
 }

@@ -101,6 +101,12 @@ export async function listFilesInFolder(folderId: string, pageSize = 20): Promis
   return data.files;
 }
 
+/** Metadata for a single known file id, used to re-locate a recording the admin picked from a list. */
+export async function getFile(fileId: string): Promise<DriveFile> {
+  const res = await driveGet(`/drive/v3/files/${fileId}`, { fields: "id,name,mimeType,createdTime,size" });
+  return (await res.json()) as DriveFile;
+}
+
 const FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 
 export function isFolder(mimeType: string): boolean {

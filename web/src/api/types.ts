@@ -387,3 +387,17 @@ export interface GoogleMeetStatus {
   lastRunAt: string | null;
   lastResult: GoogleMeetSyncResult | null;
 }
+
+export interface MeetRecordingSummary {
+  id: string;
+  name: string;
+  createdTime: string;
+  sizeBytes: number | null;
+  imported: boolean;
+}
+
+export interface RecordingSyncState {
+  status: "PENDING" | "DONE" | "FAILED";
+  error: string | null;
+  startedAt: string;
+}
