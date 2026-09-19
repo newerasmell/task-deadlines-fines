@@ -36,17 +36,28 @@ function GoogleMeetPanel() {
     setError(null);
     try {
       await api("/voice/meet/poll-now", { method: "POST", body: JSON.stringify({ force }) });
-      for (let i = 0; i < 150; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Грешка при стартиране на синхронизацията."));
+      setSyncing(false);
+      return;
+    }
+    // The sync itself keeps running on the server regardless of any single
+    // status check here failing (a dropped connection, a slow tick) — only
+    // stop polling once status confirms it's actually done, not on the
+    // first network hiccup, otherwise a transient blip strands the UI on a
+    // scary-looking error while the real work quietly finishes anyway.
+    for (let i = 0; i < 150; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      try {
         const s = await api<GoogleMeetStatus>("/voice/meet/status");
         setStatus(s);
+        setError(null);
         if (!s.inProgress) break;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("Грешка при проверка на статуса."));
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("Грешка при синхронизация."));
-    } finally {
-      setSyncing(false);
     }
+    setSyncing(false);
   }
 
   if (!status) return null;
