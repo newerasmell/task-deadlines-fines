@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { PricingRow, PricingTableResponse, PublishResultItem, RowFlag } from "../api/types";
+import type {
+  CodBracketInput,
+  CodFormulaInfo,
+  CodFormulaMode,
+  CodScenarioInput,
+  PricingRow,
+  PricingTableResponse,
+  PublishResultItem,
+  RowFlag,
+} from "../api/types";
 import { useStores } from "../context/StoreContext";
 
 const FLAG_LABELS: Record<RowFlag, string> = {
@@ -54,6 +64,8 @@ export function PricingTable() {
   const [setCompareAt, setSetCompareAt] = useState(false);
   const [skipSingleConfirm, setSkipSingleConfirm] = useState(() => localStorage.getItem("pp.skipSingleConfirm") === "1");
   const [bulkPublishing, setBulkPublishing] = useState(false);
+  const [costDraft, setCostDraft] = useState<Map<string, string>>(new Map());
+  const [costSaving, setCostSaving] = useState<Set<string>>(new Set());
 
   async function refresh() {
     if (!currentStore) return;
@@ -150,7 +162,7 @@ export function PricingTable() {
     setSelected(select ? new Set(filteredSortedRows.map((r) => r.productId)) : new Set());
   }
 
-  async function doPublish(items: { productId: string; newPrice: number }[], mode: "single" | "bulk") {
+  async function doPublish(items: { productId: string; newPrice: number; newCompareAtPrice?: number | null }[], mode: "single" | "bulk") {
     if (!currentStore) return;
     setRowStatus((cur) => {
       const next = new Map(cur);
@@ -163,7 +175,7 @@ export function PricingTable() {
         body: JSON.stringify({
           storeId: currentStore.id,
           mode,
-          items: items.map((i) => ({ productId: i.productId, newPrice: i.newPrice, setCompareAt })),
+          items: items.map((i) => ({ productId: i.productId, newPrice: i.newPrice, setCompareAt, newCompareAtPrice: i.newCompareAtPrice })),
         }),
       });
       setRowStatus((cur) => {
@@ -188,14 +200,14 @@ export function PricingTable() {
     const price = suggestedFor(row);
     if (price == null) return;
     if (!skipSingleConfirm && !window.confirm(`Publish ${price.toFixed(2)} ${currentStore?.currency} for "${row.title}"?`)) return;
-    doPublish([{ productId: row.productId, newPrice: price }], "single");
+    doPublish([{ productId: row.productId, newPrice: price, newCompareAtPrice: row.recommendedComparePrice }], "single");
   }
 
   async function publishSelected() {
     const items = filteredSortedRows
       .filter((r) => selected.has(r.productId))
-      .map((r) => ({ productId: r.productId, newPrice: suggestedFor(r) }))
-      .filter((i): i is { productId: string; newPrice: number } => i.newPrice != null);
+      .map((r) => ({ productId: r.productId, newPrice: suggestedFor(r), newCompareAtPrice: r.recommendedComparePrice }))
+      .filter((i): i is { productId: string; newPrice: number; newCompareAtPrice: number | null } => i.newPrice != null);
     if (items.length === 0) return;
     const total = items.reduce((s, i) => s + i.newPrice, 0);
     if (!window.confirm(`Publish ${items.length} selected products (total new price sum ${total.toFixed(2)} ${currentStore?.currency})?`))
@@ -214,6 +226,31 @@ export function PricingTable() {
     refresh();
   }
 
+  function costFor(row: PricingRow): string {
+    return costDraft.has(row.productId) ? costDraft.get(row.productId)! : row.cost != null ? String(row.cost) : "";
+  }
+
+  async function saveCost(row: PricingRow, value: string) {
+    const num = Number(value);
+    if (!value.trim() || Number.isNaN(num) || num <= 0) return;
+    setCostSaving((cur) => new Set(cur).add(row.productId));
+    try {
+      await api(`/costs/product/${row.productId}`, { method: "PATCH", body: JSON.stringify({ cost: num }) });
+      setCostDraft((cur) => {
+        const next = new Map(cur);
+        next.delete(row.productId);
+        return next;
+      });
+      await refresh();
+    } finally {
+      setCostSaving((cur) => {
+        const next = new Set(cur);
+        next.delete(row.productId);
+        return next;
+      });
+    }
+  }
+
   if (!currentStore) {
     return (
       <div>
@@ -225,17 +262,22 @@ export function PricingTable() {
   if (error) return <p className="error-text">{error}</p>;
   if (!data) return null;
 
+  const isCod = currentStore.pricingProfile === "cod_formula";
   const allVisibleSelected = filteredSortedRows.length > 0 && filteredSortedRows.every((r) => selected.has(r.productId));
 
   return (
     <div>
       <div className="page-header">
         <h1>Pricing — {currentStore.name}</h1>
-        <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }} title="Overwrites this product's existing compare-at price with its price right before this publish. Off by default so publishing never touches compare-at unless you turn this on.">
-          <input type="checkbox" checked={setCompareAt} onChange={(e) => setSetCompareAt(e.target.checked)} />
-          Also overwrite compare-at with the pre-publish price
-        </label>
+        {!isCod && (
+          <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }} title="Overwrites this product's existing compare-at price with its price right before this publish. Off by default so publishing never touches compare-at unless you turn this on.">
+            <input type="checkbox" checked={setCompareAt} onChange={(e) => setSetCompareAt(e.target.checked)} />
+            Also overwrite compare-at with the pre-publish price
+          </label>
+        )}
       </div>
+
+      {isCod && <CodFormulaPanel storeId={currentStore.id} formula={data.formula} currency={currentStore.currency} onSaved={refresh} />}
 
       <div className="filters-bar">
         <input placeholder="Search name / SKU / EAN" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -302,21 +344,25 @@ export function PricingTable() {
                 Our price
               </th>
               <th>Compare-at</th>
+              {isCod && <th>Cost</th>}
               {data.sources.map((s) => (
                 <th key={s.id}>
                   {s.label}
                   {s.degraded && <span className="tag" title={`Degraded — check Settings`}>!</span>}
                 </th>
               ))}
-              <th className={sortKey === "minComp" ? "sorted" : ""} onClick={() => toggleSort("minComp")}>
-                Min
-              </th>
+              {!isCod && (
+                <th className={sortKey === "minComp" ? "sorted" : ""} onClick={() => toggleSort("minComp")}>
+                  Min
+                </th>
+              )}
               <th className={sortKey === "deltaPct" ? "sorted" : ""} onClick={() => toggleSort("deltaPct")}>
-                Δ% vs min
+                {isCod ? "Δ% vs recommended" : "Δ% vs min"}
               </th>
               <th className={sortKey === "suggested" ? "sorted" : ""} onClick={() => toggleSort("suggested")}>
-                Suggested
+                {isCod ? "Recommended" : "Suggested"}
               </th>
+              {isCod && <th>Recommended compare-at</th>}
               <th>Status</th>
               <th></th>
             </tr>
@@ -341,15 +387,37 @@ export function PricingTable() {
                         <div className="product-title">
                           {row.title}
                           {row.priority && <span className="tag" title="Always scraped every run">★</span>}
+                          {isCod && row.discountTagged && (
+                            <span className="tag" title={`Tagged "${data.formula?.config.discountTag}" in Shopify`}>
+                              намален
+                            </span>
+                          )}
                         </div>
                         <div className="product-sku">
                           {row.sku ?? "—"} {row.barcode ? `· ${row.barcode}` : ""}
                         </div>
+                        {isCod && row.tags.length > 0 && <div className="small muted">{row.tags.join(", ")}</div>}
                       </div>
                     </div>
                   </td>
                   <td>{fmtMoney(row.ourPrice, currentStore.currency)}</td>
                   <td>{fmtMoney(row.compareAtPrice, currentStore.currency)}</td>
+                  {isCod && (
+                    <td>
+                      <input
+                        className="suggested-input"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={costFor(row)}
+                        onChange={(e) => setCostDraft((cur) => new Map(cur).set(row.productId, e.target.value))}
+                        onBlur={(e) => saveCost(row, e.target.value)}
+                        placeholder="—"
+                        disabled={costSaving.has(row.productId)}
+                        title="Себестойност (покупна цена) — Cost.csv импорт или ръчно тук"
+                      />
+                    </td>
+                  )}
                   {data.sources.map((s) => {
                     const cell = row.sourcePrices[s.id];
                     return (
@@ -367,7 +435,7 @@ export function PricingTable() {
                       </td>
                     );
                   })}
-                  <td>{fmtMoney(row.minComp, currentStore.currency)}</td>
+                  {!isCod && <td>{fmtMoney(row.minComp, currentStore.currency)}</td>}
                   <td>{row.deltaPct != null ? `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%` : "—"}</td>
                   <td>
                     <input
@@ -382,6 +450,7 @@ export function PricingTable() {
                       <span className={`badge flag-${row.flag}`}>{FLAG_LABELS[row.flag]}</span>
                     </div>
                   </td>
+                  {isCod && <td>{fmtMoney(row.recommendedComparePrice, currentStore.currency)}</td>}
                   <td>
                     {status.state === "pending" && <span className="row-status-spinner">Publishing…</span>}
                     {status.state === "success" && <span className="row-status-success">✓ Published</span>}
@@ -410,7 +479,7 @@ export function PricingTable() {
             })}
             {filteredSortedRows.length === 0 && (
               <tr>
-                <td colSpan={9 + data.sources.length} className="muted" style={{ textAlign: "center", padding: 30 }}>
+                <td colSpan={9 + data.sources.length + (isCod ? 1 : 0)} className="muted" style={{ textAlign: "center", padding: 30 }}>
                   No products match these filters.
                 </td>
               </tr>
@@ -418,6 +487,269 @@ export function PricingTable() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+const SCENARIO_KEY_LABELS: Record<string, string> = { pess: "Песимистичен", avg: "Среден", opt: "Оптимистичен" };
+const MODE_LABELS: Record<CodFormulaMode, string> = { cost: "Себестойност", target: "Целева печалба", breakeven: "Break-even" };
+
+function fmtK(v: number | null): string {
+  return v !== null && isFinite(v) ? v.toFixed(3) : "—";
+}
+
+function CodFormulaPanel({
+  storeId,
+  formula,
+  currency,
+  onSaved,
+}: {
+  storeId: string;
+  formula: CodFormulaInfo | null;
+  currency: string;
+  onSaved: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [mode, setMode] = useState<CodFormulaMode>("target");
+  const [cogsPct, setCogsPct] = useState("40");
+  const [fRate, setFRate] = useState("5");
+  const [mRate, setMRate] = useState("10");
+  const [nItems, setNItems] = useState("1.3");
+  const [rMult, setRMult] = useState("2");
+  const [lLoss, setLLoss] = useState("0");
+  const [fCost, setFCost] = useState("5000");
+  const [roundStep, setRoundStep] = useState("1");
+  const [discountPct, setDiscountPct] = useState("50");
+  const [discountTag, setDiscountTag] = useState("sale");
+  const [pricingScenario, setPricingScenario] = useState("avg");
+  const [pricingN, setPricingN] = useState("1000");
+  const [scenarios, setScenarios] = useState<CodScenarioInput[]>([]);
+  const [brackets, setBrackets] = useState<CodBracketInput[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!formula) return;
+    const c = formula.config;
+    setMode(c.mode);
+    setCogsPct(String(c.cogsPct));
+    setFRate(String(c.fRate));
+    setMRate(String(c.mRate));
+    setNItems(String(c.nItems));
+    setRMult(String(c.rMult));
+    setLLoss(String(c.lLoss));
+    setFCost(String(c.fCost));
+    setRoundStep(String(c.roundStep));
+    setDiscountPct(String(c.discountPct));
+    setDiscountTag(c.discountTag);
+    setPricingScenario(c.pricingScenario);
+    setPricingN(String(c.pricingN));
+    setScenarios(JSON.parse(c.scenariosJson));
+    setBrackets(JSON.parse(c.bracketsJson));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, formula?.config.id]);
+
+  function updateScenario(key: string, field: "A" | "d" | "S", value: string) {
+    const num = Number(value);
+    setScenarios((cur) => cur.map((s) => (s.key === key ? { ...s, [field]: Number.isNaN(num) ? s[field] : num } : s)));
+  }
+
+  function updateBracket(i: number, field: "upper" | "rate", value: string) {
+    const num = Number(value);
+    setBrackets((cur) =>
+      cur.map((b, idx) => (idx === i ? { ...b, [field]: Number.isNaN(num) ? b[field] : num } : b))
+    );
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      await api(`/cod-config/${storeId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          mode,
+          cogsPct: Number(cogsPct),
+          fRate: Number(fRate),
+          mRate: Number(mRate),
+          nItems: Number(nItems),
+          rMult: Number(rMult),
+          lLoss: Number(lLoss),
+          fCost: Number(fCost),
+          roundStep: Number(roundStep),
+          discountPct: Number(discountPct),
+          discountTag: discountTag.trim() || "sale",
+          pricingScenario,
+          pricingN: Number(pricingN),
+          scenarios,
+          brackets,
+        }),
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error saving formula");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="page-header" style={{ marginBottom: expanded ? 12 : 0 }}>
+        <div>
+          <strong>Формула за ценообразуване (COD)</strong>{" "}
+          {formula && (
+            <span className="muted small">
+              k = {fmtK(formula.k)} · средна себестойност {fmtMoney(formula.avgCost || null, currency)} · режим {MODE_LABELS[formula.config.mode]}
+              {formula.config.mode !== "cost" && ` · база ${SCENARIO_KEY_LABELS[formula.scenario] ?? formula.scenario}`}
+            </span>
+          )}
+          {formula?.reason && <div className="error-text small">{formula.reason}</div>}
+        </div>
+        <button type="button" className="small-btn secondary" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Скрий настройките" : "Настройки на формулата"}
+        </button>
+      </div>
+
+      {expanded && (
+        <form className="form" onSubmit={handleSubmit}>
+          <div className="form-row">
+            <label>
+              Режим
+              <select value={mode} onChange={(e) => setMode(e.target.value as CodFormulaMode)}>
+                <option value="cost">Себестойност (k = 1/cogs_pct)</option>
+                <option value="target">Целева печалба</option>
+                <option value="breakeven">Break-even</option>
+              </select>
+            </label>
+            {mode === "cost" ? (
+              <label>
+                Себестойност като % от цената
+                <input type="number" step="1" value={cogsPct} onChange={(e) => setCogsPct(e.target.value)} />
+              </label>
+            ) : (
+              <label>
+                База за формулата (сценарий)
+                <select value={pricingScenario} onChange={(e) => setPricingScenario(e.target.value)}>
+                  <option value="pess">Песимистичен</option>
+                  <option value="avg">Среден</option>
+                  <option value="opt">Оптимистичен</option>
+                </select>
+              </label>
+            )}
+          </div>
+
+          {mode !== "cost" && (
+            <div className="form-row">
+              <label>
+                Ефективна ставка на агенцията, f (%)
+                <input type="number" step="0.5" value={fRate} onChange={(e) => setFRate(e.target.value)} />
+              </label>
+              <label>
+                Целева нетна печалба, m (%) {mode === "breakeven" && <span className="muted small">(игнорира се — 0 при break-even)</span>}
+                <input type="number" step="0.5" value={mRate} onChange={(e) => setMRate(e.target.value)} disabled={mode === "breakeven"} />
+              </label>
+              <label>
+                N за формулата (F/N)
+                <input type="number" step="50" value={pricingN} onChange={(e) => setPricingN(e.target.value)} />
+              </label>
+            </div>
+          )}
+
+          <div className="form-row">
+            <label>
+              Артикули / поръчка (n)
+              <input type="number" step="0.1" value={nItems} onChange={(e) => setNItems(e.target.value)} />
+            </label>
+            <label>
+              Кратност при неуспешна пратка (r)
+              <input type="number" step="0.5" value={rMult} onChange={(e) => setRMult(e.target.value)} />
+            </label>
+            <label>
+              Загуба на върнати стоки, L (%)
+              <input type="number" step="1" value={lLoss} onChange={(e) => setLLoss(e.target.value)} />
+            </label>
+          </div>
+
+          <div className="form-row">
+            <label>
+              Други разходи / месец, F ({currency})
+              <input type="number" step="100" value={fCost} onChange={(e) => setFCost(e.target.value)} />
+            </label>
+            <label>
+              Стъпка на закръгляне
+              <input type="number" step="0.5" value={roundStep} onChange={(e) => setRoundStep(e.target.value)} />
+            </label>
+            <label>
+              Намаление за зачеркнатата цена (%)
+              <input type="number" step="1" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
+            </label>
+            <label>
+              Таг за "намален" продукт
+              <input value={discountTag} onChange={(e) => setDiscountTag(e.target.value)} placeholder="sale" />
+            </label>
+          </div>
+
+          {mode !== "cost" && (
+            <div>
+              <p className="muted small" style={{ margin: "8px 0 4px" }}>
+                Сценарии (A = реклама/поръчка, d = delivery success rate %, S = доставка)
+              </p>
+              {scenarios.map((s) => (
+                <div className="form-row" key={s.key}>
+                  <label>
+                    {SCENARIO_KEY_LABELS[s.key] ?? s.label} — A
+                    <input type="number" step="0.5" value={s.A} onChange={(e) => updateScenario(s.key, "A", e.target.value)} />
+                  </label>
+                  <label>
+                    d (%)
+                    <input type="number" step="0.5" value={s.d} onChange={(e) => updateScenario(s.key, "d", e.target.value)} />
+                  </label>
+                  <label>
+                    S
+                    <input type="number" step="0.5" value={s.S} onChange={(e) => updateScenario(s.key, "S", e.target.value)} />
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {mode !== "cost" && (
+            <div>
+              <p className="muted small" style={{ margin: "8px 0 4px" }}>
+                Агентска такса — прогресивна, по прагове на оборота
+              </p>
+              <div className="form-row">
+                {brackets.map((b, i) => (
+                  <label key={i}>
+                    {i === 0 ? "над 0" : `над ${brackets[i - 1].upper ?? "∞"}`} до {b.upper ?? "∞"} — ставка (%)
+                    <input type="number" step="0.5" value={b.rate} onChange={(e) => updateBracket(i, "rate", e.target.value)} />
+                  </label>
+                ))}
+              </div>
+              <div className="form-row">
+                {brackets
+                  .map((b, i) => ({ b, i }))
+                  .filter(({ b }) => b.upper !== null)
+                  .map(({ b, i }) => (
+                    <label key={i}>
+                      праг #{i + 1} ({currency})
+                      <input type="number" step="1000" value={b.upper ?? ""} onChange={(e) => updateBracket(i, "upper", e.target.value)} />
+                    </label>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {error && <div className="error-text">{error}</div>}
+          <div className="form-row">
+            <button type="submit" disabled={saving}>
+              {saving ? "Запазване…" : "Запази формулата"}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import path from "path";
 import { env } from "./lib/env";
 import { requireAuth } from "./middleware/auth";
 import { authRouter } from "./routes/auth";
+import { codConfigRouter } from "./routes/codConfig";
 import { costsRouter } from "./routes/costs";
 import { pricingRouter } from "./routes/pricing";
 import { publishRouter } from "./routes/publish";
@@ -52,6 +53,7 @@ export function createApp() {
   app.use("/api/publish-log", requireAuth, publishLogRouter);
   app.use("/api/unmatched", requireAuth, unmatchedRouter);
   app.use("/api/costs", requireAuth, costsRouter);
+  app.use("/api/cod-config", requireAuth, codConfigRouter);
 
   // Serve the built React app (same Web Service, per the brief) and fall
   // back to index.html for any non-API route so client-side routing works.

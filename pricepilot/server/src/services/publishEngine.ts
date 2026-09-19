@@ -8,6 +8,10 @@ export interface PublishRequestItem {
   productId: string; // our local Product row id (one per Shopify variant)
   newPrice: number;
   setCompareAt: boolean; // if true, keep the pre-publish price as compareAtPrice
+  // Explicit compare-at (e.g. the cod_formula engine's computed slashed
+  // price) — takes priority over setCompareAt's "old price becomes
+  // compare-at" behavior when present.
+  newCompareAtPrice?: number | null;
 }
 
 export interface PublishResultItem {
@@ -74,7 +78,8 @@ export async function publishPrices(
           id: local.shopifyVariantId,
           price: item.newPrice.toFixed(2),
         };
-        if (item.setCompareAt) input.compareAtPrice = local.price.toFixed(2);
+        if (item.newCompareAtPrice != null) input.compareAtPrice = item.newCompareAtPrice.toFixed(2);
+        else if (item.setCompareAt) input.compareAtPrice = local.price.toFixed(2);
         return input;
       });
 
@@ -99,6 +104,7 @@ export async function publishPrices(
 
       for (const { local, item } of batch) {
         const status: "SUCCESS" | "ERROR" = batchFailed ? "ERROR" : "SUCCESS";
+        const newCompareAt = item.newCompareAtPrice != null ? item.newCompareAtPrice : item.setCompareAt ? local.price : local.compareAtPrice;
         await prisma.publishLog.create({
           data: {
             storeId: store.id,
@@ -107,7 +113,7 @@ export async function publishPrices(
             oldPrice: local.price,
             newPrice: item.newPrice,
             oldCompareAt: local.compareAtPrice,
-            newCompareAt: item.setCompareAt ? local.price : local.compareAtPrice,
+            newCompareAt,
             status,
             errorMessage: batchFailed ? errorMessage : null,
             source,
@@ -119,7 +125,7 @@ export async function publishPrices(
             where: { id: local.id },
             data: {
               price: item.newPrice,
-              compareAtPrice: item.setCompareAt ? local.price : local.compareAtPrice,
+              compareAtPrice: newCompareAt,
             },
           });
         }

@@ -31,6 +31,7 @@ const createSchema = z.object({
   undercutPct: z.number().nonnegative().default(1),
   priceEnding: z.string().nullable().optional(),
   minMarginPct: z.number().nonnegative().default(10),
+  pricingProfile: z.enum(["competitor", "cod_formula"]).default("competitor"),
 });
 
 storesRouter.post("/", async (req, res) => {

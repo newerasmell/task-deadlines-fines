@@ -1,4 +1,5 @@
 export type PricingStrategy = "undercut_min" | "match_min" | "undercut_avg";
+export type PricingProfile = "competitor" | "cod_formula";
 export type SourceType = "shopify_json" | "scrape" | "manual_import" | "jeftinije_hr" | "notino_hr";
 export type RowFlag = "above-market" | "competitive" | "below-market" | "below-floor" | "no-data";
 
@@ -13,9 +14,53 @@ export interface Store {
   undercutPct: number;
   priceEnding: string | null;
   minMarginPct: number;
+  pricingProfile: PricingProfile;
   hasClientSecret: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export type CodFormulaMode = "cost" | "target" | "breakeven";
+
+export interface CodScenarioInput {
+  key: string;
+  label: string;
+  A: number;
+  d: number; // 0-100 %
+  S: number;
+}
+
+export interface CodBracketInput {
+  upper: number | null;
+  rate: number; // 0-100 %
+}
+
+export interface CodFormulaConfig {
+  id: string;
+  storeId: string;
+  mode: CodFormulaMode;
+  cogsPct: number;
+  fRate: number;
+  mRate: number;
+  nItems: number;
+  rMult: number;
+  lLoss: number;
+  fCost: number;
+  roundStep: number;
+  discountPct: number;
+  discountTag: string;
+  pricingScenario: string;
+  pricingN: number;
+  scenariosJson: string;
+  bracketsJson: string;
+}
+
+export interface CodFormulaInfo {
+  config: CodFormulaConfig;
+  avgCost: number;
+  k: number | null;
+  reason: string | null;
+  scenario: string;
 }
 
 export interface Source {
@@ -76,6 +121,9 @@ export interface PricingRow {
   sku: string | null;
   barcode: string | null;
   imageUrl: string | null;
+  tags: string[];
+  discountTagged?: boolean;
+  cost: number | null;
   ourPrice: number;
   compareAtPrice: number | null;
   inventoryQuantity: number | null;
@@ -86,6 +134,7 @@ export interface PricingRow {
   avgComp: number | null;
   deltaPct: number | null;
   suggested: number | null;
+  recommendedComparePrice: number | null;
   floor: number;
   flag: RowFlag;
 }
@@ -93,6 +142,7 @@ export interface PricingRow {
 export interface PricingTableResponse {
   sources: { id: string; label: string; active: boolean; degraded: boolean; lastRefreshedAt: string | null }[];
   rows: PricingRow[];
+  formula: CodFormulaInfo | null;
 }
 
 export interface PublishResultItem {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { api } from "../api/client";
-import type { AmbiguousMatch, PricingStrategy, ScrapeAttempt, Source, SourceType, Store } from "../api/types";
+import type { AmbiguousMatch, PricingProfile, PricingStrategy, ScrapeAttempt, Source, SourceType, Store } from "../api/types";
 import { useStores } from "../context/StoreContext";
 
 export function Settings() {
@@ -102,8 +102,13 @@ function StoreRow({ store, onEdit, onChanged }: { store: Store; onEdit: () => vo
         <strong>{store.name}</strong> <span className="muted small">({store.marketCode} · {store.currency})</span>
         <div className="small muted">{store.myshopifyDomain}</div>
         <div className="small muted">
-          {store.pricingStrategy}, undercut {store.undercutPct}%, ending {store.priceEnding ?? "none"}, margin floor{" "}
-          {store.minMarginPct}%
+          profile: {store.pricingProfile === "cod_formula" ? "COD formula" : "competitor tracking"}
+          {store.pricingProfile !== "cod_formula" && (
+            <>
+              , {store.pricingStrategy}, undercut {store.undercutPct}%, ending {store.priceEnding ?? "none"}, margin floor{" "}
+              {store.minMarginPct}%
+            </>
+          )}
         </div>
         {testResult && <div className="small">{testResult}</div>}
         {syncResult && <div className="small">{syncResult}</div>}
@@ -134,6 +139,7 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
   const [clientSecret, setClientSecret] = useState("");
   const [marketCode, setMarketCode] = useState(store?.marketCode ?? "");
   const [currency, setCurrency] = useState(store?.currency ?? "EUR");
+  const [pricingProfile, setPricingProfile] = useState<PricingProfile>(store?.pricingProfile ?? "competitor");
   const [strategy, setStrategy] = useState<PricingStrategy>(store?.pricingStrategy ?? "undercut_min");
   const [undercutPct, setUndercutPct] = useState(String(store?.undercutPct ?? 1));
   const [priceEnding, setPriceEnding] = useState(store?.priceEnding ?? "");
@@ -156,6 +162,7 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
         shopifyClientId: clientId.trim(),
         marketCode,
         currency,
+        pricingProfile,
         pricingStrategy: strategy,
         undercutPct: Number(undercutPct),
         priceEnding: priceEnding.trim() || null,
@@ -221,28 +228,44 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
       </div>
       <div className="form-row">
         <label>
-          Pricing strategy
-          <select value={strategy} onChange={(e) => setStrategy(e.target.value as PricingStrategy)}>
-            <option value="undercut_min">Undercut lowest</option>
-            <option value="match_min">Match lowest</option>
-            <option value="undercut_avg">Undercut average</option>
+          Pricing profile
+          <select value={pricingProfile} onChange={(e) => setPricingProfile(e.target.value as PricingProfile)}>
+            <option value="competitor">Competitor tracking (undercut/match)</option>
+            <option value="cod_formula">COD formula (cost + logistics + ad-spend based)</option>
           </select>
         </label>
-        <label>
-          Undercut %
-          <input type="number" step="0.1" value={undercutPct} onChange={(e) => setUndercutPct(e.target.value)} />
-        </label>
       </div>
-      <div className="form-row">
-        <label>
-          Price ending (optional)
-          <input value={priceEnding} onChange={(e) => setPriceEnding(e.target.value)} placeholder=".99" />
-        </label>
-        <label>
-          Min margin % (floor guard)
-          <input type="number" step="0.1" value={minMarginPct} onChange={(e) => setMinMarginPct(e.target.value)} />
-        </label>
-      </div>
+      {pricingProfile === "competitor" && (
+        <>
+          <div className="form-row">
+            <label>
+              Pricing strategy
+              <select value={strategy} onChange={(e) => setStrategy(e.target.value as PricingStrategy)}>
+                <option value="undercut_min">Undercut lowest</option>
+                <option value="match_min">Match lowest</option>
+                <option value="undercut_avg">Undercut average</option>
+              </select>
+            </label>
+            <label>
+              Undercut %
+              <input type="number" step="0.1" value={undercutPct} onChange={(e) => setUndercutPct(e.target.value)} />
+            </label>
+          </div>
+          <div className="form-row">
+            <label>
+              Price ending (optional)
+              <input value={priceEnding} onChange={(e) => setPriceEnding(e.target.value)} placeholder=".99" />
+            </label>
+            <label>
+              Min margin % (floor guard)
+              <input type="number" step="0.1" value={minMarginPct} onChange={(e) => setMinMarginPct(e.target.value)} />
+            </label>
+          </div>
+        </>
+      )}
+      {pricingProfile === "cod_formula" && (
+        <p className="muted small">The formula itself (cost mix, delivery scenarios, agency fee) is configured on the Pricing page once this store is saved.</p>
+      )}
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>

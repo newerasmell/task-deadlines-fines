@@ -24,6 +24,7 @@ interface ProductNode {
   title: string;
   vendor: string | null;
   handle: string;
+  tags: string[];
   featuredImage: { url: string } | null;
   variants: { edges: { node: VariantNode }[] };
 }
@@ -31,6 +32,7 @@ interface ProductNode {
 async function upsertVariantRow(storeId: string, product: ProductNode, variant: VariantNode) {
   const price = Number(variant.price);
   const compareAtPrice = variant.compareAtPrice != null ? Number(variant.compareAtPrice) : null;
+  const tags = (product.tags ?? []).join(",");
   await prisma.product.upsert({
     where: { storeId_shopifyVariantId: { storeId, shopifyVariantId: variant.id } },
     create: {
@@ -46,6 +48,7 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
       compareAtPrice,
       inventoryQuantity: variant.inventoryQuantity,
       imageUrl: product.featuredImage?.url ?? null,
+      tags,
     },
     update: {
       shopifyProductId: product.id,
@@ -58,6 +61,7 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
       compareAtPrice,
       inventoryQuantity: variant.inventoryQuantity,
       imageUrl: product.featuredImage?.url ?? null,
+      tags,
       syncedAt: new Date(),
     },
   });
@@ -80,6 +84,7 @@ const PRODUCTS_PAGE_QUERY = `
           title
           vendor
           handle
+          tags
           featuredImage { url }
           variants(first: 100) {
             edges { node { id sku barcode price compareAtPrice inventoryQuantity } }
@@ -121,6 +126,7 @@ const BULK_QUERY = `
           title
           vendor
           handle
+          tags
           featuredImage { url }
           variants {
             edges { node { id sku barcode price compareAtPrice inventoryQuantity } }
@@ -202,6 +208,7 @@ async function downloadAndParseBulkResult(url: string): Promise<{ product: Produ
         title: node.title as string,
         vendor: (node.vendor as string | null) ?? null,
         handle: node.handle as string,
+        tags: (node.tags as string[] | null) ?? [],
         featuredImage: (node.featuredImage as { url: string } | null) ?? null,
       });
     }

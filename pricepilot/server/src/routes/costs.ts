@@ -10,6 +10,29 @@ costsRouter.get("/:storeId", async (req, res) => {
   res.json(costs);
 });
 
+const productCostSchema = z.object({ cost: z.number().positive() });
+
+// Manual, single-row edit of a product's acquisition cost — same Cost table
+// the CSV import (below) writes to, keyed off the product's own SKU (or
+// barcode if it has no SKU), so an admin can override/fill in one product
+// at a time without re-uploading the whole file.
+costsRouter.patch("/product/:productId", async (req, res) => {
+  const parsed = productCostSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const product = await prisma.product.findUnique({ where: { id: req.params.productId } });
+  if (!product) return res.status(404).json({ error: "Product not found" });
+  const skuOrEan = product.sku || product.barcode;
+  if (!skuOrEan) return res.status(400).json({ error: "This product has no SKU or barcode to key a cost on." });
+
+  const cost = await prisma.cost.upsert({
+    where: { storeId_skuOrEan: { storeId: product.storeId, skuOrEan } },
+    create: { storeId: product.storeId, skuOrEan, cost: parsed.data.cost },
+    update: { cost: parsed.data.cost },
+  });
+  res.json(cost);
+});
+
 const importSchema = z.object({
   storeId: z.string().min(1),
   csv: z.string().min(1),
