@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
-import type { ChangeEvent, FormEvent } from "react";
+import type { ChangeEvent, FormEvent, MouseEvent, ReactNode } from "react";
 import { api } from "../api/client";
 import type { AmbiguousMatch, PricingProfile, PricingStrategy, ScrapeAttempt, Source, SourceType, Store } from "../api/types";
 import { useStores } from "../context/StoreContext";
 
 export function Settings() {
   const { stores, currentStore, refreshStores } = useStores();
-  const [showStoreForm, setShowStoreForm] = useState(false);
-  const [editingStore, setEditingStore] = useState<Store | null>(null);
+  const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
+  const [addingStore, setAddingStore] = useState(false);
+
+  function toggleStore(id: string) {
+    setAddingStore(false);
+    setExpandedStoreId((cur) => (cur === id ? null : id));
+  }
 
   return (
     <div>
@@ -16,28 +21,46 @@ export function Settings() {
       </div>
 
       <div className="settings-section">
-        <h2>Stores</h2>
-        <div className="entity-list">
+        <div className="page-header" style={{ marginBottom: 10 }}>
+          <h2 style={{ margin: 0 }}>Stores</h2>
+          {!addingStore && (
+            <button
+              className="small-btn"
+              onClick={() => {
+                setExpandedStoreId(null);
+                setAddingStore(true);
+              }}
+            >
+              + Add store
+            </button>
+          )}
+        </div>
+
+        <div className="entity-list" style={{ marginBottom: addingStore ? 12 : 0 }}>
           {stores.map((store) => (
-            <StoreRow key={store.id} store={store} onEdit={() => setEditingStore(store)} onChanged={refreshStores} />
+            <StoreAccordionItem
+              key={store.id}
+              store={store}
+              open={expandedStoreId === store.id}
+              onToggle={() => toggleStore(store.id)}
+              onChanged={refreshStores}
+            />
           ))}
         </div>
-        {!showStoreForm && !editingStore && (
-          <button onClick={() => setShowStoreForm(true)}>+ Add store</button>
-        )}
-        {(showStoreForm || editingStore) && (
-          <StoreForm
-            store={editingStore}
-            onDone={() => {
-              setShowStoreForm(false);
-              setEditingStore(null);
-              refreshStores();
-            }}
-            onCancel={() => {
-              setShowStoreForm(false);
-              setEditingStore(null);
-            }}
-          />
+
+        {addingStore && (
+          <div className="accordion-item">
+            <div className="accordion-body" style={{ borderTop: "none" }}>
+              <StoreForm
+                store={null}
+                onDone={() => {
+                  setAddingStore(false);
+                  refreshStores();
+                }}
+                onCancel={() => setAddingStore(false)}
+              />
+            </div>
+          </div>
         )}
       </div>
 
@@ -58,13 +81,51 @@ export function Settings() {
   );
 }
 
-function StoreRow({ store, onEdit, onChanged }: { store: Store; onEdit: () => void; onChanged: () => void }) {
+function AccordionItem({
+  headerLeft,
+  headerRight,
+  open,
+  onToggle,
+  children,
+}: {
+  headerLeft: ReactNode;
+  headerRight?: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="accordion-item">
+      <div className="accordion-header">
+        <button type="button" className="accordion-toggle" onClick={onToggle}>
+          <span className={`chevron${open ? " open" : ""}`}>▸</span>
+          {headerLeft}
+        </button>
+        {headerRight}
+      </div>
+      {open && <div className="accordion-body">{children}</div>}
+    </div>
+  );
+}
+
+function StoreAccordionItem({
+  store,
+  open,
+  onToggle,
+  onChanged,
+}: {
+  store: Store;
+  open: boolean;
+  onToggle: () => void;
+  onChanged: () => void;
+}) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
-  async function testConnection() {
+  async function testConnection(e: MouseEvent) {
+    e.stopPropagation();
     setTesting(true);
     setTestResult(null);
     try {
@@ -77,7 +138,8 @@ function StoreRow({ store, onEdit, onChanged }: { store: Store; onEdit: () => vo
     }
   }
 
-  async function syncNow() {
+  async function syncNow(e: MouseEvent) {
+    e.stopPropagation();
     setSyncing(true);
     setSyncResult(null);
     try {
@@ -90,44 +152,45 @@ function StoreRow({ store, onEdit, onChanged }: { store: Store; onEdit: () => vo
     }
   }
 
-  async function remove() {
+  async function remove(e: MouseEvent) {
+    e.stopPropagation();
     if (!window.confirm(`Delete store "${store.name}"? This removes its products, sources, and history too.`)) return;
     await api(`/stores/${store.id}`, { method: "DELETE" });
     onChanged();
   }
 
+  const profileLabel = store.pricingProfile === "cod_formula" ? "COD formula" : "Competitor tracking";
+
   return (
-    <div className="entity-row">
-      <div>
-        <strong>{store.name}</strong> <span className="muted small">({store.marketCode} · {store.currency})</span>
-        <div className="small muted">{store.myshopifyDomain}</div>
-        <div className="small muted">
-          profile: {store.pricingProfile === "cod_formula" ? "COD formula" : "competitor tracking"}
-          {store.pricingProfile !== "cod_formula" && (
-            <>
-              , {store.pricingStrategy}, undercut {store.undercutPct}%, ending {store.priceEnding ?? "none"}, margin floor{" "}
-              {store.minMarginPct}%
-            </>
-          )}
+    <AccordionItem
+      open={open}
+      onToggle={onToggle}
+      headerLeft={
+        <span>
+          {store.name}{" "}
+          <span className="accordion-meta">
+            {store.marketCode} · {store.currency} · {profileLabel}
+          </span>
+        </span>
+      }
+      headerRight={
+        <div className="entity-row-actions" onClick={(e) => e.stopPropagation()}>
+          {testResult && <span className="small">{testResult}</span>}
+          {syncResult && <span className="small">{syncResult}</span>}
+          <button className="small-btn secondary" onClick={testConnection} disabled={testing}>
+            {testing ? "Testing…" : "Test connection"}
+          </button>
+          <button className="small-btn secondary" onClick={syncNow} disabled={syncing}>
+            {syncing ? "Syncing…" : "Sync now"}
+          </button>
+          <button className="small-btn secondary" onClick={remove}>
+            Delete
+          </button>
         </div>
-        {testResult && <div className="small">{testResult}</div>}
-        {syncResult && <div className="small">{syncResult}</div>}
-      </div>
-      <div className="entity-row-actions">
-        <button className="small-btn secondary" onClick={testConnection} disabled={testing}>
-          {testing ? "Testing…" : "Test connection"}
-        </button>
-        <button className="small-btn secondary" onClick={syncNow} disabled={syncing}>
-          {syncing ? "Syncing…" : "Sync now"}
-        </button>
-        <button className="small-btn secondary" onClick={onEdit}>
-          Edit
-        </button>
-        <button className="small-btn secondary" onClick={remove}>
-          Delete
-        </button>
-      </div>
-    </div>
+      }
+    >
+      <StoreForm store={store} onDone={onChanged} onCancel={onToggle} />
+    </AccordionItem>
   );
 }
 
@@ -181,7 +244,7 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
   }
 
   return (
-    <form className="card form" onSubmit={handleSubmit}>
+    <form className="form" style={{ marginBottom: 0 }} onSubmit={handleSubmit}>
       <div className="form-row">
         <label>
           Name
@@ -281,14 +344,35 @@ function StoreForm({ store, onDone, onCancel }: { store: Store | null; onDone: (
 
 const MAX_SOURCES_PER_STORE = 4; // was 3 per the original brief; raised at the user's request
 
+type SourceTab = "edit" | "import" | "results" | "queue";
+
+function defaultTabFor(type: SourceType): SourceTab {
+  if (type === "manual_import") return "import";
+  if (type === "scrape") return "results";
+  if (type === "jeftinije_hr" || type === "notino_hr") return "queue";
+  return "edit";
+}
+
+function tabsFor(type: SourceType): { key: SourceTab; label: string }[] {
+  const tabs: { key: SourceTab; label: string }[] = [{ key: "edit", label: "Edit" }];
+  if (type === "manual_import") tabs.push({ key: "import", label: "Import" });
+  if (type === "scrape" || type === "manual_import") tabs.push({ key: "results", label: "Results" });
+  if (type === "jeftinije_hr" || type === "notino_hr" || type === "manual_import") tabs.push({ key: "queue", label: "Review queue" });
+  return tabs;
+}
+
 function SourcesSection({ storeId }: { storeId: string }) {
   const [sources, setSources] = useState<Source[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Source | null>(null);
+  const [addingSource, setAddingSource] = useState(false);
+  // Accordion at the source level: at most one source's panel is open,
+  // and within it at most one tab renders — replaces the old layout where
+  // every manual_import source's whole import panel (template download +
+  // two file pickers + instructions) was permanently on screen for every
+  // source at once.
+  const [openSourceId, setOpenSourceId] = useState<string | null>(null);
+  const [openTab, setOpenTab] = useState<SourceTab>("edit");
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<Record<string, string>>({});
-  const [showAttempts, setShowAttempts] = useState<string | null>(null);
-  const [showAmbiguous, setShowAmbiguous] = useState<string | null>(null);
 
   async function refresh(): Promise<Source[]> {
     const list = await api<Source[]>(`/sources?storeId=${storeId}`);
@@ -298,8 +382,20 @@ function SourcesSection({ storeId }: { storeId: string }) {
 
   useEffect(() => {
     refresh();
+    setOpenSourceId(null);
+    setAddingSource(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId]);
+
+  function openSource(s: Source) {
+    setAddingSource(false);
+    if (openSourceId === s.id) {
+      setOpenSourceId(null);
+      return;
+    }
+    setOpenSourceId(s.id);
+    setOpenTab(defaultTabFor(s.type));
+  }
 
   // A scrape refresh walks the catalog with a polite ~2-3s delay per
   // product — several minutes for ~140 targets — so the server runs it in
@@ -354,100 +450,113 @@ function SourcesSection({ storeId }: { storeId: string }) {
   async function remove(id: string) {
     if (!window.confirm("Delete this source? Its collected competitor prices go with it.")) return;
     await api(`/sources/${id}`, { method: "DELETE" });
+    if (openSourceId === id) setOpenSourceId(null);
     refresh();
   }
 
   return (
     <div>
-      <div className="entity-list">
-        {sources.map((s) => (
-          <div key={s.id}>
-            <div className="entity-row">
-              <div>
-                <strong>{s.label}</strong> <span className="muted small">({s.type})</span>
-                {s.degraded && <span className="tag">degraded</span>}
-                {!s.active && <span className="tag">inactive</span>}
-                {!s.autoRefresh && <span className="tag">manual only</span>}
-                <div className="small muted">{s.baseUrl}</div>
-                {s.searchUrlTemplate && <div className="small muted">{s.searchUrlTemplate}</div>}
-                <div className="small muted">
-                  Last refreshed: {s.lastRefreshedAt ? new Date(s.lastRefreshedAt).toLocaleString() : "never"}
-                  {s.lastTriggeredBy && ` by ${s.lastTriggeredBy}`}
-                  {s.lastMatchedCount !== null && ` (${s.lastMatchedCount} prices)`}
+      <div className="entity-list" style={{ marginBottom: addingSource ? 12 : 0 }}>
+        {sources.map((s) => {
+          const open = openSourceId === s.id;
+          const tabs = tabsFor(s.type);
+          return (
+            <AccordionItem
+              key={s.id}
+              open={open}
+              onToggle={() => openSource(s)}
+              headerLeft={
+                <span>
+                  {s.label} <span className="accordion-meta">({s.type})</span>
+                  {s.degraded && <span className="tag">degraded</span>}
+                  {!s.active && <span className="tag">inactive</span>}
+                  {!s.autoRefresh && <span className="tag">manual only</span>}
+                </span>
+              }
+              headerRight={
+                <div className="entity-row-actions" onClick={(e) => e.stopPropagation()}>
+                  {refreshResult[s.id] && <span className="small">{refreshResult[s.id]}</span>}
+                  {s.type !== "manual_import" && (
+                    <button className="small-btn secondary" onClick={() => refreshSource(s.id)} disabled={refreshing === s.id}>
+                      {refreshing === s.id ? "Refreshing…" : "Refresh now"}
+                    </button>
+                  )}
+                  <button className="small-btn secondary" onClick={() => remove(s.id)}>
+                    Delete
+                  </button>
                 </div>
-                {s.lastError && <div className="small error-text">{s.lastError}</div>}
-                {refreshResult[s.id] && <div className="small">{refreshResult[s.id]}</div>}
+              }
+            >
+              <div className="small muted" style={{ marginBottom: 10 }}>
+                {s.baseUrl}
+                {s.searchUrlTemplate && ` · ${s.searchUrlTemplate}`}
+                <br />
+                Last refreshed: {s.lastRefreshedAt ? new Date(s.lastRefreshedAt).toLocaleString() : "never"}
+                {s.lastTriggeredBy && ` by ${s.lastTriggeredBy}`}
+                {s.lastMatchedCount !== null && ` (${s.lastMatchedCount} prices)`}
+                {s.lastError && (
+                  <>
+                    <br />
+                    <span className="error-text">{s.lastError}</span>
+                  </>
+                )}
               </div>
-              <div className="entity-row-actions">
-                {s.type !== "manual_import" && (
-                  <button className="small-btn secondary" onClick={() => refreshSource(s.id)} disabled={refreshing === s.id}>
-                    {refreshing === s.id ? "Refreshing…" : "Refresh now"}
-                  </button>
-                )}
-                {(s.type === "scrape" || s.type === "manual_import") && (
-                  <button
-                    className="small-btn secondary"
-                    onClick={() => setShowAttempts(showAttempts === s.id ? null : s.id)}
-                  >
-                    {showAttempts === s.id ? "Hide results" : "View results"}
-                  </button>
-                )}
-                {(s.type === "jeftinije_hr" || s.type === "notino_hr" || s.type === "manual_import") && (
-                  <button
-                    className="small-btn secondary"
-                    onClick={() => setShowAmbiguous(showAmbiguous === s.id ? null : s.id)}
-                  >
-                    {showAmbiguous === s.id ? "Hide review queue" : "Review queue"}
-                  </button>
-                )}
-                <button className="small-btn secondary" onClick={() => setEditing(s)}>
-                  Edit
-                </button>
-                <button className="small-btn secondary" onClick={() => remove(s.id)}>
-                  Delete
-                </button>
-              </div>
-            </div>
-            {s.type === "manual_import" && <ManualImportPanel source={s} onImported={refresh} />}
-            {showAttempts === s.id && <ScrapeAttemptsPanel sourceId={s.id} sourceType={s.type} />}
-            {showAmbiguous === s.id && <AmbiguousMatchesPanel sourceId={s.id} />}
-          </div>
-        ))}
+
+              {tabs.length > 1 && (
+                <div className="tabs compact">
+                  {tabs.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      className={openTab === t.key ? "active" : "secondary"}
+                      onClick={() => setOpenTab(t.key)}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {openTab === "edit" && (
+                <SourceForm
+                  storeId={storeId}
+                  source={s}
+                  onDone={() => {
+                    setOpenSourceId(null);
+                    refresh();
+                  }}
+                  onCancel={() => setOpenSourceId(null)}
+                />
+              )}
+              {openTab === "import" && s.type === "manual_import" && <ManualImportPanel source={s} onImported={refresh} />}
+              {openTab === "results" && <ScrapeAttemptsPanel sourceId={s.id} sourceType={s.type} />}
+              {openTab === "queue" && <AmbiguousMatchesPanel sourceId={s.id} />}
+            </AccordionItem>
+          );
+        })}
         {sources.length === 0 && <p className="muted">No sources yet.</p>}
       </div>
-      {!showForm && sources.length < MAX_SOURCES_PER_STORE && (
-        // Always available, even while an Edit form is open below — previously
-        // this button disappeared the moment you clicked Edit on an existing
-        // source, with no other visible way to start a genuinely new one. That
-        // made it easy to mistake the still-open Edit form for an "add" form
-        // and overwrite an existing source's URL/label instead of creating a
-        // second one (exactly what happened to jeftinije.hr -> zivada.hr).
-        <button
-          onClick={() => {
-            setEditing(null);
-            setShowForm(true);
-          }}
-        >
-          + Add source
-        </button>
+
+      {!addingSource && !openSourceId && sources.length < MAX_SOURCES_PER_STORE && (
+        <button onClick={() => setAddingSource(true)}>+ Add source</button>
       )}
-      {sources.length >= MAX_SOURCES_PER_STORE && !editing && !showForm && (
+      {sources.length >= MAX_SOURCES_PER_STORE && !addingSource && (
         <p className="muted small">Maximum of {MAX_SOURCES_PER_STORE} sources per store.</p>
       )}
-      {(showForm || editing) && (
-        <SourceForm
-          storeId={storeId}
-          source={editing}
-          onDone={() => {
-            setShowForm(false);
-            setEditing(null);
-            refresh();
-          }}
-          onCancel={() => {
-            setShowForm(false);
-            setEditing(null);
-          }}
-        />
+      {addingSource && (
+        <div className="accordion-item">
+          <div className="accordion-body" style={{ borderTop: "none" }}>
+            <SourceForm
+              storeId={storeId}
+              source={null}
+              onDone={() => {
+                setAddingSource(false);
+                refresh();
+              }}
+              onCancel={() => setAddingSource(false)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -524,7 +633,7 @@ function ManualImportPanel({ source, onImported }: { source: Source; onImported:
   }
 
   return (
-    <div className="card" style={{ marginTop: 4, marginBottom: 12 }}>
+    <div>
       <p className="muted small">
         1. Download the research template (every product, plus a suggested search URL). 2. Search {source.baseUrl} for
         each one and fill in <code>competitor_price</code> (or mark <code>not_found</code>) on the same file. 3.
@@ -549,7 +658,7 @@ function ManualImportPanel({ source, onImported }: { source: Source; onImported:
       )}
       <p className="muted small" style={{ marginTop: 12 }}>
         If your research turned up candidates you weren't sure about, upload that separate review file (e.g.{" "}
-        <code>ambiguous_review.csv</code>) here — they'll show up in the "Review queue" below instead of needing to
+        <code>ambiguous_review.csv</code>) here — they'll show up under the "Review queue" tab instead of needing to
         be resolved by hand in the spreadsheet.
       </p>
       <div className="form-row">
@@ -573,6 +682,7 @@ function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourc
   const [attempts, setAttempts] = useState<ScrapeAttempt[] | null>(null);
 
   useEffect(() => {
+    setAttempts(null);
     api<ScrapeAttempt[]>(`/sources/${sourceId}/attempts`).then(setAttempts);
   }, [sourceId]);
 
@@ -581,7 +691,7 @@ function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourc
     return (
       <p className="muted small">
         {sourceType === "manual_import"
-          ? "No results imported yet — download the template above, fill it in, and upload it."
+          ? "No results imported yet — switch to the Import tab, download the template, fill it in, and upload it."
           : 'No products searched yet — click "Refresh now" first.'}
       </p>
     );
@@ -590,7 +700,7 @@ function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourc
   const foundCount = attempts.filter((a) => a.found).length;
 
   return (
-    <div className="card" style={{ marginTop: 4, marginBottom: 12 }}>
+    <div>
       <p className="muted small">
         {foundCount} of {attempts.length} {sourceType === "manual_import" ? "researched" : "searched"} products
         currently have a price from this source.
@@ -650,6 +760,7 @@ function AmbiguousMatchesPanel({ sourceId }: { sourceId: string }) {
   }
 
   useEffect(() => {
+    setMatches(null);
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceId]);
@@ -684,11 +795,11 @@ function AmbiguousMatchesPanel({ sourceId }: { sourceId: string }) {
   }
 
   return (
-    <div className="card" style={{ marginTop: 4, marginBottom: 12 }}>
+    <div>
       <p className="muted small">
-        {matches.length} product(s) with more than one plausible jeftinije.hr listing. Pick the right one, or dismiss if
-        none of them are actually a match — dismissing keeps it from reappearing unless the crawl finds different
-        candidates next time.
+        {matches.length} product(s) with more than one plausible listing. Pick the right one, or dismiss if none of
+        them are actually a match — dismissing keeps it from reappearing unless the crawl finds different candidates
+        next time.
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {matches.map((m) => (
@@ -804,17 +915,13 @@ function SourceForm({
   }
 
   return (
-    <form className="card form" onSubmit={handleSubmit}>
-      <p className="small" style={{ margin: "0 0 4px" }}>
-        {isEdit ? (
-          <>
-            Editing <strong>{source!.label}</strong> — changing its URL/type replaces this source's identity, not
-            adds a new one. Use "+ Add source" instead if you meant to track another site.
-          </>
-        ) : (
-          <strong>New source</strong>
-        )}
-      </p>
+    <form className="form" style={{ marginBottom: 0 }} onSubmit={handleSubmit}>
+      {isEdit && (
+        <p className="small" style={{ margin: "0 0 4px" }}>
+          Changing this source's URL/type replaces its identity, not adds a new one. Use "+ Add source" instead if
+          you meant to track another site.
+        </p>
+      )}
       <div className="form-row">
         <label>
           Label
@@ -853,7 +960,7 @@ function SourceForm({
       {type === "jeftinije_hr" && (
         <p className="muted small" style={{ margin: 0 }}>
           Crawls jeftinije.hr's brand-filtered listing pages once per run (no per-product search) and matches
-          strictly against brand + ml + concentration; anything less than certain goes to the "Review queue" instead
+          strictly against brand + ml + concentration; anything less than certain goes to the review queue instead
           of being guessed.
         </p>
       )}
@@ -909,8 +1016,8 @@ function CostsImport({ storeId }: { storeId: string }) {
   return (
     <div className="card">
       <p className="muted small">
-        CSV with two columns: SKU or EAN, then cost (a header row is optional). Used for the margin floor guard — products
-        without a cost on file fall back to a percentage of the current price instead.
+        CSV with two columns: SKU or EAN, then cost (a header row is optional). Used for the margin floor guard —
+        products without a cost on file fall back to a percentage of the current price instead.
       </p>
       <input type="file" accept=".csv,text/csv" onChange={handleFile} disabled={importing} />
       {result && (
