@@ -468,17 +468,22 @@ voiceRouter.get("/meet/status", (_req, res) => {
 });
 
 // Triggers an out-of-cycle sync (e.g. "I just finished a meeting, pull it
-// now" instead of waiting for the next cron tick). Runs the same
-// runGoogleMeetSync() the scheduler calls, awaited so the response reflects
-// what actually happened rather than firing-and-forgetting a poll the admin
-// can't see the result of.
-voiceRouter.post("/meet/poll-now", async (req, res) => {
-  try {
-    const result = await runGoogleMeetSync(req.body?.force === true);
-    res.json({ ok: true, result });
-  } catch (err) {
-    res.status(502).json({ ok: false, error: err instanceof Error ? err.message : "Грешка при синхронизация" });
-  }
+// now" instead of waiting for the next cron tick) — the same
+// runGoogleMeetSync() the scheduler calls. NOT awaited: downloading,
+// ffmpeg-transcoding and Whisper/Claude-processing even a couple of real
+// recordings easily runs past a typical reverse-proxy request timeout,
+// which used to kill the connection mid-sync (the browser saw a bare
+// "NetworkError", not an actual error response, and the admin had no way
+// to tell whether it had done anything at all). runGoogleMeetSync already
+// tracks its own in-progress/last-result state (see getLastGoogleMeetSyncResult),
+// exactly what GET /meet/status exists to expose — so this just kicks the
+// sync off in the background and returns immediately; the frontend polls
+// status instead of waiting on this response.
+voiceRouter.post("/meet/poll-now", (req, res) => {
+  runGoogleMeetSync(req.body?.force === true).catch((err) => {
+    console.error("[voice] meet/poll-now background sync crashed:", err);
+  });
+  res.json({ ok: true, started: true });
 });
 
 // Re-runs Claude extraction on an already-stored transcript — useful when

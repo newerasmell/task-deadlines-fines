@@ -26,12 +26,22 @@ function GoogleMeetPanel() {
     void loadStatus();
   }, []);
 
+  // The sync itself runs in the background on the server (see the route's
+  // own comment — downloading/transcoding/transcribing real recordings
+  // easily outlasts a reverse-proxy request timeout), so this fires it and
+  // then polls status every couple seconds until inProgress clears, instead
+  // of waiting on one long request the browser might kill mid-flight.
   async function syncNow(force = false) {
     setSyncing(true);
     setError(null);
     try {
       await api("/voice/meet/poll-now", { method: "POST", body: JSON.stringify({ force }) });
-      await loadStatus();
+      for (let i = 0; i < 150; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const s = await api<GoogleMeetStatus>("/voice/meet/status");
+        setStatus(s);
+        if (!s.inProgress) break;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("Грешка при синхронизация."));
     } finally {
