@@ -36,22 +36,34 @@ async function probeDurationSeconds(filePath: string): Promise<number> {
 }
 
 export interface AudioChunks {
-  // Absolute paths, in order — each a real .mp3 file under maxBytes.
+  // Absolute paths, in order — each a real .mp3 file under maxBytes and
+  // MAX_CHUNK_SECONDS long.
   paths: string[];
   // Removes the temp directory these live in. Always call this once done
   // reading them, success or failure.
   cleanup: () => Promise<void>;
 }
 
+// Whisper (whisper-1) is prone to drifting into repeated/hallucinated text
+// partway through a single very long transcription request — confirmed live
+// on a real 44-minute recording that came back coherent for the first
+// couple of minutes and then degenerated into a repeating "..." loop for
+// the rest, despite the whole thing fitting well under the byte-size cap
+// (a 44-minute mono 64kbps mp3 is only ~21MB). Capping chunk length by
+// duration too, independent of size, keeps every single Whisper call short
+// enough to stay reliable.
+const MAX_CHUNK_SECONDS = 600;
+
 /**
  * Turns a downloaded recording (already on disk — see downloadFileToTempFile,
  * never a Buffer: a Meet recording can be a long video, and loading that
  * whole thing into memory risks an OOM crash well before this even gets to
  * shrink it down) into one or more audio chunk files, each safely under
- * Whisper's hard per-file cap. Always transcodes to mono, low-bitrate MP3
- * first — dropping the video track alone is usually enough to get well
- * under the cap on its own — and only splits into multiple segments if the
- * transcoded audio is still too big. Byte-slicing the original container
+ * Whisper's hard per-file cap and MAX_CHUNK_SECONDS long. Always transcodes
+ * to mono, low-bitrate MP3 first — dropping the video track alone is
+ * usually enough to get well under the size cap on its own — then splits
+ * into multiple segments if the transcoded audio is still too big OR too
+ * long, whichever needs more pieces. Byte-slicing the original container
  * instead (skipping ffmpeg) would produce invalid, undecodable fragments
  * for formats like mp4/webm, so every path here goes through a real
  * transcode. Returns file paths rather than loaded buffers so a long
@@ -68,12 +80,16 @@ export async function prepareAudioChunks(inputPath: string, maxBytes: number): P
     const fullMp3Path = path.join(dir, "full.mp3");
     await run(ffmpegPath, ["-y", "-i", inputPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", fullMp3Path]);
     const fullMp3Size = (await stat(fullMp3Path)).size;
-    if (fullMp3Size <= maxBytes) return { paths: [fullMp3Path], cleanup };
-
     const durationSeconds = await probeDurationSeconds(fullMp3Path);
-    const chunkCount = Math.ceil(fullMp3Size / maxBytes);
+
+    const chunksForSize = Math.ceil(fullMp3Size / maxBytes);
+    const chunksForDuration = Math.ceil(durationSeconds / MAX_CHUNK_SECONDS);
+    const chunkCount = Math.max(chunksForSize, chunksForDuration, 1);
+    if (chunkCount <= 1) return { paths: [fullMp3Path], cleanup };
+
     // A floor keeps a single-frame remainder from ffmpeg's segment muxer's
-    // own overhead from ever pushing a chunk back over maxBytes.
+    // own overhead from ever pushing a chunk back over maxBytes or
+    // MAX_CHUNK_SECONDS.
     const chunkSeconds = Math.max(30, Math.floor(durationSeconds / chunkCount));
 
     const segmentPattern = path.join(dir, "chunk_%04d.mp3");
