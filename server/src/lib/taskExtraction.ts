@@ -152,7 +152,10 @@ ${globalRules ? `\nОбщи правила за разпределяне (важ
 Върни САМО валиден JSON масив от такива обекти (обикновени "extracted" задачи и евентуални "ai_opportunity" предложения, смесени в един масив) — без markdown code fences (без \`\`\`), без обяснителен текст преди или след него. Ако в транскрипта няма никакви конкретни задачи, върни празен масив [].`;
 }
 
-async function callClaude(systemPrompt: string, userMessage: string): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+async function callClaude(
+  systemPrompt: string,
+  userMessage: string
+): Promise<{ text: string; inputTokens: number; outputTokens: number; stopReason: string | null }> {
   if (!env.anthropicApiKey) {
     throw new Error("ANTHROPIC_API_KEY не е зададен на сървъра — извличането на задачи изисква го.");
   }
@@ -166,7 +169,14 @@ async function callClaude(systemPrompt: string, userMessage: string): Promise<{ 
     },
     body: JSON.stringify({
       model: process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
-      max_tokens: 4096,
+      // A long meeting (40+ minutes) can genuinely produce a dozen-plus
+      // tasks, each with a title/description/definition_of_done/quote — the
+      // old 4096 cap was silently truncating the JSON array mid-object on
+      // exactly those, which then failed to parse (surfaced as "Claude did
+      // not return valid JSON" with no hint that it was actually a length
+      // cutoff). Non-streaming, so kept well under the point token volumes
+      // this large would need streaming to avoid an HTTP timeout.
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     }),
@@ -180,12 +190,18 @@ async function callClaude(systemPrompt: string, userMessage: string): Promise<{ 
   const data = (await res.json()) as {
     content: { type: string; text?: string }[];
     usage?: { input_tokens: number; output_tokens: number };
+    stop_reason?: string;
   };
   const text = data.content
     .filter((b) => b.type === "text" && b.text)
     .map((b) => b.text)
     .join("");
-  return { text, inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0 };
+  return {
+    text,
+    inputTokens: data.usage?.input_tokens ?? 0,
+    outputTokens: data.usage?.output_tokens ?? 0,
+    stopReason: data.stop_reason ?? null,
+  };
 }
 
 // Claude is instructed not to wrap its answer in fences, but models don't
@@ -237,7 +253,13 @@ export async function extractTasks(transcriptText: string): Promise<ExtractionRe
     };
   }
 
-  throw new ExtractionParseError("Claude не върна валиден JSON и след повторен опит.", retry.text);
+  const truncated = retry.stopReason === "max_tokens";
+  throw new ExtractionParseError(
+    truncated
+      ? "Claude отговорът беше отрязан заради лимита на токени (твърде много извлечени задачи за един разговор) и след повторен опит."
+      : "Claude не върна валиден JSON и след повторен опит.",
+    retry.text
+  );
 }
 
 // Used whenever the conversation names a date/deadline but never states a
