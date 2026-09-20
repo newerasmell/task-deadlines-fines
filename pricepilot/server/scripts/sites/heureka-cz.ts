@@ -1,8 +1,25 @@
 import * as cheerio from "cheerio";
+import { canonBrand } from "../../src/lib/jeftinijeMatcher";
 import { runSite } from "../lib/runSite";
-import type { Listing, SiteConfig } from "../lib/types";
+import type { Listing, ProductRow, SiteConfig } from "../lib/types";
 
 const BASE = "https://parfemy.heureka.cz";
+
+// Confirmed live: "/f:q:<term>/" is a pure free-text filter within the
+// parfemy.heureka.cz category — no site-specific numeric facet/value ID
+// needed (unlike "/f:5371:158810/", which IS one such ID and isn't worth
+// hunting down per brand when this plain-text form already works). Reuses
+// jeftinijeMatcher's own canonBrand() so e.g. "Giorgio Armani" and "Emporio
+// Armani" in the CSV collapse into the one "armani" search instead of three
+// separate, overlapping crawls.
+function categoryUrlsForBrands(products: ProductRow[]): string[] {
+  const brands = new Set<string>();
+  for (const p of products) {
+    const brand = canonBrand(p.vendor);
+    if (brand) brands.add(brand);
+  }
+  return [...brands].sort().map((brand) => `${BASE}/f:q:${encodeURIComponent(brand)}/`);
+}
 
 // "1 199 – 1 819 Kč" (Heureka aggregates several shops per product and shows
 // their price range) or "1 595 Kč" (only one shop). &nbsp; is used as the
@@ -66,13 +83,11 @@ export const heurekaCz: SiteConfig = {
   id: "heureka-cz",
   label: "Heureka.cz",
   baseUrl: BASE,
-  // Brand-filtered category pages, one per brand the store carries — e.g.
-  // "https://parfemy.heureka.cz/f:5371:158810;q:si/" (Armani, "Sí" line).
-  // Crawling the whole /parfemy.heureka.cz/ category instead would pull in
-  // every brand's listings, most of them irrelevant to any one store's
-  // catalog — fill this in with the store's actual carried brands before
-  // running (see scripts/README.md for how to find each filter URL).
+  // Static fallback only — categoryUrlsFor below builds the real list from
+  // whichever CSV is actually being run, so it never goes stale as the
+  // store's catalog changes.
   categoryUrls: [],
+  categoryUrlsFor: categoryUrlsForBrands,
   locale: "cs-CZ",
   // Page embeds Cloudflare's bot-management challenge-platform script
   // (window.__CF$cv$params) — a plain HTTP GET is likely to get a challenge

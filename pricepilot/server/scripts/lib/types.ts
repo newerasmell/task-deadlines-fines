@@ -50,8 +50,15 @@ export interface SiteConfig {
   // Perfumery/cosmetics category (or search) listing pages to crawl — one
   // run walks all of them, paginating each with crawlCategory(). Left as a
   // clearly-marked placeholder until real HTML confirms the real category
-  // URLs and pagination scheme (see scripts/README.md).
+  // URLs and pagination scheme (see scripts/README.md). Ignored when
+  // categoryUrlsFor is set.
   categoryUrls: string[];
+  // For a site whose search/filter URL needs no site-specific numeric ID
+  // (e.g. Heureka.cz's "/f:q:<brand>/" free-text filter) — builds one
+  // listing URL per brand actually present in the CSV being run, instead of
+  // a hand-maintained static list that goes stale the moment the store's
+  // catalog changes. Takes priority over categoryUrls when present.
+  categoryUrlsFor?: (products: ProductRow[]) => string[];
   // BCP-47 locale for the fetcher's Accept-Language header / browser
   // context — matters for sites that serve different markup per locale.
   locale: string;

@@ -20,19 +20,22 @@ export async function runSite(site: SiteConfig): Promise<void> {
   const outDir = outDirArg ?? join(dirname(inputCsv), "..", "out");
   const inputLabel = basename(inputCsv);
 
-  if (site.categoryUrls.length === 0) {
-    console.error(`[${site.id}] categoryUrls is empty — fill it in before running (see scripts/lib/types.ts).`);
-    process.exitCode = 1;
-    return;
-  }
-
   const products = loadProducts(inputCsv);
   console.log(`[${site.id}] loaded ${products.length} products from ${inputLabel}`);
 
-  const fetcher = new SiteFetcher(site);
+  const categoryUrls = site.categoryUrlsFor ? site.categoryUrlsFor(products) : site.categoryUrls;
+  if (categoryUrls.length === 0) {
+    console.error(`[${site.id}] no category URLs to crawl — fill in categoryUrls (see scripts/lib/types.ts).`);
+    process.exitCode = 1;
+    return;
+  }
+  const resolvedSite: SiteConfig = { ...site, categoryUrls };
+  console.log(`[${site.id}] crawling ${categoryUrls.length} category URLs`);
+
+  const fetcher = new SiteFetcher(resolvedSite);
   let listings;
   try {
-    const crawl = await crawlSite(fetcher, site);
+    const crawl = await crawlSite(fetcher, resolvedSite);
     listings = crawl.listings;
     console.log(`[${site.id}] crawl done: ${crawl.stats.pagesFetched} pages, ${crawl.stats.listingsFound} listings`);
   } finally {

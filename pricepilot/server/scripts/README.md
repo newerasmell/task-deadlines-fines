@@ -28,13 +28,17 @@ a script, review the output, then upload it.
 
 ## Before running a site for the first time
 
-Every `SiteConfig` in `scripts/sites/*.ts` ships with `categoryUrls: []` —
-crawling won't do anything until that's filled in with real listing/category
-URLs for the brands the target store actually carries. For a price-comparison
-site like Heureka.cz, that's a brand (and often line) filtered URL, e.g.
-`https://parfemy.heureka.cz/f:5371:158810;q:si/` for Giorgio Armani's "Sì"
-line — found by using the site's own brand/category filters and copying the
-resulting URL, not by guessing the filter ID scheme.
+A `SiteConfig` gets its listing URLs one of two ways:
+
+- **`categoryUrls: string[]`** — a hand-maintained static list. Ships empty;
+  fill it in with real category/filter URLs before running a site that uses
+  this (found by using the site's own brand/category filters and copying the
+  resulting URL, not by guessing any internal filter-ID scheme).
+- **`categoryUrlsFor(products)`** — built fresh on every run from whichever
+  CSV you feed it, so it never goes stale as the store's catalog changes.
+  Takes priority over `categoryUrls` when a site defines it. Heureka.cz uses
+  this: it builds one `/f:q:<brand>/` free-text search URL per distinct
+  brand in the input CSV (no site-specific numeric ID needed for that one).
 
 Also double check `needsBrowser` and `locale` are right for that site before
 a real run — see the comments on `SiteConfig` in `scripts/lib/types.ts`.
