@@ -234,10 +234,10 @@ export function PricingTable() {
     refresh();
   }
 
-  function openManualEntry(productId: string, sourceId: string) {
+  function openManualEntry(productId: string, sourceId: string, existing?: { price: number; url: string | null }) {
     setManualEntryOpen(`${productId}:${sourceId}`);
-    setManualPrice("");
-    setManualUrl("");
+    setManualPrice(existing ? String(existing.price) : "");
+    setManualUrl(existing?.url ?? "");
     setManualError(null);
   }
 
@@ -463,14 +463,7 @@ export function PricingTable() {
                     const isEditing = manualEntryOpen === cellKey;
                     return (
                       <td key={s.id} className={`source-cell${cell?.stale ? " stale" : ""}`}>
-                        {cell ? (
-                          <a href={cell.url ?? undefined} target="_blank" rel="noreferrer" title={cell.url ?? undefined}>
-                            {fmtMoney(cell.price, cell.currency)}
-                            <div className="small">
-                              {fmtFreshness(cell.fetchedAt)} {cell.stale && "⚠️"}
-                            </div>
-                          </a>
-                        ) : isEditing ? (
+                        {isEditing ? (
                           <div className="manual-entry-form">
                             <input
                               type="number"
@@ -501,6 +494,29 @@ export function PricingTable() {
                               </button>
                             </div>
                           </div>
+                        ) : cell ? (
+                          <>
+                            <a href={cell.url ?? undefined} target="_blank" rel="noreferrer" title={cell.url ?? undefined}>
+                              {fmtMoney(cell.price, cell.currency)}
+                              <div className="small">
+                                {fmtFreshness(cell.fetchedAt)} {cell.stale && "⚠️"}
+                              </div>
+                            </a>
+                            {cell.isManual && (
+                              <div className="manual-badge-row">
+                                <span className="badge manual-badge" title="Entered by hand, not from an automated source">
+                                  Manual
+                                </span>
+                                <button
+                                  className="edit-manual-btn"
+                                  onClick={() => openManualEntry(row.productId, s.id, { price: cell.price, url: cell.url })}
+                                  title="Edit this manual entry"
+                                >
+                                  ✎
+                                </button>
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <button className="add-manually-btn" onClick={() => openManualEntry(row.productId, s.id)} title={`Add a ${s.label} price manually`}>
                             + Add

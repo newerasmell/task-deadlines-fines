@@ -81,7 +81,10 @@ pricingRouter.get("/:storeId", async (req, res) => {
       noCostFloorPct: env.noCostFloorPct,
     });
 
-    const sourcePrices: Record<string, { price: number; currency: string; url: string | null; fetchedAt: string; stale: boolean }> = {};
+    const sourcePrices: Record<
+      string,
+      { price: number; currency: string; url: string | null; fetchedAt: string; stale: boolean; isManual: boolean }
+    > = {};
     for (const m of matches) {
       sourcePrices[m.sourceId] = {
         price: m.price,
@@ -89,6 +92,7 @@ pricingRouter.get("/:storeId", async (req, res) => {
         url: m.url,
         fetchedAt: m.fetchedAt.toISOString(),
         stale: now - m.fetchedAt.getTime() > STALE_AFTER_MS,
+        isManual: m.isManual,
       };
     }
 

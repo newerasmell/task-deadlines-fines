@@ -29,6 +29,7 @@ async function upsertCompetitorPrice(params: {
   price: number;
   currency: string;
   url: string | null;
+  isManual: boolean;
 }) {
   const now = new Date();
   await prisma.competitorPrice.upsert({
@@ -106,6 +107,7 @@ async function refreshShopifyJsonSource(store: Store, source: Source): Promise<n
           price,
           currency: store.currency,
           url: `${source.baseUrl.replace(/\/$/, "")}/products/${product.id}`,
+          isManual: false,
         });
         matched++;
       }
@@ -160,8 +162,9 @@ export async function recordFoundPrice(params: {
   product: Product;
   price: number;
   url: string;
+  isManual?: boolean;
 }): Promise<void> {
-  const { source, store, product, price, url } = params;
+  const { source, store, product, price, url, isManual = false } = params;
   const matchKey = product.barcode
     ? normalizeBarcode(product.barcode)
     : buildFallbackMatchKey(product.vendor, product.title);
@@ -175,6 +178,7 @@ export async function recordFoundPrice(params: {
     price,
     currency: store.currency,
     url,
+    isManual,
   });
   await upsertScrapeAttempt({ sourceId: source.id, productId: product.id, found: true, price, error: null, url });
 }

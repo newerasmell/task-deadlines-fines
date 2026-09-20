@@ -279,6 +279,7 @@ model CompetitorPrice {
   price             Float
   currency          String
   url               String?
+  isManual          Boolean  @default(false) // entered by hand on the Pricing Table for a product no automated source found, vs. written by a scraper/CSV import
 
   fetchedAt         DateTime @default(now())
   createdAt         DateTime @default(now())

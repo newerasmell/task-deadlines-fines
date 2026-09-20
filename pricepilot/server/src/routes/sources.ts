@@ -373,7 +373,7 @@ sourcesRouter.post("/:id/manual-entry", async (req, res) => {
     return res.status(404).json({ error: "Product not found on this source's store" });
   }
 
-  await recordFoundPrice({ source, store: source.store, product, price, url });
+  await recordFoundPrice({ source, store: source.store, product, price, url, isManual: true });
   await resolveMatchesForStore(source.storeId);
 
   res.json({ ok: true });

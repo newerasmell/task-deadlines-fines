@@ -401,6 +401,32 @@ table.pricing-table tbody tr:hover {
   gap: 6px;
 }
 
+.manual-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.manual-badge {
+  background: var(--info-bg);
+  color: var(--primary);
+}
+
+.edit-manual-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85em;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.edit-manual-btn:hover {
+  color: var(--primary);
+}
+
 .badge {
   display: inline-block;
   padding: 3px 9px;

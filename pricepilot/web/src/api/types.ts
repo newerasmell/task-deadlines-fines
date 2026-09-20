@@ -144,6 +144,7 @@ export interface SourcePriceCell {
   url: string | null;
   fetchedAt: string;
   stale: boolean;
+  isManual: boolean;
 }
 
 export interface PricingRow {
