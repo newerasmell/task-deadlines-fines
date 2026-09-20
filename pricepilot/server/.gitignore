@@ -4,3 +4,4 @@ dist/
 *.db
 *.db-journal
 scripts/out/*.csv
+scripts/local/__pycache__/
