@@ -29,6 +29,13 @@ export type PricingProfile = "competitor" | "cod_formula";
 export type SourceType = "shopify_json" | "scrape" | "manual_import" | "jeftinije_hr" | "notino_hr";
 export type RowFlag = "above-market" | "competitive" | "below-market" | "below-floor" | "no-data";
 
+export interface Group {
+  id: string;
+  name: string;
+  createdAt: string;
+  storeCount?: number;
+}
+
 export interface Store {
   id: string;
   name: string;
@@ -41,6 +48,7 @@ export interface Store {
   priceEnding: string | null;
   minMarginPct: number;
   pricingProfile: PricingProfile;
+  groupId: string | null;
   hasClientSecret: boolean;
   createdAt: string;
   updatedAt: string;

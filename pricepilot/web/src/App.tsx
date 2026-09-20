@@ -9,6 +9,8 @@ import { PricingTable } from "./pages/PricingTable";
 import { Unmatched } from "./pages/Unmatched";
 import { PublishLog } from "./pages/PublishLog";
 import { Settings } from "./pages/Settings";
+import { Stores } from "./pages/Stores";
+import { StoreSettings } from "./pages/StoreSettings";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { authenticated, loading } = useAuth();
@@ -32,6 +34,8 @@ function AppRoutes() {
         <Route path="/unmatched" element={<Unmatched />} />
         <Route path="/publish-log" element={<PublishLog />} />
         <Route path="/audit-log" element={<AuditLog />} />
+        <Route path="/stores" element={<Stores />} />
+        <Route path="/stores/:storeId" element={<StoreSettings />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

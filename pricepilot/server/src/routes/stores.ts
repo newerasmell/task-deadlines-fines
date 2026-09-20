@@ -33,6 +33,7 @@ const createSchema = z.object({
   priceEnding: z.string().nullable().optional(),
   minMarginPct: z.number().nonnegative().default(10),
   pricingProfile: z.enum(["competitor", "cod_formula"]).default("competitor"),
+  groupId: z.string().nullable().optional(),
 });
 
 storesRouter.post("/", async (req, res) => {

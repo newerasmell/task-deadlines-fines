@@ -54,6 +54,20 @@ model AuditLog {
   @@index([actorId])
 }
 
+// Purely organizational — lets a lot of stores be browsed/managed a group
+// at a time (Settings used to list every store flat in one place, which
+// stopped being usable once there were more than a handful). A store
+// without a group shows up under a synthetic "Ungrouped" bucket in the UI
+// rather than needing one.
+model Group {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stores    Store[]
+}
+
 // One row per configured Shopify store/market. admin_api_token is stored
 // AES-256-GCM encrypted (see lib/crypto.ts) — never written or read in
 // plaintext outside that helper. Pricing rule fields are flattened onto the
@@ -67,6 +81,8 @@ model Store {
   shopifyClientSecret String // encrypted at rest — exchanged for a short-lived Admin API access token via the client_credentials grant, not used directly (see shopifyClient.ts)
   marketCode        String
   currency          String
+  groupId           String?
+  group             Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   pricingStrategy   String   @default("undercut_min") // undercut_min | match_min | undercut_avg
   undercutPct       Float    @default(1)

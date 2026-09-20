@@ -13,6 +13,7 @@ import { auditLogRouter } from "./routes/auditLog";
 import { authRouter } from "./routes/auth";
 import { codConfigRouter } from "./routes/codConfig";
 import { costsRouter } from "./routes/costs";
+import { groupsRouter } from "./routes/groups";
 import { pricingRouter } from "./routes/pricing";
 import { publishRouter } from "./routes/publish";
 import { publishLogRouter } from "./routes/publishLog";
@@ -49,6 +50,7 @@ export function createApp() {
 
   // Everything else under /api requires a logged-in session.
   app.use("/api/stores", requireAuth, storesRouter);
+  app.use("/api/groups", requireAuth, groupsRouter);
   app.use("/api/sources", requireAuth, sourcesRouter);
   app.use("/api/pricing", requireAuth, pricingRouter);
   app.use("/api/publish", requireAuth, publishRouter);

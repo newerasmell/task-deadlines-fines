@@ -1,6 +1,9 @@
 import { prisma } from "./prisma";
 
 export type AuditAction =
+  | "GROUP_CREATED"
+  | "GROUP_UPDATED"
+  | "GROUP_DELETED"
   | "STORE_CREATED"
   | "STORE_UPDATED"
   | "STORE_DELETED"

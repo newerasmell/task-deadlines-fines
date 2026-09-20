@@ -1,15 +1,17 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "../api/client";
-import type { Store } from "../api/types";
+import type { Group, Store } from "../api/types";
 import { useAuth } from "./AuthContext";
 
 interface StoreContextValue {
   stores: Store[];
+  groups: Group[];
   currentStore: Store | null;
   setCurrentStoreId: (id: string) => void;
   loading: boolean;
   refreshStores: () => Promise<void>;
+  refreshGroups: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null);
@@ -17,6 +19,7 @@ const StoreContext = createContext<StoreContextValue | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { authenticated } = useAuth();
   const [stores, setStores] = useState<Store[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [currentStoreId, setCurrentStoreId] = useState<string>(() => localStorage.getItem("pp.storeId") ?? "");
   const [loading, setLoading] = useState(true);
 
@@ -34,9 +37,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function refreshGroups() {
+    setGroups(await api<Group[]>("/groups"));
+  }
+
   useEffect(() => {
     if (!authenticated) return;
-    refreshStores().finally(() => setLoading(false));
+    Promise.all([refreshStores(), refreshGroups()]).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated]);
 
@@ -48,7 +55,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const currentStore = stores.find((s) => s.id === currentStoreId) ?? null;
 
   return (
-    <StoreContext.Provider value={{ stores, currentStore, setCurrentStoreId, loading, refreshStores }}>
+    <StoreContext.Provider
+      value={{ stores, groups, currentStore, setCurrentStoreId, loading, refreshStores, refreshGroups }}
+    >
       {children}
     </StoreContext.Provider>
   );

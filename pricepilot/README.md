@@ -41,8 +41,9 @@ First run: the login page shows a one-time "create the first account" form —
 your name/email/a real password, plus `DASHBOARD_PASSWORD` to prove you're
 allowed to set it up. Every teammate after that gets added from inside the
 app (Settings → Team), no shared password involved. See Accounts & audit log
-below. Add a store under Settings, paste the Shopify app's Client ID and
-Client secret (below), "Test connection", then "Sync now".
+below. Add a store under **Stores** (optionally into a group first — see
+Stores & groups below), paste the Shopify app's Client ID and Client secret
+(below), "Test connection", then "Sync now".
 
 ## Creating a Shopify app for a store
 
@@ -71,7 +72,7 @@ even though the token behind them isn't.
 5. Back in the Dev Dashboard, open the app → **Settings** → **Credentials**.
    Copy the **Client ID** and **Secret** (`shpss_…`) shown there — this is
    the pair PricePilot needs, entered as **Client ID** and **Client secret**
-   when adding the store in Settings.
+   when adding the store under Stores.
 
 Do **not** use the **App automation token** (`atkn_…`) section on that same
 page — that's for authenticating the Shopify CLI in CI/CD pipelines
@@ -111,14 +112,14 @@ Up to 4 per store.
   price after two consecutive not-found results, to absorb one-off page
   load hiccups. Polite by design: ~1 request per 2-3s, a real User-Agent,
   30s timeout, no proxies, no CAPTCHA bypass — a source that keeps failing
-  gets flagged `degraded` in Settings rather than retried harder. Every
+  gets flagged `degraded` on that store's Stores page rather than retried harder. Every
   `scrape` product is anchored to a specific one of our products from the
   start (we searched *for* it), so there's no ambiguous matching step for
   this source type — only `shopify_json` listings ever land in the
   Unmatched tab.
 - **`manual_import`** — for sites that block automated fetching outright
   (bot detection a headless browser can't get past): instead of a live
-  fetch, Settings offers a "Download template" CSV (every product, its
+  fetch, that store's Stores page offers a "Download template" CSV (every product, its
   SKU/vendor/title/size, plus a pre-built search URL per the source's
   template if one's set) and an "Upload results" file input. A person or a
   Cowork agent searches the site by hand, fills in `competitor_price` (or
@@ -145,8 +146,28 @@ Up to 4 per store.
 
 ## Costs import
 
-Settings → Import costs — CSV with two columns, `sku_or_ean,cost` (header
-row optional). Feeds the margin floor guard above.
+Store's own settings page (Stores → pick a store) → Import costs — CSV
+with two columns, `sku_or_ean,cost` (header row optional). Feeds the
+margin floor guard above.
+
+## Stores & groups
+
+**Stores** (top nav) is where stores live now — a flat Settings page
+listing every store's full config in one place stopped being usable once
+there were more than a couple. It shows **Groups** (`Group` model, purely
+organizational — `Store.groupId`, `onDelete: SetNull` so deleting a group
+never deletes its stores, just ungroups them) as collapsible sections, each
+listing its stores as compact rows; an "Ungrouped" section catches stores
+with no group. Clicking "Open →" on a store sets it as the current store
+(same one the topbar switcher and Pricing/Unmatched/Publish log pages use —
+the switcher's `<select>` groups its `<option>`s by group too) and
+navigates to `/stores/:id`, a page scoped to *only* that store: its
+connection/pricing-rule form (collapsed by default), its Sources, and its
+Costs import — none of the other stores', and no account/team management
+mixed in. `StoreForm`, `SourcesSection`, `CostsImport` and `AccordionItem`
+are shared components (`web/src/components/`) used both there and from the
+Stores overview's "+ Add store" form, which is where a store's group gets
+picked (a `<select>` in `StoreForm` itself, defaulting to "Ungrouped").
 
 ## Accounts & audit log
 
@@ -196,7 +217,7 @@ Cursor pagination by default; switches to Shopify's Bulk Operations API
 `BULK_THRESHOLD_PRODUCT_COUNT` (250, in `catalogSync.ts`) — a proxy for the
 brief's "~1,000 variants" threshold, since counting variants directly costs
 an extra round trip; tune it if a store's variants-per-product ratio is
-unusual. Manual "Sync now" in Settings, plus a nightly 03:00 cron.
+unusual. Manual "Sync now" on Stores, plus a nightly 03:00 cron.
 
 ## Deploying to Render
 
@@ -281,7 +302,7 @@ sandboxed dev environment can't reach — the code paths involved are the
 same ones exercised end-to-end with locally-seeded data (see the pricing
 engine test output in the PR/commit description).
 
-1. ⚠️ Add a store + token in Settings → "Test connection" passes → "Sync
+1. ⚠️ Add a store + token under Stores → "Test connection" passes → "Sync
    now" pulls the full catalog. *(Store/token CRUD, encryption, and the
    connection-test error path are verified; a live Shopify store is needed
    to see a successful connection.)*

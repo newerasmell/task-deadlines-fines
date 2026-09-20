@@ -4,7 +4,9 @@ import { useStores } from "../context/StoreContext";
 
 export function Layout() {
   const { user, logout } = useAuth();
-  const { stores, currentStore, setCurrentStoreId, loading } = useStores();
+  const { stores, groups, currentStore, setCurrentStoreId, loading } = useStores();
+
+  const ungrouped = stores.filter((s) => !s.groupId);
 
   return (
     <div className="app-shell">
@@ -18,14 +20,31 @@ export function Layout() {
           {loading ? (
             <span className="muted">Loading stores…</span>
           ) : stores.length === 0 ? (
-            <span className="muted">No stores yet — add one in Settings</span>
+            <span className="muted">No stores yet — add one under Stores</span>
           ) : (
             <select value={currentStore?.id ?? ""} onChange={(e) => setCurrentStoreId(e.target.value)}>
-              {stores.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.marketCode})
-                </option>
-              ))}
+              {groups.map((g) => {
+                const groupStores = stores.filter((s) => s.groupId === g.id);
+                if (groupStores.length === 0) return null;
+                return (
+                  <optgroup key={g.id} label={g.name}>
+                    {groupStores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.marketCode})
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+              {ungrouped.length > 0 && (
+                <optgroup label={groups.length > 0 ? "Ungrouped" : ""}>
+                  {ungrouped.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.marketCode})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           )}
         </div>
@@ -37,6 +56,7 @@ export function Layout() {
           <NavLink to="/unmatched">Unmatched</NavLink>
           <NavLink to="/publish-log">Publish log</NavLink>
           <NavLink to="/audit-log">Audit log</NavLink>
+          <NavLink to="/stores">Stores</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
 
