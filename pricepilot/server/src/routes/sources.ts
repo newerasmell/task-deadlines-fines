@@ -345,6 +345,40 @@ sourcesRouter.post("/:id/import", async (req, res) => {
   res.json({ matched, notFoundCount, errorCount: errors.length, errors: errors.slice(0, 20) });
 });
 
+// A single manually-entered competitor price — for the "no-data" row on the
+// Pricing Table where every automated source came back with nothing, but an
+// admin found the actual listing by hand and wants to attribute it to a
+// specific source (which one matters: it decides what shows in that
+// source's column and feeds its price history) rather than typing a price
+// with no provenance. Reuses recordFoundPrice, the exact same write path
+// the CSV import above and every live scraper already go through — no new
+// write semantics, just a UI-friendly single-row entry point instead of a
+// one-row CSV round trip.
+const manualEntrySchema = z.object({
+  productId: z.string().min(1),
+  price: z.number().positive(),
+  url: z.string().min(1),
+});
+
+sourcesRouter.post("/:id/manual-entry", async (req, res) => {
+  const source = await prisma.source.findUnique({ where: { id: req.params.id }, include: { store: true } });
+  if (!source) return res.status(404).json({ error: "Source not found" });
+
+  const parsed = manualEntrySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { productId, price, url } = parsed.data;
+
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product || product.storeId !== source.storeId) {
+    return res.status(404).json({ error: "Product not found on this source's store" });
+  }
+
+  await recordFoundPrice({ source, store: source.store, product, price, url });
+  await resolveMatchesForStore(source.storeId);
+
+  res.json({ ok: true });
+});
+
 // Round-trips match_products.py's ambiguous_review.csv (one row per
 // candidate, several rows per product_id) into the same AmbiguousMatch
 // review queue the automated jeftinije_hr crawl uses — so a manual_import

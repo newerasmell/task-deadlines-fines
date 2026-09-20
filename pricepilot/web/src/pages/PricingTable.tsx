@@ -66,6 +66,14 @@ export function PricingTable() {
   const [bulkPublishing, setBulkPublishing] = useState(false);
   const [costDraft, setCostDraft] = useState<Map<string, string>>(new Map());
   const [costSaving, setCostSaving] = useState<Set<string>>(new Set());
+  // Which empty source cell currently has its manual-entry form open — at
+  // most one at a time, keyed by "productId:sourceId" since a cell is empty
+  // per (product, source) pair, not per product alone.
+  const [manualEntryOpen, setManualEntryOpen] = useState<string | null>(null);
+  const [manualPrice, setManualPrice] = useState("");
+  const [manualUrl, setManualUrl] = useState("");
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   async function refresh() {
     if (!currentStore) return;
@@ -224,6 +232,39 @@ export function PricingTable() {
   async function togglePriority(row: PricingRow) {
     await api(`/pricing/product/${row.productId}/priority`, { method: "PATCH", body: JSON.stringify({ priority: !row.priority }) });
     refresh();
+  }
+
+  function openManualEntry(productId: string, sourceId: string) {
+    setManualEntryOpen(`${productId}:${sourceId}`);
+    setManualPrice("");
+    setManualUrl("");
+    setManualError(null);
+  }
+
+  async function saveManualEntry(productId: string, sourceId: string) {
+    const price = Number(manualPrice);
+    if (!manualPrice.trim() || Number.isNaN(price) || price <= 0) {
+      setManualError("Enter a valid price");
+      return;
+    }
+    if (!manualUrl.trim()) {
+      setManualError("Enter the listing URL");
+      return;
+    }
+    setManualSaving(true);
+    setManualError(null);
+    try {
+      await api(`/sources/${sourceId}/manual-entry`, {
+        method: "POST",
+        body: JSON.stringify({ productId, price, url: manualUrl.trim() }),
+      });
+      setManualEntryOpen(null);
+      refresh();
+    } catch (err) {
+      setManualError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setManualSaving(false);
+    }
   }
 
   function costFor(row: PricingRow): string {
@@ -418,6 +459,8 @@ export function PricingTable() {
                   )}
                   {data.sources.map((s) => {
                     const cell = row.sourcePrices[s.id];
+                    const cellKey = `${row.productId}:${s.id}`;
+                    const isEditing = manualEntryOpen === cellKey;
                     return (
                       <td key={s.id} className={`source-cell${cell?.stale ? " stale" : ""}`}>
                         {cell ? (
@@ -427,8 +470,41 @@ export function PricingTable() {
                               {fmtFreshness(cell.fetchedAt)} {cell.stale && "⚠️"}
                             </div>
                           </a>
+                        ) : isEditing ? (
+                          <div className="manual-entry-form">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder={`Price (${currentStore.currency})`}
+                              value={manualPrice}
+                              onChange={(e) => setManualPrice(e.target.value)}
+                              autoFocus
+                            />
+                            <input
+                              type="text"
+                              placeholder="Listing URL"
+                              value={manualUrl}
+                              onChange={(e) => setManualUrl(e.target.value)}
+                            />
+                            {manualError && <div className="small row-status-error">{manualError}</div>}
+                            <div className="manual-entry-actions">
+                              <button
+                                className="small-btn"
+                                onClick={() => saveManualEntry(row.productId, s.id)}
+                                disabled={manualSaving}
+                              >
+                                Save
+                              </button>
+                              <button className="small-btn secondary" onClick={() => setManualEntryOpen(null)} disabled={manualSaving}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
                         ) : (
-                          <span className="muted">—</span>
+                          <button className="add-manually-btn" onClick={() => openManualEntry(row.productId, s.id)} title={`Add a ${s.label} price manually`}>
+                            + Add
+                          </button>
                         )}
                       </td>
                     );
