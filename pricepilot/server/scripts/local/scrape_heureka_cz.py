@@ -16,7 +16,10 @@ Setup (one time):
     python3 -m playwright install chromium
 
 Usage:
-    python3 scrape_heureka_cz.py /path/to/heureka-cz-research-template.csv
+    python3 scrape_heureka_cz.py --headed /path/to/heureka-cz-research-template.csv
+
+    Quick one-brand test (skips the CSV entirely):
+    python3 scrape_heureka_cz.py --headed --brand Armani
 
 Output:
     heureka_cz_raw.csv in the current directory (title, price_czk, url, vendor_searched)
@@ -24,9 +27,9 @@ Output:
     that gets interrupted partway can just be started again.
 """
 
+import argparse
 import csv
 import re
-import sys
 import time
 from pathlib import Path
 from urllib.parse import quote, urljoin
@@ -153,18 +156,35 @@ def crawl_brand(page, vendor: str) -> list[dict]:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 scrape_heureka_cz.py /path/to/heureka-cz-research-template.csv")
-        sys.exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("csv_path", nargs="?", help="Path to heureka-cz-research-template.csv")
+    parser.add_argument("--brand", help="Only search this one brand, ignore the CSV entirely (quick test)")
+    parser.add_argument(
+        "--headed",
+        action="store_true",
+        help="Show the browser window (default -- needed so you can click through Cloudflare by hand)",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Hide the browser window. Don't use this until a --headed run has proven Cloudflare isn't showing up.",
+    )
+    args = parser.parse_args()
 
-    vendors = load_vendors(sys.argv[1])
-    done = already_scraped_vendors()
-    todo = [v for v in vendors if v not in done]
-    print(f"{len(vendors)} vendors in catalog, {len(done)} already scraped, {len(todo)} to go.\n")
+    if args.brand:
+        todo = [args.brand]
+        print(f"Testing one brand only: {args.brand}\n")
+    else:
+        if not args.csv_path:
+            parser.error("either a csv_path or --brand is required")
+        vendors = load_vendors(args.csv_path)
+        done = already_scraped_vendors()
+        todo = [v for v in vendors if v not in done]
+        print(f"{len(vendors)} vendors in catalog, {len(done)} already scraped, {len(todo)} to go.\n")
 
     write_header = not OUT_FILE.exists()
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=args.headless)
         context = browser.new_context(locale="cs-CZ")
         page = context.new_page()
 
