@@ -79,7 +79,21 @@ function extractConc(s: string): string | null {
 // silently match a catalog product that doesn't carry the same one.
 const VARIANT_MARKERS = ["tester", "napln", "vzorek"];
 
+// Greek "Σετ" (set/bundle — several items for one price) has no Latin
+// script at all, so normalizeText's [^a-z0-9] filter erases it completely
+// rather than leaving a strippable-but-detectable token the way "tester"
+// survives — confirmed live on a Skroutz.gr listing titled "... Σετ ...
+// 2τμχ" ("... Set ... 2pcs"), which would otherwise normalize down to
+// looking like a plain single-bottle listing. Checked against the raw
+// title before normalization can erase it.
+const RAW_VARIANT_MARKERS = ["σετ", "set"];
+
 function variantTag(title: string): string | null {
+  // Space-bounded, not a bare substring check — "set" as a loose substring
+  // would misfire on ordinary words like "Sunset" or "Asset".
+  const padded = ` ${title.toLowerCase()} `;
+  const raw = RAW_VARIANT_MARKERS.find((marker) => padded.includes(` ${marker} `));
+  if (raw) return raw;
   const n = normalizeText(title);
   return VARIANT_MARKERS.find((marker) => n.includes(marker)) ?? null;
 }
