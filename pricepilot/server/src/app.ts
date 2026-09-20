@@ -9,6 +9,7 @@ import session from "express-session";
 import path from "path";
 import { env } from "./lib/env";
 import { requireAuth } from "./middleware/auth";
+import { auditLogRouter } from "./routes/auditLog";
 import { authRouter } from "./routes/auth";
 import { codConfigRouter } from "./routes/codConfig";
 import { costsRouter } from "./routes/costs";
@@ -18,6 +19,7 @@ import { publishLogRouter } from "./routes/publishLog";
 import { sourcesRouter } from "./routes/sources";
 import { storesRouter } from "./routes/stores";
 import { unmatchedRouter } from "./routes/unmatched";
+import { usersRouter } from "./routes/users";
 
 const WEB_DIST = path.resolve(__dirname, "../../web/dist");
 
@@ -54,6 +56,8 @@ export function createApp() {
   app.use("/api/unmatched", requireAuth, unmatchedRouter);
   app.use("/api/costs", requireAuth, costsRouter);
   app.use("/api/cod-config", requireAuth, codConfigRouter);
+  app.use("/api/users", requireAuth, usersRouter);
+  app.use("/api/audit-log", requireAuth, auditLogRouter);
 
   // Serve the built React app (same Web Service, per the brief) and fall
   // back to index.html for any non-API route so client-side routing works.

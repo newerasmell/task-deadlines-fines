@@ -1,6 +1,7 @@
 import { parse } from "csv-parse/sync";
 import { Router } from "express";
 import { z } from "zod";
+import { logAudit } from "../lib/audit";
 import { extractMlFromTitle } from "../lib/htmlPriceParser";
 import { prisma } from "../lib/prisma";
 import {
@@ -53,6 +54,7 @@ sourcesRouter.post("/", async (req, res) => {
 
   const autoRefresh = parsed.data.autoRefresh ?? (parsed.data.type !== "jeftinije_hr" && parsed.data.type !== "notino_hr");
   const source = await prisma.source.create({ data: { ...parsed.data, autoRefresh } });
+  await logAudit(req.userId!, "SOURCE_CREATED", "Source", source.id, `Added source ${source.label} (${source.type})`);
   res.status(201).json(source);
 });
 
@@ -96,6 +98,7 @@ sourcesRouter.patch("/:id", async (req, res) => {
         },
       });
     });
+    await logAudit(req.userId!, "SOURCE_UPDATED", "Source", source.id, `Updated source ${source.label}`);
     res.json(source);
   } catch {
     res.status(404).json({ error: "Source not found" });
@@ -104,7 +107,8 @@ sourcesRouter.patch("/:id", async (req, res) => {
 
 sourcesRouter.delete("/:id", async (req, res) => {
   try {
-    await prisma.source.delete({ where: { id: req.params.id } });
+    const source = await prisma.source.delete({ where: { id: req.params.id } });
+    await logAudit(req.userId!, "SOURCE_DELETED", "Source", source.id, `Deleted source ${source.label}`);
     res.json({ ok: true });
   } catch {
     res.status(404).json({ error: "Source not found" });

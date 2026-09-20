@@ -41,6 +41,9 @@ services:
     startCommand: cd server && npm start
     healthCheckPath: /api/health
     envVars:
+      # One-time key to create the first real login on /login (per-user
+      # accounts after that — see README's "Accounts & audit log"), not a
+      # shared app password anymore.
       - key: DASHBOARD_PASSWORD
         sync: false
       - key: SESSION_SECRET

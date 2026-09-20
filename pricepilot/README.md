@@ -6,11 +6,11 @@ sources, computes a suggested price per product, and lets you publish new
 prices back to Shopify — one at a time or in bulk.
 
 This is a **separate application** from the TODF task/fine system this repo
-also hosts — its own server, its own SQLite database, its own login (one
-shared dashboard password, not TODF accounts). It's here because that's
-where the git history lives, not because the two apps share anything. An
-admin-only "PricePilot ↗" link appears in the TODF sidebar once you set
-`VITE_PRICEPILOT_URL` in `web/.env` (see the root `web/.env.example`).
+also hosts — its own server, its own SQLite database, its own login (per-user
+accounts, not TODF accounts — see Accounts & audit log below). It's here
+because that's where the git history lives, not because the two apps share
+anything. An admin-only "PricePilot ↗" link appears in the TODF sidebar once
+you set `VITE_PRICEPILOT_URL` in `web/.env` (see the root `web/.env.example`).
 
 ## Architecture
 
@@ -37,9 +37,12 @@ npm install
 npm run dev             # http://localhost:5174
 ```
 
-Log in with `DASHBOARD_PASSWORD`. Add a store under Settings, paste the
-Shopify app's Client ID and Client secret (below), "Test connection", then
-"Sync now".
+First run: the login page shows a one-time "create the first account" form —
+your name/email/a real password, plus `DASHBOARD_PASSWORD` to prove you're
+allowed to set it up. Every teammate after that gets added from inside the
+app (Settings → Team), no shared password involved. See Accounts & audit log
+below. Add a store under Settings, paste the Shopify app's Client ID and
+Client secret (below), "Test connection", then "Sync now".
 
 ## Creating a Shopify app for a store
 
@@ -144,6 +147,27 @@ Up to 4 per store.
 
 Settings → Import costs — CSV with two columns, `sku_or_ean,cost` (header
 row optional). Feeds the margin floor guard above.
+
+## Accounts & audit log
+
+Per-user login (name, email, password — bcrypt-hashed), not the old single
+shared password. `DASHBOARD_PASSWORD` still exists but now only gates the
+one-time "create the first account" form shown on `/login` while the `User`
+table is empty; every account after that is added from Settings → Team by
+anyone already logged in. There's no role hierarchy — every account can see
+and change everything, same trust level the old shared password implied.
+
+A deactivated account is logged out immediately (`requireAuth` re-checks
+`active` on every request, not just at login) and can be reactivated later;
+deleting one keeps its past Audit log rows (shown with actor "deleted user").
+The last active account can't be deactivated or deleted, and nobody can
+deactivate/delete themselves — both guard against locking everyone out.
+
+Every store/source/cost/COD-formula/publish change writes one row to
+`AuditLog` (`lib/audit.ts`) with who did it — visible under the "Audit log"
+nav item, filterable by action or free-text search over the summary.
+Read-only actions (viewing a page, a scheduled competitor-price refresh)
+aren't logged; this tracks human decisions, not requests.
 
 ## Catalog sync
 

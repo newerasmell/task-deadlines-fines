@@ -7,6 +7,45 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// One row per person who can log in. The app has no role hierarchy today —
+// everyone with an account can see/change everything — this exists so each
+// change can be attributed to a real person (see AuditLog) instead of one
+// shared dashboard password. passwordHash is bcrypt; never store/return the
+// plaintext password.
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  // A deactivated user can no longer log in (an active session is also cut
+  // the next time requireAuth checks), but their past AuditLog rows are
+  // kept — "who did this" should still be answerable after someone leaves.
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs    AuditLog[]
+}
+
+// One row per meaningful write — store/source config changes, cost edits,
+// price publishes, user management — so "who changed X" has an answer.
+// Read-only/automatic actions (a scheduled refresh, viewing a page) are
+// deliberately not logged here; this is an audit trail of human decisions,
+// not a request log.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+}
+
 // One row per configured Shopify store/market. admin_api_token is stored
 // AES-256-GCM encrypted (see lib/crypto.ts) — never written or read in
 // plaintext outside that helper. Pricing rule fields are flattened onto the

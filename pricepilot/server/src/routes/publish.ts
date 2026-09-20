@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { logAudit } from "../lib/audit";
 import { prisma } from "../lib/prisma";
 import { publishPrices } from "../services/publishEngine";
 
@@ -28,5 +29,14 @@ publishRouter.post("/", async (req, res) => {
   if (!store) return res.status(404).json({ error: "Store not found" });
 
   const results = await publishPrices(store, parsed.data.items, parsed.data.mode);
+  const successCount = results.filter((r) => r.status === "SUCCESS").length;
+  const failCount = results.length - successCount;
+  await logAudit(
+    req.userId!,
+    "PRICE_PUBLISHED",
+    "Store",
+    store.id,
+    `Published ${successCount} price(s) to ${store.name} (${parsed.data.mode})${failCount > 0 ? `, ${failCount} failed` : ""}`
+  );
   res.json({ results });
 });

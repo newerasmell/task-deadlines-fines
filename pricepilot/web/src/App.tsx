@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { StoreProvider } from "./context/StoreContext";
+import { AuditLog } from "./pages/AuditLog";
 import { Login } from "./pages/Login";
 import { PricingTable } from "./pages/PricingTable";
 import { Unmatched } from "./pages/Unmatched";
@@ -30,6 +31,7 @@ function AppRoutes() {
         <Route path="/" element={<PricingTable />} />
         <Route path="/unmatched" element={<Unmatched />} />
         <Route path="/publish-log" element={<PublishLog />} />
+        <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

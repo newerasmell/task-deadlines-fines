@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { logAudit } from "../lib/audit";
 import { prisma } from "../lib/prisma";
 
 export const codConfigRouter = Router();
@@ -63,5 +64,6 @@ codConfigRouter.patch("/:storeId", async (req, res) => {
   if (brackets) data.bracketsJson = JSON.stringify(brackets);
 
   const config = await prisma.codFormulaConfig.update({ where: { storeId: store.id }, data });
+  await logAudit(req.userId!, "COD_CONFIG_UPDATED", "Store", store.id, `Updated COD pricing formula for ${store.name}`);
   res.json(config);
 });

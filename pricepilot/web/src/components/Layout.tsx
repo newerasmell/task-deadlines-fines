@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { useStores } from "../context/StoreContext";
 
 export function Layout() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { stores, currentStore, setCurrentStoreId, loading } = useStores();
 
   return (
@@ -36,9 +36,15 @@ export function Layout() {
           </NavLink>
           <NavLink to="/unmatched">Unmatched</NavLink>
           <NavLink to="/publish-log">Publish log</NavLink>
+          <NavLink to="/audit-log">Audit log</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
 
+        {user && (
+          <span className="muted small" title={user.email}>
+            {user.name}
+          </span>
+        )}
         <button className="secondary" onClick={() => logout()}>
           Log out
         </button>

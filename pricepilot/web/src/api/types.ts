@@ -1,3 +1,27 @@
+export interface CurrentUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface TeamUser {
+  id: string;
+  name: string;
+  email: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actor: { id: string; name: string; email: string } | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  summary: string;
+  createdAt: string;
+}
+
 export type PricingStrategy = "undercut_min" | "match_min" | "undercut_avg";
 export type PricingProfile = "competitor" | "cod_formula";
 export type SourceType = "shopify_json" | "scrape" | "manual_import" | "jeftinije_hr" | "notino_hr";

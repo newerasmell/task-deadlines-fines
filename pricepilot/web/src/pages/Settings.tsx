@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, MouseEvent, ReactNode } from "react";
 import { api } from "../api/client";
-import type { AmbiguousMatch, PricingProfile, PricingStrategy, ScrapeAttempt, Source, SourceType, Store } from "../api/types";
+import type { AmbiguousMatch, PricingProfile, PricingStrategy, ScrapeAttempt, Source, SourceType, Store, TeamUser } from "../api/types";
+import { useAuth } from "../context/AuthContext";
 import { useStores } from "../context/StoreContext";
 
 export function Settings() {
@@ -77,7 +78,185 @@ export function Settings() {
           </div>
         </>
       )}
+
+      <div className="settings-section">
+        <h2>Team</h2>
+        <TeamSection />
+      </div>
     </div>
+  );
+}
+
+function TeamSection() {
+  const { user: me } = useAuth();
+  const [users, setUsers] = useState<TeamUser[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [addingUser, setAddingUser] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function refresh() {
+    setUsers(await api<TeamUser[]>("/users"));
+  }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  function toggle(id: string) {
+    setAddingUser(false);
+    setExpandedId((cur) => (cur === id ? null : id));
+  }
+
+  async function toggleActive(u: TeamUser) {
+    setError(null);
+    try {
+      await api(`/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ active: !u.active }) });
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    }
+  }
+
+  async function remove(u: TeamUser) {
+    if (!window.confirm(`Remove ${u.name}? Their past audit-log entries are kept.`)) return;
+    setError(null);
+    try {
+      await api(`/users/${u.id}`, { method: "DELETE" });
+      if (expandedId === u.id) setExpandedId(null);
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    }
+  }
+
+  return (
+    <div>
+      <p className="muted small">
+        Everyone with an account can see and change everything — this is just so changes are attributed to a real
+        person (see Audit log) instead of one shared password.
+      </p>
+      {error && <div className="error-text" style={{ marginBottom: 10 }}>{error}</div>}
+
+      <div className="entity-list" style={{ marginBottom: addingUser ? 12 : 0 }}>
+        {users.map((u) => (
+          <AccordionItem
+            key={u.id}
+            open={expandedId === u.id}
+            onToggle={() => toggle(u.id)}
+            headerLeft={
+              <span>
+                {u.name} <span className="accordion-meta">{u.email}</span>
+                {!u.active && <span className="tag">deactivated</span>}
+                {u.id === me?.id && <span className="tag">you</span>}
+              </span>
+            }
+            headerRight={
+              <div className="entity-row-actions" onClick={(e) => e.stopPropagation()}>
+                {u.id !== me?.id && (
+                  <button className="small-btn secondary" onClick={() => toggleActive(u)}>
+                    {u.active ? "Deactivate" : "Reactivate"}
+                  </button>
+                )}
+                {u.id !== me?.id && (
+                  <button className="small-btn secondary" onClick={() => remove(u)}>
+                    Delete
+                  </button>
+                )}
+              </div>
+            }
+          >
+            <TeamUserForm user={u} onDone={() => { setExpandedId(null); refresh(); }} onCancel={() => setExpandedId(null)} />
+          </AccordionItem>
+        ))}
+        {users.length === 0 && <p className="muted">No teammates yet.</p>}
+      </div>
+
+      {!addingUser && !expandedId && (
+        <button
+          onClick={() => {
+            setExpandedId(null);
+            setAddingUser(true);
+          }}
+        >
+          + Add teammate
+        </button>
+      )}
+      {addingUser && (
+        <div className="accordion-item">
+          <div className="accordion-body" style={{ borderTop: "none" }}>
+            <TeamUserForm
+              user={null}
+              onDone={() => {
+                setAddingUser(false);
+                refresh();
+              }}
+              onCancel={() => setAddingUser(false)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeamUserForm({ user, onDone, onCancel }: { user: TeamUser | null; onDone: () => void; onCancel: () => void }) {
+  const isEdit = Boolean(user);
+  const [name, setName] = useState(user?.name ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!isEdit && password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      if (isEdit) {
+        const body: Record<string, unknown> = { name, email };
+        if (password) body.password = password;
+        await api(`/users/${user!.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await api("/users", { method: "POST", body: JSON.stringify({ name, email, password }) });
+      }
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="form" style={{ marginBottom: 0 }} onSubmit={handleSubmit}>
+      <div className="form-row">
+        <label>
+          Name
+          <input value={name} onChange={(e) => setName(e.target.value)} required />
+        </label>
+        <label>
+          Email
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </label>
+      </div>
+      <label>
+        {isEdit ? "New password" : "Password"} {isEdit && <span className="muted">(leave blank to keep the current one)</span>}
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} placeholder="min. 8 characters" />
+      </label>
+      {error && <div className="error-text">{error}</div>}
+      <div className="form-row">
+        <button type="submit" disabled={submitting}>
+          {submitting ? "Saving…" : isEdit ? "Save changes" : "Add teammate"}
+        </button>
+        <button type="button" className="secondary" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

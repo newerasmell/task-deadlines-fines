@@ -1,6 +1,7 @@
 import { parse } from "csv-parse/sync";
 import { Router } from "express";
 import { z } from "zod";
+import { logAudit } from "../lib/audit";
 import { prisma } from "../lib/prisma";
 
 export const costsRouter = Router();
@@ -30,6 +31,13 @@ costsRouter.patch("/product/:productId", async (req, res) => {
     create: { storeId: product.storeId, skuOrEan, cost: parsed.data.cost },
     update: { cost: parsed.data.cost },
   });
+  await logAudit(
+    req.userId!,
+    "COST_UPDATED",
+    "Product",
+    product.id,
+    `Set cost of "${product.title}" (${skuOrEan}) to ${parsed.data.cost}`
+  );
   res.json(cost);
 });
 
@@ -74,5 +82,8 @@ costsRouter.post("/import", async (req, res) => {
     imported++;
   }
 
+  if (imported > 0) {
+    await logAudit(req.userId!, "COST_IMPORTED", "Store", parsed.data.storeId, `Imported ${imported} cost row(s) via CSV`);
+  }
   res.json({ imported, errorCount: errors.length, errors: errors.slice(0, 20) });
 });

@@ -1,6 +1,7 @@
 import type { Store } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
+import { logAudit } from "../lib/audit";
 import { encrypt } from "../lib/crypto";
 import { prisma } from "../lib/prisma";
 import { syncCatalog } from "../services/catalogSync";
@@ -42,6 +43,7 @@ storesRouter.post("/", async (req, res) => {
   const store = await prisma.store.create({
     data: { ...rest, shopifyClientSecret: encrypt(shopifyClientSecret) },
   });
+  await logAudit(req.userId!, "STORE_CREATED", "Store", store.id, `Added store ${store.name}`);
   res.status(201).json(toStoreDto(store));
 });
 
@@ -59,6 +61,7 @@ storesRouter.patch("/:id", async (req, res) => {
       where: { id: req.params.id },
       data: { ...rest, ...(shopifyClientSecret ? { shopifyClientSecret: encrypt(shopifyClientSecret) } : {}) },
     });
+    await logAudit(req.userId!, "STORE_UPDATED", "Store", store.id, `Updated store ${store.name}`);
     res.json(toStoreDto(store));
   } catch {
     res.status(404).json({ error: "Store not found" });
@@ -67,7 +70,8 @@ storesRouter.patch("/:id", async (req, res) => {
 
 storesRouter.delete("/:id", async (req, res) => {
   try {
-    await prisma.store.delete({ where: { id: req.params.id } });
+    const store = await prisma.store.delete({ where: { id: req.params.id } });
+    await logAudit(req.userId!, "STORE_DELETED", "Store", store.id, `Deleted store ${store.name}`);
     res.json({ ok: true });
   } catch {
     res.status(404).json({ error: "Store not found" });
