@@ -14,6 +14,10 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   setup: (name: string, email: string, password: string, dashboardPassword: string) => Promise<void>;
   logout: () => Promise<void>;
+  // Self-service only — every account can change their OWN name/password
+  // this way. Managing anyone else's account is Settings -> Team, visible
+  // only to ultimate admins.
+  updateProfile: (fields: { name?: string; password?: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,8 +59,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
+  async function updateProfile(fields: { name?: string; password?: string }) {
+    const u = await api<CurrentUser>("/auth/me", { method: "PATCH", body: JSON.stringify(fields) });
+    setUser(u);
+  }
+
   return (
-    <AuthContext.Provider value={{ user, authenticated: Boolean(user), loading, needsSetup, login, setup, logout }}>
+    <AuthContext.Provider
+      value={{ user, authenticated: Boolean(user), loading, needsSetup, login, setup, logout, updateProfile }}
+    >
       {children}
     </AuthContext.Provider>
   );

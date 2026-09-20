@@ -43,6 +43,7 @@ export function Layout() {
         {user && (
           <span className="muted small" title={user.email}>
             {user.name}
+            {user.isUltimateAdmin && <span className="tag">admin</span>}
           </span>
         )}
         <button className="secondary" onClick={() => logout()}>

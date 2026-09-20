@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { useStores } from "../context/StoreContext";
 
 export function Settings() {
+  const { user: me } = useAuth();
   const { stores, currentStore, refreshStores } = useStores();
   const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
   const [addingStore, setAddingStore] = useState(false);
@@ -80,10 +81,71 @@ export function Settings() {
       )}
 
       <div className="settings-section">
-        <h2>Team</h2>
-        <TeamSection />
+        {me?.isUltimateAdmin ? (
+          <>
+            <h2>Team</h2>
+            <TeamSection />
+          </>
+        ) : (
+          <>
+            <h2>My account</h2>
+            <MyAccountCard />
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+// Self-service name/password change — shown to every account, admin or
+// not. Managing anyone ELSE's account (TeamSection below) is restricted to
+// ultimate admins; this never sees or touches another user's row.
+function MyAccountCard() {
+  const { user: me, updateProfile } = useAuth();
+  const [name, setName] = useState(me?.name ?? "");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSuccess(false);
+    setSubmitting(true);
+    try {
+      const fields: { name?: string; password?: string } = {};
+      if (name !== me?.name) fields.name = name;
+      if (password) fields.password = password;
+      await updateProfile(fields);
+      setPassword("");
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={handleSubmit}>
+      <p className="muted small" style={{ margin: 0 }}>
+        {me?.email} — only an ultimate admin can see or change other teammates' accounts.
+      </p>
+      <label>
+        Name
+        <input value={name} onChange={(e) => setName(e.target.value)} required />
+      </label>
+      <label>
+        New password <span className="muted">(leave blank to keep the current one)</span>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} placeholder="min. 8 characters" />
+      </label>
+      {error && <div className="error-text">{error}</div>}
+      {success && <div className="small" style={{ color: "var(--success)" }}>Saved.</div>}
+      <button type="submit" disabled={submitting}>
+        {submitting ? "Saving…" : "Save changes"}
+      </button>
+    </form>
   );
 }
 
@@ -132,8 +194,9 @@ function TeamSection() {
   return (
     <div>
       <p className="muted small">
-        Everyone with an account can see and change everything — this is just so changes are attributed to a real
-        person (see Audit log) instead of one shared password.
+        Only ultimate admins can see or manage this list. Store and pricing data is shared by everyone — this is
+        just account management, so changes are attributed to a real person (see Audit log) instead of one shared
+        password.
       </p>
       {error && <div className="error-text" style={{ marginBottom: 10 }}>{error}</div>}
 
@@ -146,6 +209,7 @@ function TeamSection() {
             headerLeft={
               <span>
                 {u.name} <span className="accordion-meta">{u.email}</span>
+                {u.isUltimateAdmin && <span className="tag">ultimate admin</span>}
                 {!u.active && <span className="tag">deactivated</span>}
                 {u.id === me?.id && <span className="tag">you</span>}
               </span>
@@ -200,10 +264,13 @@ function TeamSection() {
 }
 
 function TeamUserForm({ user, onDone, onCancel }: { user: TeamUser | null; onDone: () => void; onCancel: () => void }) {
+  const { user: me } = useAuth();
   const isEdit = Boolean(user);
+  const isSelf = user?.id === me?.id;
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
+  const [isUltimateAdmin, setIsUltimateAdmin] = useState(user?.isUltimateAdmin ?? false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -217,11 +284,11 @@ function TeamUserForm({ user, onDone, onCancel }: { user: TeamUser | null; onDon
     setSubmitting(true);
     try {
       if (isEdit) {
-        const body: Record<string, unknown> = { name, email };
+        const body: Record<string, unknown> = { name, email, isUltimateAdmin };
         if (password) body.password = password;
         await api(`/users/${user!.id}`, { method: "PATCH", body: JSON.stringify(body) });
       } else {
-        await api("/users", { method: "POST", body: JSON.stringify({ name, email, password }) });
+        await api("/users", { method: "POST", body: JSON.stringify({ name, email, password, isUltimateAdmin }) });
       }
       onDone();
     } catch (err) {
@@ -246,6 +313,15 @@ function TeamUserForm({ user, onDone, onCancel }: { user: TeamUser | null; onDon
       <label>
         {isEdit ? "New password" : "Password"} {isEdit && <span className="muted">(leave blank to keep the current one)</span>}
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} placeholder="min. 8 characters" />
+      </label>
+      <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }} title={isSelf ? "Ask another ultimate admin to change your own admin status." : undefined}>
+        <input
+          type="checkbox"
+          checked={isUltimateAdmin}
+          onChange={(e) => setIsUltimateAdmin(e.target.checked)}
+          disabled={isSelf}
+        />
+        Ultimate admin — can see/manage every account, not just their own
       </label>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">

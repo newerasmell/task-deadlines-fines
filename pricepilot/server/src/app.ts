@@ -8,7 +8,7 @@ import express, { NextFunction, Request, Response } from "express";
 import session from "express-session";
 import path from "path";
 import { env } from "./lib/env";
-import { requireAuth } from "./middleware/auth";
+import { requireAuth, requireUltimateAdmin } from "./middleware/auth";
 import { auditLogRouter } from "./routes/auditLog";
 import { authRouter } from "./routes/auth";
 import { codConfigRouter } from "./routes/codConfig";
@@ -56,7 +56,7 @@ export function createApp() {
   app.use("/api/unmatched", requireAuth, unmatchedRouter);
   app.use("/api/costs", requireAuth, costsRouter);
   app.use("/api/cod-config", requireAuth, codConfigRouter);
-  app.use("/api/users", requireAuth, usersRouter);
+  app.use("/api/users", requireAuth, requireUltimateAdmin, usersRouter);
   app.use("/api/audit-log", requireAuth, auditLogRouter);
 
   // Serve the built React app (same Web Service, per the brief) and fall

@@ -4,10 +4,24 @@ import { z } from "zod";
 import { logAudit } from "../lib/audit";
 import { prisma } from "../lib/prisma";
 
+// Mounted behind requireAuth + requireUltimateAdmin in app.ts — every route
+// here is admin-only. Everyone else's self-service (own name/password) goes
+// through PATCH /api/auth/me instead, which never exposes other users' rows.
 export const usersRouter = Router();
 
-function toUserDto(user: { id: string; name: string; email: string; active: boolean; createdAt: Date }) {
-  return { id: user.id, name: user.name, email: user.email, active: user.active, createdAt: user.createdAt };
+function toUserDto(user: { id: string; name: string; email: string; active: boolean; isUltimateAdmin: boolean; createdAt: Date }) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    active: user.active,
+    isUltimateAdmin: user.isUltimateAdmin,
+    createdAt: user.createdAt,
+  };
+}
+
+async function activeAdminCount(): Promise<number> {
+  return prisma.user.count({ where: { active: true, isUltimateAdmin: true } });
 }
 
 usersRouter.get("/", async (_req, res) => {
@@ -19,6 +33,7 @@ const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
+  isUltimateAdmin: z.boolean().default(false),
 });
 
 usersRouter.post("/", async (req, res) => {
@@ -31,8 +46,16 @@ usersRouter.post("/", async (req, res) => {
   }
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-  const user = await prisma.user.create({ data: { name: parsed.data.name, email, passwordHash } });
-  await logAudit(req.userId!, "USER_CREATED", "User", user.id, `Added teammate ${user.name} (${user.email})`);
+  const user = await prisma.user.create({
+    data: { name: parsed.data.name, email, passwordHash, isUltimateAdmin: parsed.data.isUltimateAdmin },
+  });
+  await logAudit(
+    req.userId!,
+    "USER_CREATED",
+    "User",
+    user.id,
+    `Added teammate ${user.name} (${user.email})${user.isUltimateAdmin ? " as ultimate admin" : ""}`
+  );
   res.status(201).json(toUserDto(user));
 });
 
@@ -41,6 +64,7 @@ const updateSchema = z.object({
   email: z.string().email().optional(),
   password: z.string().min(8).optional(),
   active: z.boolean().optional(),
+  isUltimateAdmin: z.boolean().optional(),
 });
 
 usersRouter.patch("/:id", async (req, res) => {
@@ -49,6 +73,14 @@ usersRouter.patch("/:id", async (req, res) => {
 
   const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "User not found" });
+
+  const removingLastAdmin =
+    existing.isUltimateAdmin &&
+    existing.active &&
+    ((parsed.data.isUltimateAdmin === false) || (parsed.data.active === false && parsed.data.isUltimateAdmin !== true));
+  if (removingLastAdmin && (await activeAdminCount()) <= 1) {
+    return res.status(400).json({ error: "Can't remove the last ultimate admin." });
+  }
 
   if (parsed.data.active === false) {
     if (req.params.id === req.userId) {
@@ -69,6 +101,7 @@ usersRouter.patch("/:id", async (req, res) => {
 
   const changeDesc = [
     parsed.data.active === false ? "deactivated" : parsed.data.active === true ? "reactivated" : null,
+    parsed.data.isUltimateAdmin === true ? "made ultimate admin" : parsed.data.isUltimateAdmin === false ? "removed ultimate admin" : null,
     password ? "reset password" : null,
     email && email.toLowerCase().trim() !== existing.email ? "changed email" : null,
     parsed.data.name && parsed.data.name !== existing.name ? "renamed" : null,
@@ -91,6 +124,9 @@ usersRouter.delete("/:id", async (req, res) => {
   const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "User not found" });
 
+  if (existing.isUltimateAdmin && existing.active && (await activeAdminCount()) <= 1) {
+    return res.status(400).json({ error: "Can't remove the last ultimate admin." });
+  }
   if (existing.active) {
     const activeCount = await prisma.user.count({ where: { active: true } });
     if (activeCount <= 1) return res.status(400).json({ error: "Can't delete the last active user." });

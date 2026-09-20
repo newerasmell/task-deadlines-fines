@@ -15,6 +15,7 @@ declare global {
       // belong to an active user — routes that write to the audit log read
       // this rather than trusting the raw session value.
       userId?: string;
+      isUltimateAdmin?: boolean;
     }
   }
 }
@@ -33,5 +34,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   req.userId = user.id;
+  req.isUltimateAdmin = user.isUltimateAdmin;
+  next();
+}
+
+// Must run after requireAuth. Gates account management (see/create/edit/
+// deactivate/delete OTHER users) to ultimate admins — everyone else only
+// gets self-service via PATCH /auth/me.
+export function requireUltimateAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.isUltimateAdmin) return res.status(403).json({ error: "Ultimate admin only" });
   next();
 }

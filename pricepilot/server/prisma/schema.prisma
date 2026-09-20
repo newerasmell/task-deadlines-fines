@@ -7,24 +7,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// One row per person who can log in. The app has no role hierarchy today —
-// everyone with an account can see/change everything — this exists so each
+// One row per person who can log in. Everyone can see/change the store &
+// pricing data the same way (no role split there) — this exists so each
 // change can be attributed to a real person (see AuditLog) instead of one
 // shared dashboard password. passwordHash is bcrypt; never store/return the
 // plaintext password.
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  passwordHash    String
   // A deactivated user can no longer log in (an active session is also cut
   // the next time requireAuth checks), but their past AuditLog rows are
   // kept — "who did this" should still be answerable after someone leaves.
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  active          Boolean  @default(true)
+  // Account management (see the other User rows, create/edit/deactivate/
+  // delete them, grant/revoke this flag) is restricted to ultimate admins
+  // — everyone else can only view/edit their OWN name and password (see
+  // PATCH /auth/me). The bootstrap account created via /auth/setup is
+  // always the first ultimate admin. Multiple ultimate admins are allowed;
+  // the last one can't be demoted/deactivated/deleted (by themself or
+  // anyone else) so the team is never left with none.
+  isUltimateAdmin Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  auditLogs    AuditLog[]
+  auditLogs       AuditLog[]
 }
 
 // One row per meaningful write — store/source config changes, cost edits,

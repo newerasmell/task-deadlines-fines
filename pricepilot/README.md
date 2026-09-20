@@ -153,15 +153,27 @@ row optional). Feeds the margin floor guard above.
 Per-user login (name, email, password — bcrypt-hashed), not the old single
 shared password. `DASHBOARD_PASSWORD` still exists but now only gates the
 one-time "create the first account" form shown on `/login` while the `User`
-table is empty; every account after that is added from Settings → Team by
-anyone already logged in. There's no role hierarchy — every account can see
-and change everything, same trust level the old shared password implied.
+table is empty — that first account is always made an **ultimate admin**.
+
+Store/pricing data (stores, sources, costs, publishing) is shared by every
+account the same way it always was. Account management is not: only an
+ultimate admin can see the Settings → Team list, add a teammate, edit
+someone else's name/email/password, deactivate/delete an account, or
+grant/revoke another account's ultimate-admin flag (`requireUltimateAdmin`
+gates the whole `/api/users` router in `app.ts`). Everyone else only ever
+sees their own account — a "My account" card (Settings) backed by
+`PATCH /api/auth/me` for self-service name/password changes, which never
+reads or writes any other user's row. There's no third tier — an account is
+either an ultimate admin or an ordinary account with no visibility into
+anyone else's.
 
 A deactivated account is logged out immediately (`requireAuth` re-checks
 `active` on every request, not just at login) and can be reactivated later;
 deleting one keeps its past Audit log rows (shown with actor "deleted user").
-The last active account can't be deactivated or deleted, and nobody can
-deactivate/delete themselves — both guard against locking everyone out.
+Nobody can deactivate/delete/demote themselves (UI disables it; the API
+blocks it too), the last *active* account can't be deactivated/deleted by
+anyone, and the last *ultimate admin* can't be deactivated/deleted/demoted
+by anyone either — promote a second admin first if you want to step down.
 
 Every store/source/cost/COD-formula/publish change writes one row to
 `AuditLog` (`lib/audit.ts`) with who did it — visible under the "Audit log"

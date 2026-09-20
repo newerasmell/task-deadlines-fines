@@ -2,6 +2,7 @@ export interface CurrentUser {
   id: string;
   name: string;
   email: string;
+  isUltimateAdmin: boolean;
 }
 
 export interface TeamUser {
@@ -9,6 +10,7 @@ export interface TeamUser {
   name: string;
   email: string;
   active: boolean;
+  isUltimateAdmin: boolean;
   createdAt: string;
 }
 
