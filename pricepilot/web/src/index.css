@@ -186,6 +186,50 @@ button.small-btn {
   padding: 16px;
 }
 
+.publish-settings-title {
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.publish-settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.publish-setting-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  font-weight: 400;
+}
+
+.publish-setting-row input[type="checkbox"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.publish-setting-label {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.publish-setting-desc {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 2px;
+  line-height: 1.4;
+  max-width: 62ch;
+}
+
 .form {
   display: flex;
   flex-direction: column;

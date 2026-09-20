@@ -269,12 +269,6 @@ export function PricingTable() {
     <div>
       <div className="page-header">
         <h1>Pricing — {currentStore.name}</h1>
-        {!isCod && (
-          <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }} title="Overwrites this product's existing compare-at price with its price right before this publish. Off by default so publishing never touches compare-at unless you turn this on.">
-            <input type="checkbox" checked={setCompareAt} onChange={(e) => setSetCompareAt(e.target.checked)} />
-            Also overwrite compare-at with the pre-publish price
-          </label>
-        )}
       </div>
 
       {isCod && <CodFormulaPanel storeId={currentStore.id} formula={data.formula} currency={currentStore.currency} onSaved={refresh} />}
@@ -311,11 +305,15 @@ export function PricingTable() {
           <option value="1">Matched in 1 source</option>
           <option value="0">Matched in 0 sources</option>
         </select>
-        <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <input type="checkbox" checked={skipSingleConfirm} onChange={(e) => setSkipSingleConfirm(e.target.checked)} />
-          Don't ask again for single publishes
-        </label>
       </div>
+
+      <PublishSettings
+        isCod={isCod}
+        setCompareAt={setCompareAt}
+        onSetCompareAtChange={setSetCompareAt}
+        skipSingleConfirm={skipSingleConfirm}
+        onSkipSingleConfirmChange={setSkipSingleConfirm}
+      />
 
       {selected.size > 0 && (
         <div className="bulk-bar">
@@ -486,6 +484,57 @@ export function PricingTable() {
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// Both toggles used to live in unrelated corners of the page (one next to
+// the page title, one stuffed at the end of the filters bar), so it wasn't
+// obvious they were "publish behavior" settings at all, let alone what each
+// one actually did or when it applied. One labeled block, directly above
+// the table whose Publish buttons it affects, with the exact behavior spelled
+// out instead of only a hover tooltip.
+function PublishSettings({
+  isCod,
+  setCompareAt,
+  onSetCompareAtChange,
+  skipSingleConfirm,
+  onSkipSingleConfirmChange,
+}: {
+  isCod: boolean;
+  setCompareAt: boolean;
+  onSetCompareAtChange: (v: boolean) => void;
+  skipSingleConfirm: boolean;
+  onSkipSingleConfirmChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="card publish-settings" style={{ marginBottom: 14 }}>
+      <div className="publish-settings-title">Publish settings</div>
+      <div className="publish-settings-rows">
+        {!isCod && (
+          <label className="publish-setting-row">
+            <input type="checkbox" checked={setCompareAt} onChange={(e) => onSetCompareAtChange(e.target.checked)} />
+            <span>
+              <span className="publish-setting-label">Set compare-at to the pre-publish price</span>
+              <span className="publish-setting-desc">
+                Applies to every publish below (single row or bulk) while this checkbox is on. Off by default —
+                confirmed live it can leave compare-at <em>lower</em> than the new price if you're raising it, which
+                replaces whatever real reference price was there before.
+              </span>
+            </span>
+          </label>
+        )}
+        <label className="publish-setting-row">
+          <input type="checkbox" checked={skipSingleConfirm} onChange={(e) => onSkipSingleConfirmChange(e.target.checked)} />
+          <span>
+            <span className="publish-setting-label">Skip the confirmation popup</span>
+            <span className="publish-setting-desc">
+              Only for a single row's own "Publish" button — publishing several selected rows at once always asks
+              first regardless of this. Remembered on this device/browser only.
+            </span>
+          </span>
+        </label>
       </div>
     </div>
   );
