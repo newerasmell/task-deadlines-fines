@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
+import { activeAdminCount } from "../lib/admins";
 import { logAudit } from "../lib/audit";
 import { env } from "../lib/env";
 import { requireAuth } from "../middleware/auth";
@@ -72,10 +73,38 @@ authRouter.post("/logout", (req, res) => {
 });
 
 authRouter.get("/me", async (req, res) => {
-  if (!req.session.userId) return res.json({ authenticated: false, user: null });
+  if (!req.session.userId) return res.json({ authenticated: false, user: null, needsAdminClaim: false });
   const user = await prisma.user.findUnique({ where: { id: req.session.userId } });
-  if (!user || !user.active) return res.json({ authenticated: false, user: null });
-  res.json({ authenticated: true, user: toUserDto(user) });
+  if (!user || !user.active) return res.json({ authenticated: false, user: null, needsAdminClaim: false });
+  // Accounts created before the ultimate-admin role existed (or one whose
+  // sole admin got deleted some other way) can end up with zero admins and
+  // no in-app way to grant it, since /api/users is admin-only. Surface that
+  // here so Settings can offer a one-time "claim ultimate admin" prompt —
+  // see POST /claim-admin below.
+  const needsAdminClaim = !user.isUltimateAdmin && (await activeAdminCount()) === 0;
+  res.json({ authenticated: true, user: toUserDto(user), needsAdminClaim });
+});
+
+const claimAdminSchema = z.object({ dashboardPassword: z.string().min(1) });
+
+// Same one-time-key idea as /setup, but for "accounts exist yet somehow
+// none of them is an ultimate admin" instead of "no accounts exist yet".
+// Only works while that's true — the moment any account is an admin, this
+// stops applying and they'd need that admin to promote them instead.
+authRouter.post("/claim-admin", requireAuth, async (req, res) => {
+  const parsed = claimAdminSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Dashboard password required" });
+
+  if ((await activeAdminCount()) > 0) {
+    return res.status(400).json({ error: "An ultimate admin already exists — ask them to promote you instead." });
+  }
+  if (parsed.data.dashboardPassword.trim() !== env.dashboardPassword.trim()) {
+    return res.status(401).json({ error: "Wrong dashboard password" });
+  }
+
+  const user = await prisma.user.update({ where: { id: req.userId! }, data: { isUltimateAdmin: true } });
+  await logAudit(user.id, "USER_UPDATED", "User", user.id, `${user.name} claimed ultimate admin (no admin existed)`);
+  res.json(toUserDto(user));
 });
 
 const updateMeSchema = z.object({

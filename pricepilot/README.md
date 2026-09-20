@@ -175,6 +175,14 @@ blocks it too), the last *active* account can't be deactivated/deleted by
 anyone, and the last *ultimate admin* can't be deactivated/deleted/demoted
 by anyone either — promote a second admin first if you want to step down.
 
+**Already have an account from before this role existed (or the sole admin
+got removed some other way) and nobody is an ultimate admin?** Log in
+normally, open Settings — a "Claim ultimate admin" card appears automatically
+whenever `isUltimateAdmin` is true for zero accounts. Enter `DASHBOARD_PASSWORD`
+there (`POST /api/auth/claim-admin`) to become the first one; it only works
+while no admin exists, so once someone claims it, everyone else just asks
+them for an invite/promotion instead.
+
 Every store/source/cost/COD-formula/publish change writes one row to
 `AuditLog` (`lib/audit.ts`) with who did it — visible under the "Audit log"
 nav item, filterable by action or free-text search over the summary.

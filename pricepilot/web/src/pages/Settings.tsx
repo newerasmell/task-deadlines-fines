@@ -6,7 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { useStores } from "../context/StoreContext";
 
 export function Settings() {
-  const { user: me } = useAuth();
+  const { user: me, needsAdminClaim } = useAuth();
   const { stores, currentStore, refreshStores } = useStores();
   const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
   const [addingStore, setAddingStore] = useState(false);
@@ -80,6 +80,13 @@ export function Settings() {
         </>
       )}
 
+      {needsAdminClaim && (
+        <div className="settings-section">
+          <h2>Claim ultimate admin</h2>
+          <ClaimAdminCard />
+        </div>
+      )}
+
       <div className="settings-section">
         {me?.isUltimateAdmin ? (
           <>
@@ -94,6 +101,55 @@ export function Settings() {
         )}
       </div>
     </div>
+  );
+}
+
+// Shown only while no account anywhere is an ultimate admin (see
+// AuthContext's needsAdminClaim) — the same DASHBOARD_PASSWORD one-time key
+// /login's bootstrap form uses, but for "accounts already exist, none of
+// them got the role" instead of "no accounts exist yet" (e.g. this account
+// was created before the ultimate-admin role existed).
+function ClaimAdminCard() {
+  const { claimAdmin } = useAuth();
+  const [dashboardPassword, setDashboardPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await claimAdmin(dashboardPassword);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={handleSubmit}>
+      <p className="muted small" style={{ margin: 0 }}>
+        No account here is an ultimate admin yet (this one predates that role, or the last admin was removed). Enter
+        this deploy's <code>DASHBOARD_PASSWORD</code> to become the first one — same one-time key the very first
+        login setup used.
+      </p>
+      <label>
+        Dashboard password
+        <input
+          type="password"
+          value={dashboardPassword}
+          onChange={(e) => setDashboardPassword(e.target.value)}
+          placeholder="from DASHBOARD_PASSWORD"
+          required
+        />
+      </label>
+      {error && <div className="error-text">{error}</div>}
+      <button type="submit" disabled={submitting}>
+        {submitting ? "Claiming…" : "Claim ultimate admin"}
+      </button>
+    </form>
   );
 }
 

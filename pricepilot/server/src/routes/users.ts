@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
+import { activeAdminCount } from "../lib/admins";
 import { logAudit } from "../lib/audit";
 import { prisma } from "../lib/prisma";
 
@@ -18,10 +19,6 @@ function toUserDto(user: { id: string; name: string; email: string; active: bool
     isUltimateAdmin: user.isUltimateAdmin,
     createdAt: user.createdAt,
   };
-}
-
-async function activeAdminCount(): Promise<number> {
-  return prisma.user.count({ where: { active: true, isUltimateAdmin: true } });
 }
 
 usersRouter.get("/", async (_req, res) => {

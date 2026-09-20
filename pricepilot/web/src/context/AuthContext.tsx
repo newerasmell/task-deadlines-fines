@@ -11,6 +11,11 @@ interface AuthContextValue {
   // and Login should show the "create the first admin" form instead of an
   // email/password login form.
   needsSetup: boolean;
+  // Only meaningful once logged in: true means accounts exist but none of
+  // them is an ultimate admin (e.g. this account predates that role, or
+  // the sole admin got removed) — Settings should offer the one-time
+  // "claim ultimate admin" prompt (see claimAdmin below).
+  needsAdminClaim: boolean;
   login: (email: string, password: string) => Promise<void>;
   setup: (name: string, email: string, password: string, dashboardPassword: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -18,6 +23,7 @@ interface AuthContextValue {
   // this way. Managing anyone else's account is Settings -> Team, visible
   // only to ultimate admins.
   updateProfile: (fields: { name?: string; password?: string }) => Promise<void>;
+  claimAdmin: (dashboardPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -25,12 +31,14 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [needsAdminClaim, setNeedsAdminClaim] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api<{ authenticated: boolean; user: CurrentUser | null }>("/auth/me")
+    api<{ authenticated: boolean; user: CurrentUser | null; needsAdminClaim: boolean }>("/auth/me")
       .then(async (r) => {
         setUser(r.user);
+        setNeedsAdminClaim(r.needsAdminClaim);
         if (!r.user) {
           const setupCheck = await api<{ needsSetup: boolean }>("/auth/needs-setup");
           setNeedsSetup(setupCheck.needsSetup);
@@ -43,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function login(email: string, password: string) {
     const u = await api<CurrentUser>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
     setUser(u);
+    setNeedsAdminClaim(!u.isUltimateAdmin);
   }
 
   async function setup(name: string, email: string, password: string, dashboardPassword: string) {
@@ -52,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     setUser(u);
     setNeedsSetup(false);
+    setNeedsAdminClaim(false);
   }
 
   async function logout() {
@@ -64,9 +74,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
   }
 
+  async function claimAdmin(dashboardPassword: string) {
+    const u = await api<CurrentUser>("/auth/claim-admin", { method: "POST", body: JSON.stringify({ dashboardPassword }) });
+    setUser(u);
+    setNeedsAdminClaim(false);
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, authenticated: Boolean(user), loading, needsSetup, login, setup, logout, updateProfile }}
+      value={{
+        user,
+        authenticated: Boolean(user),
+        loading,
+        needsSetup,
+        needsAdminClaim,
+        login,
+        setup,
+        logout,
+        updateProfile,
+        claimAdmin,
+      }}
     >
       {children}
     </AuthContext.Provider>
