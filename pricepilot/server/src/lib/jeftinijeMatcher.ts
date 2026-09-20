@@ -10,9 +10,9 @@ import type { JeftinijeListing } from "./jeftinijeScraper";
 // before a bare "parfum" match would misfire on it.
 const CONC_PATTERNS: [string, string[]][] = [
   ["EXTRAIT", ["extrait de parfum", "extrait", "esencia de parfum", "essence de parfum", "elixir de parfum"]],
-  ["EDP", ["eau de parfum", "parfemska voda", "parfimirana voda", "edp", "parfumska voda"]],
-  ["EDT", ["eau de toilette", "toaletna voda", "edt"]],
-  ["EDC", ["eau de cologne", "kolonjska voda", "edc", "cologne"]],
+  ["EDP", ["eau de parfum", "parfemska voda", "parfimirana voda", "edp", "parfumska voda", "parfemovana voda"]],
+  ["EDT", ["eau de toilette", "toaletna voda", "edt", "toaletni voda"]],
+  ["EDC", ["eau de cologne", "kolonjska voda", "edc", "cologne", "kolinska voda"]],
   ["PARFUM", ["parfum", "parfem"]], // last: bare "parfum" is a weak signal
 ];
 
@@ -51,6 +51,11 @@ const GENERIC = new Set([
   "za", "muskarce", "zene", "musko", "zensko", "men", "man", "woman", "women", "for", "him", "her",
   "pour", "homme", "femme", "unisex", "spray", "sprej", "natural", "vapo", "vaporisateur", "ml",
   "new", "original", "u", "i", "de", "o",
+  // Czech gender adjectives (Heureka.cz titles always append one) — confirmed
+  // live: without these, "dámská"/"pánská" survives normalizeText's
+  // diacritic-stripping as a stray "damska"/"panska" token and downgrades an
+  // otherwise-exact match to merely "ambiguous".
+  "damska", "damsky", "panska", "pansky",
 ]);
 
 export function canonBrand(s: string): string {
@@ -68,8 +73,15 @@ function extractConc(s: string): string | null {
   return null;
 }
 
-function isTester(title: string): boolean {
-  return normalizeText(title).includes("tester");
+// A tester, a refill cartridge, and a sample vial are all cheaper,
+// different products from a standard bottle even when brand/model/ml all
+// happen to line up — so a listing carrying one of these markers must never
+// silently match a catalog product that doesn't carry the same one.
+const VARIANT_MARKERS = ["tester", "napln", "vzorek"];
+
+function variantTag(title: string): string | null {
+  const n = normalizeText(title);
+  return VARIANT_MARKERS.find((marker) => n.includes(marker)) ?? null;
 }
 
 // All known phrasings of `brand`'s canonical brand — a competitor's title
@@ -133,7 +145,7 @@ interface IndexEntry extends JeftinijeListing {
   nTitle: string;
   ml: number | null;
   conc: string | null;
-  tester: boolean;
+  variant: string | null;
 }
 
 export function buildMatchIndex(listings: JeftinijeListing[]): IndexEntry[] {
@@ -147,7 +159,7 @@ export function buildMatchIndex(listings: JeftinijeListing[]): IndexEntry[] {
         return m === null ? null : Number(m);
       })(),
       conc: extractConc(l.title),
-      tester: isTester(l.title),
+      variant: variantTag(l.title),
     }));
 }
 
@@ -163,7 +175,7 @@ export function matchProduct(
   const ml = mlRaw === null ? null : Number(mlRaw);
   const ourConc = extractConc(product.title);
   const ourModel = modelTokens(product.title, product.vendor ?? "");
-  const ourTester = isTester(product.title);
+  const ourVariant = variantTag(product.title);
 
   let pool = index.filter((c) => c.nTitle.includes(brandFirstWord));
   if (brand.includes(" ")) pool = pool.filter((c) => c.nTitle.includes(brand));
@@ -180,7 +192,7 @@ export function matchProduct(
   const near: IndexEntry[] = [];
 
   for (const c of pool) {
-    if (c.tester !== ourTester) continue;
+    if (c.variant !== ourVariant) continue;
     if (ourConc && c.conc && ourConc !== c.conc) {
       // bare PARFUM vs EXTRAIT is ambiguous, everything else is a hard no
       const pair = new Set([ourConc, c.conc]);

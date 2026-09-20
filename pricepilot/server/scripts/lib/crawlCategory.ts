@@ -6,7 +6,7 @@ import type { Listing, SiteConfig } from "./types";
 // detectPageParam(): try the pagination params real sites actually use,
 // pick whichever one's page 2 comes back with a genuinely different
 // product set from page 1.
-const PAGE_PARAM_CANDIDATES = ["page", "p", "strana", "stran", "oldal", "sel"];
+const PAGE_PARAM_CANDIDATES = ["page", "p", "strana", "stran", "oldal", "sel", "f"];
 
 async function detectPageParam(
   fetcher: SiteFetcher,
