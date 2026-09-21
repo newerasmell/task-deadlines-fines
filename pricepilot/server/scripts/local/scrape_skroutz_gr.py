@@ -128,8 +128,19 @@ def extract_listings(page) -> list[dict]:
     return out
 
 
-def crawl_brand(page, vendor: str) -> list[dict]:
-    search_url = f"{BASE}/search?keyphrase={quote(vendor)}"
+# Confirmed live in the real page's own category-nav links: fragrances
+# split into these two categories -- no single umbrella category covers
+# both without also pulling in unrelated cosmetics. A brand name alone
+# against the site-wide /search endpoint is FAR too broad -- confirmed
+# live that "Calvin Klein" through plain search returns underwear and
+# watches alongside its handful of actual fragrances. Scoping to these
+# category pages (?keyphrase=<brand> inside them, not a site-wide search)
+# keeps every result an actual fragrance.
+FRAGRANCE_CATEGORIES = ["/c/1776/Andrika-aromata.html", "/c/1777/Gynaikeia-aromata.html"]
+
+
+def crawl_brand_in_category(page, vendor: str, category: str) -> list[dict]:
+    search_url = f"{BASE}{category}?keyphrase={quote(vendor)}"
     print(f"[{vendor}] {search_url}")
     page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
     wait_for_human_if_challenged(page, vendor)
@@ -154,6 +165,17 @@ def crawl_brand(page, vendor: str) -> list[dict]:
         print(f"[{vendor}]   page {pnum}: {len(new)} new listings")
 
     return all_listings
+
+
+def crawl_brand(page, vendor: str) -> list[dict]:
+    seen_urls: set[str] = set()
+    combined: list[dict] = []
+    for category in FRAGRANCE_CATEGORIES:
+        for l in crawl_brand_in_category(page, vendor, category):
+            if l["url"] not in seen_urls:
+                seen_urls.add(l["url"])
+                combined.append(l)
+    return combined
 
 
 def main():

@@ -48,13 +48,30 @@ export function extractListings(html: string, pageUrl: string): Listing[] {
   return out;
 }
 
+// Confirmed live in the real page's own category-nav links: fragrances
+// split into these two categories (no single umbrella category covers
+// both without also pulling in unrelated cosmetics). A brand name alone
+// against the site-wide /search endpoint is FAR too broad — confirmed
+// live that "Calvin Klein" through plain search returns underwear and
+// watches alongside its handful of actual fragrances. Scoping to these
+// category pages (?keyphrase=<brand> inside them, not a site-wide search)
+// keeps every result an actual fragrance.
+const FRAGRANCE_CATEGORIES = ["/c/1776/Andrika-aromata.html", "/c/1777/Gynaikeia-aromata.html"];
+
 function categoryUrlsForBrands(products: ProductRow[]): string[] {
   const brands = new Set<string>();
   for (const p of products) {
     const brand = canonBrand(p.vendor);
     if (brand) brands.add(brand);
   }
-  return [...brands].sort().map((brand) => `${BASE}/search?keyphrase=${encodeURIComponent(brand)}`);
+  const sortedBrands = [...brands].sort();
+  const urls: string[] = [];
+  for (const category of FRAGRANCE_CATEGORIES) {
+    for (const brand of sortedBrands) {
+      urls.push(`${BASE}${category}?keyphrase=${encodeURIComponent(brand)}`);
+    }
+  }
+  return urls;
 }
 
 export const skroutzGr: SiteConfig = {
