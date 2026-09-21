@@ -196,16 +196,22 @@ def match_product(title: str, vendor: str | None, index: list[IndexEntry]):
     brand = canon_brand(vendor or "")
     if not brand:
         return ("not_found",)
-    brand_first_word = brand.split(" ")[0]
 
     ml = extract_ml(title)
     our_conc = extract_conc(title)
     our_model = model_tokens(title, vendor or "")
     our_variant = variant_tag(title)
 
-    pool = [c for c in index if brand_first_word in c.n_title]
-    if " " in brand:
-        pool = [c for c in pool if brand in c.n_title]
+    # Match on ANY known alias of the brand, not just a substring of its
+    # canonical (longest) form -- confirmed live on Skroutz.gr that some
+    # brands list under a short market name only ("Rabanne", "Ysl", "Boss",
+    # "Kilian"), none of which contain the canonical form's first word
+    # ("paco", "yves", "hugo", "by"). That silently zeroed the candidate
+    # pool for every product of those brands. Ported here too for the same
+    # reason it applies everywhere: a Czech listing could equally use a
+    # short form that doesn't start with the canonical name's first word.
+    brand_aliases = brand_aliases_for(vendor or "")
+    pool = [c for c in index if any(alias in c.n_title for alias in brand_aliases)]
     if ml is not None:
         pool = [c for c in pool if c.ml == ml or c.ml is None]
     if not pool:

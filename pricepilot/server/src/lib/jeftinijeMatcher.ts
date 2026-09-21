@@ -183,7 +183,6 @@ export function matchProduct(
 ): MatchResult {
   const brand = canonBrand(product.vendor ?? "");
   if (!brand) return { status: "not_found" };
-  const brandFirstWord = brand.split(" ")[0];
 
   const mlRaw = extractMl(product.title);
   const ml = mlRaw === null ? null : Number(mlRaw);
@@ -191,8 +190,16 @@ export function matchProduct(
   const ourModel = modelTokens(product.title, product.vendor ?? "");
   const ourVariant = variantTag(product.title);
 
-  let pool = index.filter((c) => c.nTitle.includes(brandFirstWord));
-  if (brand.includes(" ")) pool = pool.filter((c) => c.nTitle.includes(brand));
+  // Match on ANY known alias of the brand, not just a substring of its
+  // canonical (longest) form — confirmed live on Skroutz.gr: Paco Rabanne,
+  // Yves Saint Laurent, Hugo Boss and By Kilian all list under their short
+  // market name only ("Rabanne", "Ysl", "Boss", "Kilian"), none of which
+  // contain the canonical form's first word ("paco", "yves", "hugo", "by").
+  // That silently zeroed the candidate pool for every product of those 4
+  // brands — 100% "not_found" despite hundreds of real listings sitting
+  // right there in the index.
+  const brandAliases = brandAliasesFor(product.vendor ?? "");
+  let pool = index.filter((c) => brandAliases.some((alias) => c.nTitle.includes(alias)));
   // A candidate with no extractable ml isn't necessarily a size mismatch —
   // confirmed live on notino.hr, whose listing cards often omit the size
   // entirely (it only shows once you open the actual product page) — so

@@ -211,16 +211,22 @@ def match_product(title: str, vendor: str | None, index: list[IndexEntry]):
     brand = canon_brand(vendor or "")
     if not brand:
         return ("not_found",)
-    brand_first_word = brand.split(" ")[0]
 
     ml = extract_ml(title)
     our_conc = extract_conc(title)
     our_model = model_tokens(title, vendor or "")
     our_variant = variant_tag(title)
 
-    pool = [c for c in index if brand_first_word in c.n_title]
-    if " " in brand:
-        pool = [c for c in pool if brand in c.n_title]
+    # Match on ANY known alias of the brand, not just a substring of its
+    # canonical (longest) form -- confirmed live on Skroutz.gr: Paco Rabanne,
+    # Yves Saint Laurent, Hugo Boss and By Kilian all list under their short
+    # market name only ("Rabanne", "Ysl", "Boss", "Kilian"), none of which
+    # contain the canonical form's first word ("paco", "yves", "hugo", "by").
+    # That silently zeroed the candidate pool for every product of those 4
+    # brands -- 100% not_found despite hundreds of real listings right there
+    # in the index.
+    brand_aliases = brand_aliases_for(vendor or "")
+    pool = [c for c in index if any(alias in c.n_title for alias in brand_aliases)]
     if ml is not None:
         pool = [c for c in pool if c.ml == ml or c.ml is None]
     if not pool:
