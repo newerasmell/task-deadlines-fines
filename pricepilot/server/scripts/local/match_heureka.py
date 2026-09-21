@@ -27,6 +27,7 @@ as-is, no hand editing needed.
 
 import argparse
 import csv
+import html
 import re
 import unicodedata
 
@@ -277,7 +278,14 @@ def load_products(path: str) -> list[dict]:
         rows = list(csv.DictReader(f))
     out = []
     for row in rows:
-        normalized = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+        # Confirmed live on the Skroutz.gr catalog export: a "Dolce & Gabbana"
+        # vendor cell round-tripped through some export step as the literal
+        # text "Dolce &amp; Gabbana" -- html.unescape() undoes that. Left
+        # un-decoded, the extra "amp" survives normalize_text as a real
+        # token, so canon_brand() never recognizes it as Dolce & Gabbana at
+        # all and every one of that brand's products silently gets an empty
+        # candidate pool. Applied here too for parity with match_skroutz.py.
+        normalized = {(k or "").strip().lower(): html.unescape((v or "").strip()) for k, v in row.items()}
         if not normalized.get("product_id"):
             continue
         out.append(normalized)
