@@ -6,7 +6,9 @@ import { env } from "./env";
 // Mon-Fri, minus BG holidays) rather than the wall clock — a submission made
 // at 2am or on a Saturday shouldn't start burning down a reviewer's window
 // before they've even had a chance to see it. Task deadlines themselves are
-// unaffected; this module is only used for the review-deadline clock.
+// unaffected. Also used by deadlineScanner to hold the periodic/final
+// review-reminder nudges to the same window, so an Owner isn't pinged in
+// the middle of the night or over the weekend.
 
 function toZoned(date: Date): DateTime {
   return DateTime.fromJSDate(date, { zone: env.timezone });

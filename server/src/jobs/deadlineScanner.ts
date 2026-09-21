@@ -1,5 +1,5 @@
 import { deadlineFallsOnWeekend, nonWorkingHoursBetween } from "../lib/bulgarianHolidays";
-import { businessHoursBetween } from "../lib/businessHours";
+import { businessHoursBetween, isWithinBusinessHours } from "../lib/businessHours";
 import { formatDateTime } from "../lib/dateFormat";
 import { env } from "../lib/env";
 import { isOnLeave } from "../lib/leave";
@@ -256,10 +256,21 @@ async function handleOverdueTasks(now: Date): Promise<void> {
  *    accruing a fine.
  * Only fires while reviewDueAt is still in the future — once it passes,
  * handleOverdueReviews takes over with fines instead of reminders.
+ *
+ * Both nudges are also held to the team's business window (9:00-18:00,
+ * Mon-Fri, minus BG holidays — same window addBusinessHours already places
+ * reviewDueAt on) — confirmed live: without this, the periodic nudge kept
+ * firing straight through the night and weekend on its raw 4h wall-clock
+ * cadence, waking an Owner up long after they could act on it. Skipping
+ * here (rather than also marking it sent) means it isn't lost, just
+ * deferred: it fires on the first scan once business hours resume, which
+ * lands it right at the start of the Owner's working day.
  */
 async function sendUpcomingReviewReminders(now: Date): Promise<void> {
   const finalMs = env.reviewReminderFinalHoursBefore * 60 * 60 * 1000;
   const periodicMs = env.reviewReminderPeriodicHours * 60 * 60 * 1000;
+
+  if (!isWithinBusinessHours(now)) return;
 
   const pendingReviews = await prisma.taskSubmission.findMany({
     where: { reviewStatus: "PENDING", reviewDueAt: { gt: now }, task: { deletedAt: null, status: "PENDING_REVIEW" } },
