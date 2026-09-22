@@ -176,6 +176,7 @@ export interface PricingRow {
   deltaPct: number | null;
   suggested: number | null;
   recommendedComparePrice: number | null;
+  recommendedComparePriceReason?: string | null; // why it's blank, e.g. "brand X has no coefficient set"
   floor: number;
   flag: RowFlag;
   markdownEligible?: boolean; // COD stores only — past the new-arrival wait window and still priced above the ceiling

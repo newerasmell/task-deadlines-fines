@@ -556,7 +556,11 @@ export function PricingTable() {
                       <span className={`badge flag-${row.flag}`}>{FLAG_LABELS[row.flag]}</span>
                     </div>
                   </td>
-                  {isCod && <td>{fmtMoney(row.recommendedComparePrice, currentStore.currency)}</td>}
+                  {isCod && (
+                    <td title={row.recommendedComparePrice == null ? row.recommendedComparePriceReason ?? undefined : undefined}>
+                      {fmtMoney(row.recommendedComparePrice, currentStore.currency)}
+                    </td>
+                  )}
                   <td>
                     {status.state === "pending" && <span className="row-status-spinner">Publishing…</span>}
                     {status.state === "success" && <span className="row-status-success">✓ Published</span>}

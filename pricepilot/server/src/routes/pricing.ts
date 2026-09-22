@@ -230,11 +230,16 @@ async function sendCodPricingTable(
   // of its categories has both a base-price range and its own resolvable
   // coefficient range — same "blank until configured" rule costFor uses for
   // acquisition cost, deliberately not falling back to the old flat
-  // price/(1-discountPct) markup.
-  const basePriceFor = (product: (typeof products)[number]): number | null => {
-    if (!product.vendor) return null;
+  // price/(1-discountPct) markup. `reason` explains a null result so the
+  // Pricing table can tell an admin WHICH missing input to go fill in,
+  // instead of just a bare "—" that looks identical whether the category
+  // range, the brand coefficient, or both are the thing still unset.
+  const basePriceFor = (product: (typeof products)[number]): { price: number | null; reason: string | null } => {
+    if (!product.vendor) return { price: null, reason: "Продуктът няма зададен vendor/бранд." };
     const coefficient = coefficientByVendor.get(product.vendor);
-    if (coefficient == null) return null;
+    if (coefficient == null) {
+      return { price: null, reason: `Бранд "${product.vendor}" няма зададен коефициент в таб Марки.` };
+    }
     const categoryIds = categoryIdsByProduct.get(product.id) ?? [];
     const raws: number[] = [];
     for (const categoryId of categoryIds) {
@@ -243,8 +248,16 @@ async function sendCodPricingTable(
       if (!range || !coeffRange) continue;
       raws.push(rawBasePriceFromCoefficient(range.min, range.max, coefficient, coeffRange.lo, coeffRange.hi));
     }
-    if (raws.length === 0) return null;
-    return roundCharmPrice(raws.reduce((a, b) => a + b, 0) / raws.length);
+    if (raws.length === 0) {
+      return {
+        price: null,
+        reason:
+          categoryIds.length === 0
+            ? "Продуктът не е в никоя синхронизирана категория (колекция)."
+            : "Никоя от категориите на продукта няма зададени базова цена min–max.",
+      };
+    }
+    return { price: roundCharmPrice(raws.reduce((a, b) => a + b, 0) / raws.length), reason: null };
   };
 
   const now = new Date();
@@ -277,7 +290,9 @@ async function sendCodPricingTable(
     // for one of these rows means exactly "show 140 crossed out, 91.90 live"
     // with no separate markdown-specific action needed.
     const suggested = markdown.eligible ? markdown.suggestedPrice : recommendedPrice;
-    const recommendedComparePrice = markdown.eligible ? product.priceAtActivation : basePriceFor(product);
+    const baseFromCoefficient = basePriceFor(product);
+    const recommendedComparePrice = markdown.eligible ? product.priceAtActivation : baseFromCoefficient.price;
+    const recommendedComparePriceReason = markdown.eligible ? null : baseFromCoefficient.reason;
 
     return {
       productId: product.id,
@@ -303,6 +318,7 @@ async function sendCodPricingTable(
       deltaPct,
       suggested,
       recommendedComparePrice,
+      recommendedComparePriceReason,
       floor: recommendedPrice ?? 0,
       flag: cost == null ? "no-data" : flagForPrice(product.price, recommendedPrice),
       markdownEligible: markdown.eligible,
