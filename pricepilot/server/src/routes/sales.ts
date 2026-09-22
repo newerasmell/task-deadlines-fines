@@ -79,6 +79,8 @@ salesRouter.get("/:storeId", async (req, res) => {
       convRate6m: pageViews6m && pageViews6m > 0 ? round2((unitsSold6m / pageViews6m) * 100) : null,
       cost: c.categoryCost?.cost ?? null,
       currency: c.categoryCost?.currency ?? store.currency,
+      baseMinPrice: c.baseMinPrice,
+      baseMaxPrice: c.baseMaxPrice,
     };
   });
 
@@ -122,4 +124,34 @@ salesRouter.delete("/category/:categoryId/cost", async (req, res) => {
   await prisma.categoryCost.deleteMany({ where: { categoryId: category.id } });
   await logAudit(req.userId!, "CATEGORY_COST_CLEARED", "Category", category.id, `Cleared acquisition cost of "${category.title}"`);
   res.json({ ok: true });
+});
+
+const basePriceSchema = z
+  .object({ baseMinPrice: z.number().positive(), baseMaxPrice: z.number().positive() })
+  .refine((v) => v.baseMaxPrice >= v.baseMinPrice, { message: "baseMaxPrice must be >= baseMinPrice" });
+
+// Both bounds are set together — a category with only one of them set can't
+// place anything meaningfully "between" them, so the Pricing table treats
+// a category with either one null the same as neither being set (see
+// codPricingEngine.ts's categoryBasePrice).
+salesRouter.put("/category/:categoryId/base-price", async (req, res) => {
+  const parsed = basePriceSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  try {
+    const category = await prisma.category.update({
+      where: { id: req.params.categoryId },
+      data: { baseMinPrice: parsed.data.baseMinPrice, baseMaxPrice: parsed.data.baseMaxPrice },
+    });
+    await logAudit(
+      req.userId!,
+      "CATEGORY_BASE_PRICE_UPDATED",
+      "Category",
+      category.id,
+      `Set base-price range of "${category.title}" to ${parsed.data.baseMinPrice}–${parsed.data.baseMaxPrice}`
+    );
+    res.json(category);
+  } catch {
+    res.status(404).json({ error: "Category not found" });
+  }
 });

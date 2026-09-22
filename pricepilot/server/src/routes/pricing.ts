@@ -5,11 +5,12 @@ import { env } from "../lib/env";
 import { computeSuggestion } from "../services/suggestionEngine";
 import {
   computeK,
-  compareFromPrice,
   flagForPrice,
   parseScenarios,
   pickScenario,
   priceFromCost,
+  rawBasePriceFromCoefficient,
+  roundCharmPrice,
 } from "../services/codPricingEngine";
 
 export const pricingRouter = Router();
@@ -133,27 +134,37 @@ pricingRouter.get("/:storeId", async (req, res) => {
 });
 
 async function sendCodPricingTable(res: Response, store: { id: string; pricingProfile: string }) {
-  const [products, costs, config, productCategories] = await Promise.all([
+  const [products, costs, config, productCategories, brands] = await Promise.all([
     prisma.product.findMany({ where: { storeId: store.id }, orderBy: { title: "asc" } }),
     prisma.cost.findMany({ where: { storeId: store.id } }),
     prisma.codFormulaConfig.upsert({ where: { storeId: store.id }, create: { storeId: store.id }, update: {} }),
-    // Only needed as a fallback for a product with no SKU/EAN row in Cost
-    // below (costFor tries this second, never first) — a manually-set
-    // category acquisition cost (Settings → Продажби) filling in for
-    // products nobody's bothered importing a real cost for yet.
+    // Covers two independent fallbacks: costFor below (a manually-set
+    // category acquisition cost, for a product with no SKU/EAN row in
+    // Cost) and basePriceFor below (a product's suggested base/compare-at
+    // price, placed inside its category's manually-set min/max range).
     prisma.productCategory.findMany({
       where: { product: { storeId: store.id } },
-      select: { productId: true, category: { select: { categoryCost: { select: { cost: true } } } } },
+      select: {
+        productId: true,
+        categoryId: true,
+        category: { select: { baseMinPrice: true, baseMaxPrice: true, categoryCost: { select: { cost: true } } } },
+      },
     }),
+    prisma.brand.findMany({ where: { storeId: store.id } }),
   ]);
 
   const costBySkuOrEan = new Map(costs.map((c) => [c.skuOrEan, c.cost]));
   const categoryCostsByProduct = new Map<string, number[]>();
+  const categoryIdsByProduct = new Map<string, string[]>();
   for (const pc of productCategories) {
+    const idList = categoryIdsByProduct.get(pc.productId) ?? [];
+    idList.push(pc.categoryId);
+    categoryIdsByProduct.set(pc.productId, idList);
+
     if (pc.category.categoryCost == null) continue;
-    const list = categoryCostsByProduct.get(pc.productId) ?? [];
-    list.push(pc.category.categoryCost.cost);
-    categoryCostsByProduct.set(pc.productId, list);
+    const costList = categoryCostsByProduct.get(pc.productId) ?? [];
+    costList.push(pc.category.categoryCost.cost);
+    categoryCostsByProduct.set(pc.productId, costList);
   }
 
   const costFor = (product: (typeof products)[number]): { cost: number | null; fromCategory: boolean } => {
@@ -179,10 +190,56 @@ async function sendCodPricingTable(res: Response, store: { id: string; pricingPr
   const scenario = pickScenario(scenarios, config.pricingScenario);
   const { k, reason } = computeK(config, avgCost, scenario);
 
+  // Per category with BOTH baseMinPrice and baseMaxPrice set: the min/max
+  // coefficient among the brands that actually sell in it — the range the
+  // coefficient normalization below (rawBasePriceFromCoefficient) is scaled
+  // against, so a category is always spanned by the brands really in it,
+  // not the store's full coefficient scale.
+  const vendorById = new Map(products.map((p) => [p.id, p.vendor]));
+  const coefficientByVendor = new Map(brands.map((b) => [b.vendor, b.coefficient]));
+  const categoryVendorsById = new Map<string, Set<string>>();
+  const categoryRangeById = new Map<string, { min: number; max: number }>();
+  for (const pc of productCategories) {
+    if (pc.category.baseMinPrice == null || pc.category.baseMaxPrice == null) continue;
+    categoryRangeById.set(pc.categoryId, { min: pc.category.baseMinPrice, max: pc.category.baseMaxPrice });
+    const vendor = vendorById.get(pc.productId);
+    if (!vendor) continue;
+    const set = categoryVendorsById.get(pc.categoryId) ?? new Set<string>();
+    set.add(vendor);
+    categoryVendorsById.set(pc.categoryId, set);
+  }
+  const categoryCoeffRangeById = new Map<string, { lo: number; hi: number }>();
+  for (const [categoryId, vendors] of categoryVendorsById) {
+    const coeffs = [...vendors].map((v) => coefficientByVendor.get(v)).filter((c): c is number => c != null);
+    if (coeffs.length === 0) continue;
+    categoryCoeffRangeById.set(categoryId, { lo: Math.min(...coeffs), hi: Math.max(...coeffs) });
+  }
+
+  // Null unless the product's own vendor has a coefficient AND at least one
+  // of its categories has both a base-price range and its own resolvable
+  // coefficient range — same "blank until configured" rule costFor uses for
+  // acquisition cost, deliberately not falling back to the old flat
+  // price/(1-discountPct) markup.
+  const basePriceFor = (product: (typeof products)[number]): number | null => {
+    if (!product.vendor) return null;
+    const coefficient = coefficientByVendor.get(product.vendor);
+    if (coefficient == null) return null;
+    const categoryIds = categoryIdsByProduct.get(product.id) ?? [];
+    const raws: number[] = [];
+    for (const categoryId of categoryIds) {
+      const range = categoryRangeById.get(categoryId);
+      const coeffRange = categoryCoeffRangeById.get(categoryId);
+      if (!range || !coeffRange) continue;
+      raws.push(rawBasePriceFromCoefficient(range.min, range.max, coefficient, coeffRange.lo, coeffRange.hi));
+    }
+    if (raws.length === 0) return null;
+    return roundCharmPrice(raws.reduce((a, b) => a + b, 0) / raws.length);
+  };
+
   const rows = products.map((product) => {
     const { cost, fromCategory } = costFor(product);
     const recommendedPrice = cost != null ? priceFromCost(cost, k, config.roundStep) : null;
-    const recommendedComparePrice = compareFromPrice(recommendedPrice, config.discountPct);
+    const recommendedComparePrice = basePriceFor(product);
     const tags = product.tags ? product.tags.split(",").filter(Boolean) : [];
     const discountTagged = tags.some((t) => t.trim().toLowerCase() === config.discountTag.trim().toLowerCase());
     const deltaPct = recommendedPrice != null ? ((product.price - recommendedPrice) / recommendedPrice) * 100 : null;

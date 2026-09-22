@@ -56,6 +56,9 @@ export function Layout() {
           <NavLink to="/unmatched">Unmatched</NavLink>
           <NavLink to="/publish-log">Publish log</NavLink>
           {currentStore?.salesAnalyticsEnabled && <NavLink to="/sales">Продажби</NavLink>}
+          {currentStore?.salesAnalyticsEnabled && currentStore?.pricingProfile === "cod_formula" && (
+            <NavLink to="/brands">Марки</NavLink>
+          )}
           <NavLink to="/audit-log">Audit log</NavLink>
           <NavLink to="/stores">Stores</NavLink>
           <NavLink to="/settings">Settings</NavLink>

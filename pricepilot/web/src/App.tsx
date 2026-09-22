@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { StoreProvider } from "./context/StoreContext";
 import { AuditLog } from "./pages/AuditLog";
+import { Brands } from "./pages/Brands";
 import { Login } from "./pages/Login";
 import { PricingTable } from "./pages/PricingTable";
 import { Unmatched } from "./pages/Unmatched";
@@ -35,6 +36,7 @@ function AppRoutes() {
         <Route path="/unmatched" element={<Unmatched />} />
         <Route path="/publish-log" element={<PublishLog />} />
         <Route path="/sales" element={<Sales />} />
+        <Route path="/brands" element={<Brands />} />
         <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/stores" element={<Stores />} />
         <Route path="/stores/:storeId" element={<StoreSettings />} />

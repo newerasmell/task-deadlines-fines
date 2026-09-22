@@ -11,6 +11,7 @@ import { env } from "./lib/env";
 import { requireAuth, requireUltimateAdmin } from "./middleware/auth";
 import { auditLogRouter } from "./routes/auditLog";
 import { authRouter } from "./routes/auth";
+import { brandsRouter } from "./routes/brands";
 import { codConfigRouter } from "./routes/codConfig";
 import { costsRouter } from "./routes/costs";
 import { groupsRouter } from "./routes/groups";
@@ -60,6 +61,7 @@ export function createApp() {
   app.use("/api/costs", requireAuth, costsRouter);
   app.use("/api/cod-config", requireAuth, codConfigRouter);
   app.use("/api/sales", requireAuth, salesRouter);
+  app.use("/api/brands", requireAuth, brandsRouter);
   app.use("/api/users", requireAuth, requireUltimateAdmin, usersRouter);
   app.use("/api/audit-log", requireAuth, auditLogRouter);
 

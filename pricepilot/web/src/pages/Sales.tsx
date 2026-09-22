@@ -64,6 +64,74 @@ function CategoryCostCell({
   );
 }
 
+// Editable [min, max] envelope for the category's suggested base/compare-at
+// price — both values are saved together (the backend rejects a partial
+// pair), since a lone min or max can't place anything "between" them. Feeds
+// codPricingEngine.ts's basePriceFor, which also needs brand coefficients
+// set on the Марки tab before it'll actually suggest a number.
+function CategoryBasePriceCell({
+  categoryId,
+  baseMinPrice,
+  baseMaxPrice,
+  onSaved,
+}: {
+  categoryId: string;
+  baseMinPrice: number | null;
+  baseMaxPrice: number | null;
+  onSaved: () => void;
+}) {
+  const [min, setMin] = useState(baseMinPrice != null ? String(baseMinPrice) : "");
+  const [max, setMax] = useState(baseMaxPrice != null ? String(baseMaxPrice) : "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    const minN = Number(min);
+    const maxN = Number(max);
+    if (!min.trim() || !max.trim() || Number.isNaN(minN) || Number.isNaN(maxN) || minN <= 0 || maxN < minN) return;
+    if (minN === baseMinPrice && maxN === baseMaxPrice) return;
+    setSaving(true);
+    try {
+      await api(`/sales/category/${categoryId}/base-price`, {
+        method: "PUT",
+        body: JSON.stringify({ baseMinPrice: minN, baseMaxPrice: maxN }),
+      });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+      <input
+        className="suggested-input"
+        style={{ width: 68 }}
+        type="number"
+        step="0.01"
+        min="0"
+        value={min}
+        onChange={(e) => setMin(e.target.value)}
+        onBlur={save}
+        placeholder="min"
+        disabled={saving}
+      />
+      <span className="muted">–</span>
+      <input
+        className="suggested-input"
+        style={{ width: 68 }}
+        type="number"
+        step="0.01"
+        min="0"
+        value={max}
+        onChange={(e) => setMax(e.target.value)}
+        onBlur={save}
+        placeholder="max"
+        disabled={saving}
+      />
+    </span>
+  );
+}
+
 export function Sales() {
   const { currentStore } = useStores();
   const [data, setData] = useState<SalesResponse | null>(null);
@@ -113,6 +181,11 @@ export function Sales() {
 
       <div className="settings-section">
         <h2>По категория</h2>
+        {data.pricingProfile === "cod_formula" && (
+          <p className="muted small" style={{ marginTop: -4, marginBottom: 8 }}>
+            Базовата цена min–max, заедно с коефициентите в Марки, дават предложената "базова цена" на Pricing таба.
+          </p>
+        )}
         <div className="table-wrap">
           <table className="pricing-table">
             <thead>
@@ -123,7 +196,12 @@ export function Sales() {
                 <th>Средна продажна цена</th>
                 <th>Посещения</th>
                 <th>Conv. rate</th>
-                {data.pricingProfile === "cod_formula" && <th>Себестойност (ръчно)</th>}
+                {data.pricingProfile === "cod_formula" && (
+                  <>
+                    <th>Себестойност (ръчно)</th>
+                    <th>Базова цена min–max (ръчно)</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -136,15 +214,25 @@ export function Sales() {
                   <td>{c.pageViews6m ?? "—"}</td>
                   <td>{c.convRate6m != null ? `${fmt(c.convRate6m, 1)}%` : "—"}</td>
                   {data.pricingProfile === "cod_formula" && (
-                    <td>
-                      <CategoryCostCell categoryId={c.categoryId} cost={c.cost} onSaved={refresh} />
-                    </td>
+                    <>
+                      <td>
+                        <CategoryCostCell categoryId={c.categoryId} cost={c.cost} onSaved={refresh} />
+                      </td>
+                      <td>
+                        <CategoryBasePriceCell
+                          categoryId={c.categoryId}
+                          baseMinPrice={c.baseMinPrice}
+                          baseMaxPrice={c.baseMaxPrice}
+                          onSaved={refresh}
+                        />
+                      </td>
+                    </>
                   )}
                 </tr>
               ))}
               {data.categories.length === 0 && (
                 <tr>
-                  <td colSpan={data.pricingProfile === "cod_formula" ? 7 : 6} className="muted" style={{ textAlign: "center", padding: 30 }}>
+                  <td colSpan={data.pricingProfile === "cod_formula" ? 8 : 6} className="muted" style={{ textAlign: "center", padding: 30 }}>
                     Няма синхронизирани колекции още — пусни "Sync now" от Stores.
                   </td>
                 </tr>

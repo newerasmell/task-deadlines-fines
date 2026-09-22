@@ -78,11 +78,27 @@ export function priceFromCost(cost: number, k: number | null, step: number): num
   return price > 0 ? price : null;
 }
 
-export function compareFromPrice(price: number | null, discountPct: number): number | null {
-  const discountFrac = discountPct / 100;
-  if (price === null || discountFrac >= 1 || discountFrac <= 0) return null;
-  const raw = price / (1 - discountFrac);
+// "Charm price" rounding (round to the nearest whole number, then -0.10,
+// e.g. 101.9 not 101.92) — used once, after averaging a product's raw base
+// price across its categories, rather than per-category and risking float
+// drift on the average.
+export function roundCharmPrice(raw: number): number {
   return round2(Math.round(raw) - 0.1);
+}
+
+// Where a product's suggested base/compare-at price falls inside its
+// category's manually-set [min, max] envelope — placed by how its brand's
+// coefficient (1-10, Марки tab) ranks against the coefficients of every
+// OTHER brand actually selling in that same category, not against a global
+// scale. A category stocking only mid-tier brands should still be able to
+// span its own full min-max range; anchoring to a store-wide coefficient
+// scale would compress it toward one end for no reason. `lo`/`hi` are the
+// min/max coefficient among that category's own brands; a category with
+// only one distinct coefficient (often just one brand) has no ranking
+// information at all, so it lands exactly in the middle of the range.
+export function rawBasePriceFromCoefficient(min: number, max: number, coefficient: number, lo: number, hi: number): number {
+  const normalized = hi > lo ? (coefficient - lo) / (hi - lo) : 0.5;
+  return min + normalized * (max - min);
 }
 
 export type CodRowFlag = "below-floor" | "competitive" | "above-market" | "no-data";

@@ -116,6 +116,7 @@ model Store {
   publishLogs       PublishLog[]
   codFormulaConfig  CodFormulaConfig?
   categories        Category[]
+  brands            Brand[]
 }
 
 // Up to 3 active competitor sources per store. Refresh health (degraded
@@ -215,6 +216,15 @@ model Category {
   shopifyCollectionId String   // Shopify collection GID
   title               String
 
+  // Manually-set envelope for the "suggested base/compare-at price" shown
+  // on the COD-formula Pricing table (replaces the old flat price/(1-
+  // discountPct) markup) — both null until an admin sets them on the
+  // Продажби tab. A product in this category gets a price somewhere in
+  // [baseMinPrice, baseMaxPrice], placed by its brand's coefficient (see
+  // Brand) relative to the other brands actually selling in this category.
+  baseMinPrice        Float?
+  baseMaxPrice        Float?
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -222,6 +232,25 @@ model Category {
   categoryCost        CategoryCost?
 
   @@unique([storeId, shopifyCollectionId])
+}
+
+// One coefficient per (store, vendor) — not per category, so "this brand is
+// premium" holds across the whole catalog rather than needing to be reset
+// for every category it happens to sell in. 1-10, null until an admin sets
+// it on the Марки tab; a product whose vendor has no coefficient yet gets no
+// suggested base price, same as a category with no min/max set.
+model Brand {
+  id          String   @id @default(cuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  vendor      String   // exact match against Product.vendor
+  coefficient Float?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([storeId, vendor])
 }
 
 model ProductCategory {

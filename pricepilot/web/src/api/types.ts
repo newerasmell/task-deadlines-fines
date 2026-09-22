@@ -262,6 +262,14 @@ export interface SalesCategoryRow {
   convRate6m: number | null;
   cost: number | null; // manually-set average acquisition cost, COD stores only
   currency: string;
+  baseMinPrice: number | null; // manually-set envelope for the suggested base/compare-at price, COD stores only
+  baseMaxPrice: number | null;
+}
+
+export interface BrandRow {
+  vendor: string;
+  productCount: number;
+  coefficient: number | null; // 1-10, null until set — ranks this brand's price tier against others in the same category
 }
 
 export interface SalesResponse {
