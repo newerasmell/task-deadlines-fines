@@ -288,12 +288,18 @@ async function sendCodPricingTable(
     // would otherwise suggest the EXACT same price as every other product
     // in that category — confirmed live on a whole "Шапки" category costed
     // off one shared 25€ average, all suggesting 79.90€. Spread across
-    // [recommendedPrice, recommendedPrice×1.15] instead, per product. Never
-    // applied to a product with its own real SKU cost, which already
-    // varies naturally; and never touches `floor`/deltaPct/flag below,
-    // which stay anchored to the true formula price.
+    // [recommendedPrice, recommendedPrice×1.15] instead, per DISTINCT
+    // PRODUCT — keyed on shopifyProductId, not product.id (our own variant-
+    // grain row id) — confirmed live: keying on product.id gave a T-shirt's
+    // five size variants five different suggested prices, when they're all
+    // the same physical product and should show one. Never applied to a
+    // product with its own real SKU cost, which already varies naturally;
+    // and never touches `floor`/deltaPct/flag below, which stay anchored to
+    // the true formula price.
     const variedPrice =
-      recommendedPrice != null && fromCategory ? varyPriceForSharedCost(recommendedPrice, product.id) : recommendedPrice;
+      recommendedPrice != null && fromCategory
+        ? varyPriceForSharedCost(recommendedPrice, product.shopifyProductId)
+        : recommendedPrice;
 
     // A markdown-eligible row overrides BOTH the price suggestion (down to
     // the ceiling) and the compare-at suggestion (up to the product's real
