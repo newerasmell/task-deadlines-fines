@@ -525,7 +525,15 @@ model PublishLog {
 
   status         String   // SUCCESS | ERROR
   errorMessage   String?
-  source         String   // single | bulk
+  source         String   // single | bulk | revert
+
+  // Set on the ORIGINAL entry once it's been successfully reverted — hides
+  // its own Revert button afterwards (reverting twice would push the same
+  // rollback to Shopify a second time) and lets the UI show "Reverted"
+  // instead. The revert itself creates its own separate PublishLog row (so
+  // it shows up in the log and can itself be reverted, i.e. redo), rather
+  // than mutating this row's old/new values in place.
+  revertedAt     DateTime?
 
   createdAt      DateTime @default(now())
 

@@ -208,8 +208,15 @@ export interface PublishLogEntry {
   newCompareAt: number | null;
   status: "SUCCESS" | "ERROR";
   errorMessage: string | null;
-  source: "single" | "bulk";
+  source: "single" | "bulk" | "revert";
+  revertedAt: string | null;
   createdAt: string;
+}
+
+export interface RevertResultItem {
+  logId: string;
+  status: "SUCCESS" | "ERROR";
+  errorMessage?: string;
 }
 
 export interface UnmatchedRow {
