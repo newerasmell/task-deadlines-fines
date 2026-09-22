@@ -125,6 +125,7 @@ pricingRouter.get("/:storeId", async (req, res) => {
       recommendedComparePrice: null,
       floor: suggestion.floor,
       flag: suggestion.flag,
+      activatedAt: product.activatedAt ? product.activatedAt.toISOString() : null,
     };
   });
 
@@ -329,6 +330,7 @@ async function sendCodPricingTable(
       compareAtPrice: product.compareAtPrice,
       inventoryQuantity: product.inventoryQuantity,
       priority: product.priority,
+      activatedAt: product.activatedAt ? product.activatedAt.toISOString() : null,
       sourcePrices: {},
       matchedSourceCount: 0,
       minComp: null,

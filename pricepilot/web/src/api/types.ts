@@ -181,6 +181,7 @@ export interface PricingRow {
   flag: RowFlag;
   markdownEligible?: boolean; // COD stores only — past the new-arrival wait window and still priced above the ceiling
   daysSinceActive?: number | null;
+  activatedAt: string | null; // when this variant was first synced ACTIVE in Shopify — null if never observed active
 }
 
 export interface PricingTableResponse {

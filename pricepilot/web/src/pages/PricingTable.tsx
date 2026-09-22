@@ -22,7 +22,7 @@ const FLAG_LABELS: Record<RowFlag, string> = {
   "no-data": "No data",
 };
 
-type SortKey = "title" | "ourPrice" | "minComp" | "deltaPct" | "suggested" | "matchedSourceCount";
+type SortKey = "title" | "ourPrice" | "minComp" | "deltaPct" | "suggested" | "matchedSourceCount" | "activatedAt";
 type RowStatus = { state: "idle" } | { state: "pending" } | { state: "success" } | { state: "error"; message: string };
 
 function fmtMoney(v: number | null, currency: string): string {
@@ -36,6 +36,17 @@ function fmtFreshness(iso: string): string {
   if (hours < 1) return "just now";
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+// Product.activatedAt — the sync's own stamp of the first time it ever saw
+// this variant ACTIVE in Shopify, not "uploaded"/created — see
+// catalogSync.ts. Shown as an actual date plus a day-count, since "8 days
+// ago" alone doesn't answer "on what date".
+function fmtActivatedAt(iso: string | null): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  const days = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+  return `${date.toLocaleDateString()} (${days}d)`;
 }
 
 export function PricingTable() {
@@ -391,6 +402,9 @@ export function PricingTable() {
                 Our price
               </th>
               <th>Compare-at</th>
+              <th className={sortKey === "activatedAt" ? "sorted" : ""} onClick={() => toggleSort("activatedAt")}>
+                Active от
+              </th>
               {isCod && <th>Cost</th>}
               {data.sources.map((s) => (
                 <th key={s.id}>
@@ -457,6 +471,7 @@ export function PricingTable() {
                   </td>
                   <td>{fmtMoney(row.ourPrice, currentStore.currency)}</td>
                   <td>{fmtMoney(row.compareAtPrice, currentStore.currency)}</td>
+                  <td className="small">{fmtActivatedAt(row.activatedAt)}</td>
                   {isCod && (
                     <td>
                       <input
@@ -589,7 +604,7 @@ export function PricingTable() {
             })}
             {filteredSortedRows.length === 0 && (
               <tr>
-                <td colSpan={9 + data.sources.length + (isCod ? 1 : 0)} className="muted" style={{ textAlign: "center", padding: 30 }}>
+                <td colSpan={10 + data.sources.length + (isCod ? 1 : 0)} className="muted" style={{ textAlign: "center", padding: 30 }}>
                   No products match these filters.
                 </td>
               </tr>
