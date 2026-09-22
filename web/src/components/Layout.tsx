@@ -137,7 +137,7 @@ export function Layout() {
         </div>
       </aside>
       {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
-      <main className="content">
+      <main className={`content${location.pathname === "/tasks" ? " content-wide" : ""}`}>
         <Outlet />
       </main>
     </div>

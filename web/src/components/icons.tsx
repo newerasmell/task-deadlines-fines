@@ -139,3 +139,21 @@ export function IconVideo({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+export function IconInfo({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5.5" />
+      <circle cx="12" cy="8" r="1.1" {...base} fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function IconX({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M5 5l14 14M19 5 5 19" />
+    </svg>
+  );
+}

@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { api, apiUpload, attachmentUrl } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
 import type { GoogleCalendarStatus, Priority, Task, TaskSubmission, User } from "../api/types";
 import { Avatar } from "../components/Avatar";
-import { IconSearch } from "../components/icons";
+import { IconInfo, IconSearch, IconX } from "../components/icons";
 import { PushToCalendarButton } from "../components/PushToCalendarButton";
 import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
@@ -38,7 +38,7 @@ const PRIORITY_COLORS: Record<Priority, string> = {
   CRITICAL: "#e2445c",
 };
 
-type ExpandedMode = "submit" | "review" | "edit" | null;
+type ExpandedMode = "submit" | "review" | "edit" | "info" | null;
 type Tab = "active" | "completed";
 type ViewMode = "board" | "list" | "templates";
 
@@ -62,6 +62,12 @@ export function Tasks() {
   const [filterStatus, setFilterStatus] = useState<Task["status"] | "">("");
   const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [completedLimit, setCompletedLimit] = useState(20);
+
+  function selectTab(next: Tab) {
+    setTab(next);
+    setCompletedLimit(20);
+  }
 
   function updateTaskInPlace(updated: Task) {
     setTasks((cur) => cur.map((tk) => (tk.id === updated.id ? updated : tk)));
@@ -122,12 +128,14 @@ export function Tasks() {
 
   if (loading) return <p>{t("Зареждане…")}</p>;
 
-  const visibleTasks = tasks
+  const allVisibleTasks = tasks
     .filter((tk) => (tab === "completed" ? tk.status === "DONE" : tk.status !== "DONE"))
     .filter((tk) => !search || tk.title.toLowerCase().includes(search.toLowerCase()))
     .filter((tk) => !filterEmployee || tk.assigneeId === filterEmployee)
     .filter((tk) => !filterPriority || tk.priority === filterPriority)
     .filter((tk) => !filterStatus || tk.status === filterStatus);
+  const visibleTasks = tab === "completed" ? allVisibleTasks.slice(0, completedLimit) : allVisibleTasks;
+  const hasMoreCompleted = tab === "completed" && allVisibleTasks.length > completedLimit;
   const expandedTask = expanded ? tasks.find((tk) => tk.id === expanded.taskId) : undefined;
 
   return (
@@ -201,6 +209,7 @@ export function Tasks() {
             currentUserId={user?.id}
             isAdmin={isAdmin}
             onEdit={(taskId) => toggleExpanded(taskId, "edit")}
+            onInfo={(taskId) => toggleExpanded(taskId, "info")}
             onStart={startWork}
             onSubmit={(taskId) => toggleExpanded(taskId, "submit")}
             onReview={(taskId) => toggleExpanded(taskId, "review")}
@@ -211,42 +220,70 @@ export function Tasks() {
             onTaskUpdated={updateTaskInPlace}
           />
           {expanded && expandedTask && expanded.mode === "edit" && isAdmin && (
-            <TaskForm
-              task={expandedTask}
-              employees={employees}
-              onSaved={() => {
-                setExpanded(null);
-                refresh();
-              }}
-              onCancel={() => setExpanded(null)}
-            />
+            <Modal title={t("Редакция на задача")} onClose={() => setExpanded(null)}>
+              <TaskForm
+                task={expandedTask}
+                employees={employees}
+                onSaved={() => {
+                  setExpanded(null);
+                  refresh();
+                }}
+                onCancel={() => setExpanded(null)}
+              />
+            </Modal>
           )}
           {expanded && expandedTask && expanded.mode === "submit" && (
-            <SubmitForm
-              taskId={expanded.taskId}
-              onDone={() => {
-                setExpanded(null);
-                refresh();
-              }}
-            />
+            <Modal title={t("Подай за преглед")} onClose={() => setExpanded(null)}>
+              <SubmitForm
+                taskId={expanded.taskId}
+                onDone={() => {
+                  setExpanded(null);
+                  refresh();
+                }}
+              />
+            </Modal>
           )}
           {expanded && expandedTask && expanded.mode === "review" && (
-            <ReviewPanel
-              taskId={expanded.taskId}
-              onDone={() => {
-                setExpanded(null);
-                refresh();
-              }}
-            />
+            <Modal title={t("Преглед на подадена задача")} onClose={() => setExpanded(null)}>
+              <ReviewPanel
+                taskId={expanded.taskId}
+                onDone={() => {
+                  setExpanded(null);
+                  refresh();
+                }}
+              />
+            </Modal>
+          )}
+          {expanded && expandedTask && expanded.mode === "info" && (
+            <Modal title={expandedTask.title} onClose={() => setExpanded(null)}>
+              <TaskInfoPanel
+                task={expandedTask}
+                isAdmin={isAdmin}
+                currentUserId={user?.id}
+                locked={isLockedTask(expandedTask)}
+                locale={locale}
+                onStart={(id) => {
+                  startWork(id);
+                  setExpanded(null);
+                }}
+                onSubmit={(id) => toggleExpanded(id, "submit")}
+                onReview={(id) => toggleExpanded(id, "review")}
+                onComplete={(tk) => {
+                  completeTask(tk);
+                  setExpanded(null);
+                }}
+                onEdit={(id) => toggleExpanded(id, "edit")}
+              />
+            </Modal>
           )}
         </>
       ) : (
         <>
           <div className="tabs">
-            <button className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>
+            <button className={tab === "active" ? "active" : ""} onClick={() => selectTab("active")}>
               {t("Активни")}
             </button>
-            <button className={tab === "completed" ? "active" : ""} onClick={() => setTab("completed")}>
+            <button className={tab === "completed" ? "active" : ""} onClick={() => selectTab("completed")}>
               {t("Завършени")}
             </button>
           </div>
@@ -316,7 +353,10 @@ export function Tasks() {
                     <div className="grid-cell" data-label={t("Задача")}>
                       <div
                         className="task-cell-clickable"
-                        onClick={() => toggleDesc(tk.id)}
+                        onClick={() => {
+                          if (window.getSelection()?.toString()) return;
+                          toggleDesc(tk.id);
+                        }}
                         role="button"
                         tabIndex={0}
                         title={t("Покажи/скрий пълното описание")}
@@ -441,13 +481,20 @@ export function Tasks() {
                 </Fragment>
               );
             })}
-            {visibleTasks.length === 0 && (
+            {allVisibleTasks.length === 0 && (
               <div className="grid-cell-full muted">
                 {tab === "completed" ? t("Няма завършени задачи.") : t("Няма активни задачи.")}
               </div>
             )}
           </div>
           </div>
+          {hasMoreCompleted && (
+            <div className="load-more-row">
+              <button className="secondary" onClick={() => setCompletedLimit((n) => n + 20)}>
+                {t("Покажи още ({count})", { count: allVisibleTasks.length - completedLimit })}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -459,6 +506,7 @@ function TaskBoard({
   currentUserId,
   isAdmin,
   onEdit,
+  onInfo,
   onStart,
   onSubmit,
   onReview,
@@ -472,6 +520,7 @@ function TaskBoard({
   currentUserId: string | undefined;
   isAdmin: boolean;
   onEdit: (taskId: string) => void;
+  onInfo: (taskId: string) => void;
   onStart: (taskId: string) => void;
   onSubmit: (taskId: string) => void;
   onReview: (taskId: string) => void;
@@ -486,9 +535,20 @@ function TaskBoard({
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [doneExpanded, setDoneExpanded] = useState<Set<string>>(new Set());
+  const DONE_LIMIT = 6;
 
   function toggleCollapsed(empId: string) {
     setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(empId)) next.delete(empId);
+      else next.add(empId);
+      return next;
+    });
+  }
+
+  function toggleDoneExpanded(empId: string) {
+    setDoneExpanded((cur) => {
       const next = new Set(cur);
       if (next.has(empId)) next.delete(empId);
       else next.add(empId);
@@ -542,6 +602,9 @@ function TaskBoard({
             <div className="board-columns">
               {BOARD_COLUMNS.map((col) => {
                 const colTasks = empTasks.filter((tk) => tk.status === col.status);
+                const isDoneCol = col.status === "DONE";
+                const isDoneExpanded = doneExpanded.has(empId);
+                const cardsToShow = isDoneCol && !isDoneExpanded ? colTasks.slice(0, DONE_LIMIT) : colTasks;
                 const key = `${empId}:${col.status}`;
                 const isDragOver = dragOverKey === key;
                 return (
@@ -574,7 +637,7 @@ function TaskBoard({
                       {t(col.label)} <span className="muted small">({colTasks.length})</span>
                     </div>
                     <div className="board-column-body">
-                      {colTasks.map((tk) => {
+                      {cardsToShow.map((tk) => {
                         const activeFines = (tk.fines ?? []).filter((f) => f.status === "ACTIVE");
                         const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
                         const locked = isLockedTask(tk);
@@ -608,13 +671,26 @@ function TaskBoard({
                                   : undefined
                             }
                           >
-                            <div className="board-card-title">
-                              {tk.title}
-                              {tk.templateId && <span title={t("Повтаряща се задача")}> ↻</span>}
-                              {tk.projectId && <span title={t("Стъпка {order} от проект", { order: tk.chainOrder ?? "?" })}> 🔗{tk.chainOrder}</span>}
-                              {isAdmin && locked && (
-                                <span title={t("Зададена от Ultimate Admin — само той може да я редактира/изтрие")}> 🔒</span>
-                              )}
+                            <div className="board-card-head">
+                              <div className="board-card-title">
+                                {tk.title}
+                                {tk.templateId && <span title={t("Повтаряща се задача")}> ↻</span>}
+                                {tk.projectId && <span title={t("Стъпка {order} от проект", { order: tk.chainOrder ?? "?" })}> 🔗{tk.chainOrder}</span>}
+                                {isAdmin && locked && (
+                                  <span title={t("Зададена от Ultimate Admin — само той може да я редактира/изтрие")}> 🔒</span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                className="board-card-info-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onInfo(tk.id);
+                                }}
+                                title={t("Пълна информация")}
+                              >
+                                <IconInfo size={16} />
+                              </button>
                             </div>
                             <div className="board-card-meta muted small">
                               {tk.status === "BLOCKED"
@@ -684,6 +760,11 @@ function TaskBoard({
                         );
                       })}
                       {colTasks.length === 0 && <div className="board-column-empty" />}
+                      {isDoneCol && colTasks.length > DONE_LIMIT && (
+                        <button type="button" className="board-column-more" onClick={() => toggleDoneExpanded(empId)}>
+                          {isDoneExpanded ? t("Свий") : t("Покажи още ({count})", { count: colTasks.length - DONE_LIMIT })}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -693,6 +774,109 @@ function TaskBoard({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{title}</h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+            <IconX size={18} />
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function TaskInfoPanel({
+  task,
+  isAdmin,
+  currentUserId,
+  locked,
+  locale,
+  onStart,
+  onSubmit,
+  onReview,
+  onComplete,
+  onEdit,
+}: {
+  task: Task;
+  isAdmin: boolean;
+  currentUserId: string | undefined;
+  locked: boolean;
+  locale: string;
+  onStart: (taskId: string) => void;
+  onSubmit: (taskId: string) => void;
+  onReview: (taskId: string) => void;
+  onComplete: (tk: Task) => void;
+  onEdit: (taskId: string) => void;
+}) {
+  const { t } = useI18n();
+  const isAssignee = task.assigneeId === currentUserId;
+  const isOwner = task.ownerId === currentUserId;
+  const canStart = isAssignee && task.status === "PENDING";
+  const canSubmitCard = isAssignee && (task.status === "PENDING" || task.status === "IN_PROGRESS" || task.status === "OVERDUE");
+  const canReviewCard = (isOwner || isAdmin) && task.status === "PENDING_REVIEW";
+  const canComplete = isAdmin && !locked && task.status !== "DONE" && task.status !== "CANCELLED";
+  const activeFines = (task.fines ?? []).filter((f) => f.status === "ACTIVE");
+  const fineTotal = activeFines.reduce((s, f) => s + f.amount, 0);
+
+  return (
+    <div>
+      <dl className="task-info-grid">
+        <dt>{t("Служител")}</dt>
+        <dd>{task.assignee.name}</dd>
+        <dt>Owner</dt>
+        <dd>{task.owner?.name ?? "—"}</dd>
+        <dt>{t("Срок")}</dt>
+        <dd>{task.status === "BLOCKED" ? t("Чака предходна стъпка") : new Date(task.deadline).toLocaleString(locale)}</dd>
+        <dt>{t("Приоритет")}</dt>
+        <dd>{t(PRIORITY_LABELS[task.priority])}</dd>
+        <dt>{t("Статус")}</dt>
+        <dd>
+          <span className={statusBadgeClass[task.status]}>{t(STATUS_LABELS[task.status])}</span>
+        </dd>
+        {fineTotal > 0 && (
+          <>
+            <dt>{t("Глоби")}</dt>
+            <dd>
+              {fineTotal.toFixed(2)} {activeFines[0].currency}
+            </dd>
+          </>
+        )}
+        {task.definitionOfDone && (
+          <>
+            <dt>Definition of Done</dt>
+            <dd>{task.definitionOfDone}</dd>
+          </>
+        )}
+      </dl>
+      {task.description && <p className="task-info-description">{task.description}</p>}
+      <div className="task-info-actions">
+        {canStart && <button onClick={() => onStart(task.id)}>{t("Започни")}</button>}
+        {canSubmitCard && <button onClick={() => onSubmit(task.id)}>{t("Подай за преглед")}</button>}
+        {canReviewCard && <button onClick={() => onReview(task.id)}>{t("Прегледай")}</button>}
+        {canComplete && <button onClick={() => onComplete(task)}>{t("Затвори като готова")}</button>}
+        {isAdmin && !locked && (
+          <button className="secondary" onClick={() => onEdit(task.id)}>
+            {t("Редактирай")}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

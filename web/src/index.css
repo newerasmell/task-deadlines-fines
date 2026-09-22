@@ -198,8 +198,13 @@ body {
 
 .content {
   flex: 1;
+  min-width: 0;
   padding: 28px 36px;
   max-width: 1200px;
+}
+
+.content-wide {
+  max-width: none;
 }
 
 h1 {
@@ -535,6 +540,8 @@ button.secondary:hover {
 
 .task-cell-clickable {
   cursor: pointer;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .task-cell-clickable:hover .cell-title {
@@ -853,6 +860,7 @@ button.secondary:hover {
   display: flex;
   gap: 6px;
   margin-bottom: 14px;
+  flex-wrap: wrap;
 }
 
 .tabs button {
@@ -860,6 +868,11 @@ button.secondary:hover {
   color: var(--text);
   padding: 7px 14px;
   font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tabs button.active {
@@ -1034,6 +1047,7 @@ button.secondary:hover {
   border-left: 5px solid;
   border-radius: 10px;
   padding: 14px 16px;
+  min-width: 0;
 }
 
 .board-group-header {
@@ -1147,9 +1161,50 @@ button.secondary:hover {
   cursor: grabbing;
 }
 
+.board-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
 .board-card-title {
   font-weight: 600;
-  margin-bottom: 3px;
+}
+
+.board-card-info-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+.board-card-info-btn:hover {
+  background: #f3f4f6;
+  color: var(--primary);
+}
+
+.board-column-more {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px;
+  text-align: center;
+  border-radius: 6px;
+}
+
+.board-column-more:hover {
+  background: #f3f4f6;
 }
 
 .board-card-meta {
@@ -1169,6 +1224,108 @@ button.secondary:hover {
 
 .board-card-actions .small-btn {
   margin-right: 0;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--card);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  border-radius: 12px 12px 0 0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.modal-close:hover {
+  background: #f3f4f6;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-body .card {
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.task-info-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+}
+
+.task-info-grid dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.task-info-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-info-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  margin: 0 0 18px;
+}
+
+.task-info-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.load-more-row {
+  text-align: center;
+  padding: 16px;
 }
 
 .dashboard-columns {

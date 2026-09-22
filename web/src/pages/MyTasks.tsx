@@ -23,6 +23,7 @@ export function MyTasks() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [completedLimit, setCompletedLimit] = useState(20);
 
   function updateTaskInPlace(updated: Task) {
     setTasks((cur) => cur.map((tk) => (tk.id === updated.id ? updated : tk)));
@@ -64,15 +65,22 @@ export function MyTasks() {
     return tk.createdBy.isSuperAdmin && !user?.isSuperAdmin;
   }
 
+  function selectTab(next: Tab) {
+    setTab(next);
+    setCompletedLimit(20);
+  }
+
   if (loading) return <p>{t("Зареждане…")}</p>;
 
   const reviewCount = tasks.filter((tk) => tk.ownerId === user?.id && tk.status === "PENDING_REVIEW").length;
 
-  const visible = tasks.filter((tk) => {
+  const allVisible = tasks.filter((tk) => {
     if (tab === "review") return tk.ownerId === user?.id && tk.status === "PENDING_REVIEW";
     if (tab === "completed") return tk.assigneeId === user?.id && tk.status === "DONE";
     return tk.assigneeId === user?.id && tk.status !== "DONE";
   });
+  const visible = tab === "completed" ? allVisible.slice(0, completedLimit) : allVisible;
+  const hasMoreCompleted = tab === "completed" && allVisible.length > completedLimit;
 
   return (
     <div>
@@ -84,14 +92,14 @@ export function MyTasks() {
       </p>
 
       <div className="tabs">
-        <button className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>
+        <button className={tab === "active" ? "active" : ""} onClick={() => selectTab("active")}>
           {t("Активни")}
         </button>
-        <button className={tab === "review" ? "active" : ""} onClick={() => setTab("review")}>
+        <button className={tab === "review" ? "active" : ""} onClick={() => selectTab("review")}>
           {t("За преглед")}
           {reviewCount > 0 && <span className="badge badge-info">{reviewCount}</span>}
         </button>
-        <button className={tab === "completed" ? "active" : ""} onClick={() => setTab("completed")}>
+        <button className={tab === "completed" ? "active" : ""} onClick={() => selectTab("completed")}>
           {t("Завършени")}
         </button>
       </div>
@@ -124,7 +132,10 @@ export function MyTasks() {
                   <div className="grid-cell" data-label={t("Задача")}>
                     <div
                       className="task-cell-clickable"
-                      onClick={() => toggleDesc(tk.id)}
+                      onClick={() => {
+                        if (window.getSelection()?.toString()) return;
+                        toggleDesc(tk.id);
+                      }}
                       role="button"
                       tabIndex={0}
                       title={t("Покажи/скрий пълното описание")}
@@ -225,7 +236,7 @@ export function MyTasks() {
               </Fragment>
             );
           })}
-          {visible.length === 0 && (
+          {allVisible.length === 0 && (
             <div className="grid-cell-full muted">
               {tab === "completed"
                 ? t("Няма завършени задачи.")
@@ -235,6 +246,13 @@ export function MyTasks() {
             </div>
           )}
         </div>
+        {hasMoreCompleted && (
+          <div className="load-more-row">
+            <button className="secondary" onClick={() => setCompletedLimit((n) => n + 20)}>
+              {t("Покажи още ({count})", { count: allVisible.length - completedLimit })}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
