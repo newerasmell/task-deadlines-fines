@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { SalesResponse } from "../api/types";
+import type { SalesResponse, Store } from "../api/types";
 import { useStores } from "../context/StoreContext";
 
 function fmt(n: number | null, digits = 2): string {
@@ -132,8 +132,113 @@ function CategoryBasePriceCell({
   );
 }
 
+// New-arrival markdown config — a product tagged into `markdownCollectionId`
+// starts a countdown the moment it's first synced ACTIVE in Shopify; once
+// `markdownAfterDays` pass, if its price is still more than `markdownCeilingPct`
+// above the formula's recommended price, the Pricing table flags it and
+// suggests marking it down to exactly that ceiling. Saved onto the Store
+// row itself (PATCH /stores/:id) since it's one set of numbers per store,
+// same as the rest of its pricing rule.
+function MarkdownSettingsPanel({
+  store,
+  categories,
+  onSaved,
+}: {
+  store: Store;
+  categories: { categoryId: string; title: string }[];
+  onSaved: () => void;
+}) {
+  const [enabled, setEnabled] = useState(store.markdownEnabled);
+  const [collectionId, setCollectionId] = useState(store.markdownCollectionId ?? "");
+  const [afterDays, setAfterDays] = useState(String(store.markdownAfterDays));
+  const [ceilingPct, setCeilingPct] = useState(String(store.markdownCeilingPct));
+  const [saving, setSaving] = useState(false);
+
+  async function save(patch: Record<string, unknown>) {
+    setSaving(true);
+    try {
+      await api(`/stores/${store.id}`, { method: "PATCH", body: JSON.stringify(patch) });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="settings-section">
+      <h2>Намаляване на нови пристигания</h2>
+      <p className="muted small" style={{ marginTop: -4, marginBottom: 8 }}>
+        Продукт от избраната колекция, станал "active" в Shopify преди повече от зададените дни, се маркира в Pricing
+        за намаляване — до таван от зададения % над цената по формулата, с истинската начална цена като compare-at.
+      </p>
+      <div className="form-row">
+        <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={saving}
+            onChange={(e) => {
+              setEnabled(e.target.checked);
+              save({ markdownEnabled: e.target.checked });
+            }}
+          />
+          Включено
+        </label>
+        <label>
+          Колекция за нови пристигания
+          <select
+            value={collectionId}
+            disabled={saving}
+            onChange={(e) => {
+              setCollectionId(e.target.value);
+              save({ markdownCollectionId: e.target.value || null });
+            }}
+          >
+            <option value="">— избери колекция —</option>
+            {categories.map((c) => (
+              <option key={c.categoryId} value={c.categoryId}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Дни от "active"
+          <input
+            type="number"
+            step="1"
+            min="1"
+            value={afterDays}
+            disabled={saving}
+            onChange={(e) => setAfterDays(e.target.value)}
+            onBlur={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isInteger(n) && n > 0 && n !== store.markdownAfterDays) save({ markdownAfterDays: n });
+            }}
+          />
+        </label>
+        <label>
+          Таван над формулата, %
+          <input
+            type="number"
+            step="0.5"
+            min="0"
+            value={ceilingPct}
+            disabled={saving}
+            onChange={(e) => setCeilingPct(e.target.value)}
+            onBlur={(e) => {
+              const n = Number(e.target.value);
+              if (!Number.isNaN(n) && n >= 0 && n !== store.markdownCeilingPct) save({ markdownCeilingPct: n });
+            }}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export function Sales() {
-  const { currentStore } = useStores();
+  const { currentStore, refreshStores } = useStores();
   const [data, setData] = useState<SalesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -178,6 +283,10 @@ export function Sales() {
         <h1>Продажби — {currentStore.name}</h1>
         <span className="muted small">Последните 6 месеца</span>
       </div>
+
+      {data.pricingProfile === "cod_formula" && (
+        <MarkdownSettingsPanel store={currentStore} categories={data.categories} onSaved={refreshStores} />
+      )}
 
       <div className="settings-section">
         <h2>По категория</h2>

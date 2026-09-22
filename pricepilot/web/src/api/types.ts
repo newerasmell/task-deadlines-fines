@@ -52,6 +52,10 @@ export interface Store {
   hasClientSecret: boolean;
   salesAnalyticsEnabled: boolean;
   ga4PropertyId: string | null;
+  markdownEnabled: boolean;
+  markdownCollectionId: string | null;
+  markdownAfterDays: number;
+  markdownCeilingPct: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -174,6 +178,8 @@ export interface PricingRow {
   recommendedComparePrice: number | null;
   floor: number;
   flag: RowFlag;
+  markdownEligible?: boolean; // COD stores only — past the new-arrival wait window and still priced above the ceiling
+  daysSinceActive?: number | null;
 }
 
 export interface PricingTableResponse {

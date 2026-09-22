@@ -30,6 +30,8 @@ interface ProductNode {
   vendor: string | null;
   handle: string;
   tags: string[];
+  status: string; // ACTIVE | DRAFT | ARCHIVED
+  publishedAt: string | null;
   featuredImage: { url: string } | null;
   variants: { edges: { node: VariantNode }[] };
   collections: { edges: { node: CollectionNode }[] };
@@ -39,6 +41,20 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
   const price = Number(variant.price);
   const compareAtPrice = variant.compareAtPrice != null ? Number(variant.compareAtPrice) : null;
   const tags = (product.tags ?? []).join(",");
+
+  const existing = await prisma.product.findUnique({
+    where: { storeId_shopifyVariantId: { storeId, shopifyVariantId: variant.id } },
+    select: { activatedAt: true, priceAtActivation: true },
+  });
+  // Stamped once, on the first sync that ever observes this variant ACTIVE
+  // — never touched again afterwards (an archive/reactivate or a later
+  // manual price edit doesn't reset it). This is the clock the new-arrival
+  // markdown feature (codPricingEngine.ts) counts its days from, and
+  // priceAtActivation is what "the original price" meant at that moment.
+  const justActivated = product.status === "ACTIVE" && !existing?.activatedAt;
+  const activatedAt = justActivated ? new Date() : (existing?.activatedAt ?? null);
+  const priceAtActivation = justActivated ? price : (existing?.priceAtActivation ?? null);
+
   return prisma.product.upsert({
     where: { storeId_shopifyVariantId: { storeId, shopifyVariantId: variant.id } },
     create: {
@@ -55,6 +71,10 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
       inventoryQuantity: variant.inventoryQuantity,
       imageUrl: product.featuredImage?.url ?? null,
       tags,
+      shopifyStatus: product.status,
+      shopifyPublishedAt: product.publishedAt ? new Date(product.publishedAt) : null,
+      activatedAt,
+      priceAtActivation,
     },
     update: {
       shopifyProductId: product.id,
@@ -68,6 +88,10 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
       inventoryQuantity: variant.inventoryQuantity,
       imageUrl: product.featuredImage?.url ?? null,
       tags,
+      shopifyStatus: product.status,
+      shopifyPublishedAt: product.publishedAt ? new Date(product.publishedAt) : null,
+      activatedAt,
+      priceAtActivation,
       syncedAt: new Date(),
     },
   });
@@ -117,6 +141,8 @@ const PRODUCTS_PAGE_QUERY = `
           vendor
           handle
           tags
+          status
+          publishedAt
           featuredImage { url }
           variants(first: 100) {
             edges { node { id sku barcode price compareAtPrice inventoryQuantity } }
@@ -164,6 +190,8 @@ const BULK_QUERY = `
           vendor
           handle
           tags
+          status
+          publishedAt
           featuredImage { url }
           variants {
             edges { node { id sku barcode price compareAtPrice inventoryQuantity } }
@@ -263,6 +291,8 @@ async function downloadAndParseBulkResult(
         vendor: (node.vendor as string | null) ?? null,
         handle: node.handle as string,
         tags: (node.tags as string[] | null) ?? [],
+        status: node.status as string,
+        publishedAt: (node.publishedAt as string | null) ?? null,
         featuredImage: (node.featuredImage as { url: string } | null) ?? null,
       });
     }

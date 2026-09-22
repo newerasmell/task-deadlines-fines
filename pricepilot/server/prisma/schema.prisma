@@ -101,6 +101,21 @@ model Store {
   // most stores haven't configured — turning it on for everyone would just
   // show empty/broken data for stores that aren't set up for it.
   salesAnalyticsEnabled Boolean @default(false)
+  // New-arrival markdown (COD-formula stores only): a product added to
+  // markdownCollectionId starts a countdown the moment it's first observed
+  // ACTIVE in Shopify (Product.activatedAt). Once markdownAfterDays have
+  // passed, if its current price still sits above the formula's recommended
+  // price by more than markdownCeilingPct, the Pricing table flags it and
+  // overrides its suggestion down to that ceiling — see
+  // codPricingEngine.ts's markdown functions. Off by default; needs
+  // salesAnalyticsEnabled too, since that's what syncs Category rows to
+  // pick markdownCollectionId from in the first place.
+  markdownEnabled     Boolean  @default(false)
+  markdownCollectionId String?
+  markdownCollection  Category? @relation("MarkdownCollection", fields: [markdownCollectionId], references: [id], onDelete: SetNull)
+  markdownAfterDays   Int      @default(8)
+  markdownCeilingPct  Float    @default(12.5)
+
   // GA4 property to pull page views from (e.g. "properties/123456789") —
   // null means the page-views/conv-rate columns stay blank even with
   // salesAnalyticsEnabled on; see services/ga4Client.ts.
@@ -115,7 +130,7 @@ model Store {
   manualMatches     ManualMatch[]
   publishLogs       PublishLog[]
   codFormulaConfig  CodFormulaConfig?
-  categories        Category[]
+  categories        Category[] @relation("StoreCategories")
   brands            Brand[]
 }
 
@@ -188,6 +203,21 @@ model Product {
   // value rule is computed on the fly at scrape-scheduling time, not stored.
   priority            Boolean  @default(false)
 
+  // Shopify's own product status (ACTIVE | DRAFT | ARCHIVED) and publish
+  // timestamp — synced read-only, purely informational.
+  shopifyStatus       String?
+  shopifyPublishedAt  DateTime?
+  // OUR OWN stamp of the first sync that ever observed this variant's
+  // status as ACTIVE — set once, never overwritten by a later sync even if
+  // the product is archived and reactivated. This (not shopifyPublishedAt,
+  // which Shopify can backdate/leave null) is the clock the new-arrival
+  // markdown feature counts its 7-10 days from; priceAtActivation is the
+  // price snapshotted at that same moment, so a manual price edit made
+  // afterwards doesn't change what "the original price" meant when the
+  // countdown started. See codPricingEngine.ts's markdown functions.
+  activatedAt         DateTime?
+  priceAtActivation   Float?
+
   syncedAt            DateTime @default(now())
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -211,7 +241,12 @@ model Product {
 model Category {
   id                  String   @id @default(cuid())
   storeId             String
-  store               Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store               Store    @relation("StoreCategories", fields: [storeId], references: [id], onDelete: Cascade)
+  // Back-relation for Store.markdownCollection — a Category can be picked
+  // as the "new arrivals" collection by at most the one Store it belongs
+  // to anyway (markdownCollectionId is store-scoped), so this is always
+  // either empty or a single-element list.
+  markdownForStores   Store[]  @relation("MarkdownCollection")
 
   shopifyCollectionId String   // Shopify collection GID
   title               String

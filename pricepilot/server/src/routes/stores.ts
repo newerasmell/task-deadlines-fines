@@ -38,6 +38,10 @@ const createSchema = z.object({
   groupId: z.string().nullable().optional(),
   salesAnalyticsEnabled: z.boolean().default(false),
   ga4PropertyId: z.string().nullable().optional(),
+  markdownEnabled: z.boolean().default(false),
+  markdownCollectionId: z.string().nullable().optional(),
+  markdownAfterDays: z.number().int().positive().default(8),
+  markdownCeilingPct: z.number().nonnegative().default(12.5),
 });
 
 storesRouter.post("/", async (req, res) => {

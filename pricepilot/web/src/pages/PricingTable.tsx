@@ -49,6 +49,7 @@ export function PricingTable() {
   const [search, setSearch] = useState("");
   const [minDeltaPct, setMinDeltaPct] = useState("");
   const [coverageFilter, setCoverageFilter] = useState<"" | "3" | "2" | "1" | "0">("");
+  const [markdownOnly, setMarkdownOnly] = useState(false);
 
   const [sortKey, setSortKey] = useState<SortKey>("title");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
@@ -121,6 +122,7 @@ export function PricingTable() {
     if (coverageFilter !== "") {
       rows = rows.filter((r) => r.matchedSourceCount === Number(coverageFilter));
     }
+    if (markdownOnly) rows = rows.filter((r) => r.markdownEligible);
 
     const dir = sortDir;
     const sorted = [...rows].sort((a, b) => {
@@ -133,7 +135,7 @@ export function PricingTable() {
       return ((av as number) - (bv as number)) * dir;
     });
     return sorted;
-  }, [data, flagFilter, vendorFilter, search, minDeltaPct, coverageFilter, sortKey, sortDir]);
+  }, [data, flagFilter, vendorFilter, search, minDeltaPct, coverageFilter, markdownOnly, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 1 ? -1 : 1));
@@ -346,6 +348,12 @@ export function PricingTable() {
           <option value="1">Matched in 1 source</option>
           <option value="0">Matched in 0 sources</option>
         </select>
+        {isCod && (
+          <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={markdownOnly} onChange={(e) => setMarkdownOnly(e.target.checked)} />
+            Само за намаляване
+          </label>
+        )}
       </div>
 
       <PublishSettings
@@ -429,6 +437,14 @@ export function PricingTable() {
                           {isCod && row.discountTagged && (
                             <span className="tag" title={`Tagged "${data.formula?.config.discountTag}" in Shopify`}>
                               намален
+                            </span>
+                          )}
+                          {isCod && row.markdownEligible && (
+                            <span
+                              className="tag"
+                              title={`${row.daysSinceActive} дни от "active" — цена над таван, готов за намаляване`}
+                            >
+                              🔻 markdown
                             </span>
                           )}
                         </div>

@@ -101,6 +101,57 @@ export function rawBasePriceFromCoefficient(min: number, max: number, coefficien
   return min + normalized * (max - min);
 }
 
+export interface MarkdownInput {
+  isInMarkdownCollection: boolean;
+  activatedAt: Date | null;
+  currentPrice: number;
+  formulaRecommendedPrice: number | null; // the floor — never suggest below this
+  afterDays: number;
+  ceilingPct: number; // 10-15, typically
+  now: Date;
+}
+
+export interface MarkdownResult {
+  // True only when a price change is actually needed right now (past the
+  // wait window AND currently priced above the ceiling) — a new arrival
+  // that's simply not old enough yet, or one already inside its allowed
+  // band, is not "eligible": there's nothing for anyone to act on.
+  eligible: boolean;
+  daysSinceActive: number | null;
+  ceiling: number | null;
+  suggestedPrice: number | null;
+}
+
+/**
+ * New-arrival markdown: a product tagged into the store's markdown
+ * collection starts a countdown the moment it's first observed ACTIVE in
+ * Shopify (Product.activatedAt, stamped once by catalogSync.ts). Once
+ * `afterDays` have passed, if its current price still sits more than
+ * `ceilingPct` above the formula's own recommended price, it's flagged and
+ * the suggested new price is exactly that ceiling — never below the
+ * formula price (the ceiling is defined as a markup ON TOP of it, so it can
+ * never land under it), and never more than `ceilingPct` above it either.
+ */
+export function computeMarkdown(input: MarkdownInput): MarkdownResult {
+  const { isInMarkdownCollection, activatedAt, currentPrice, formulaRecommendedPrice, afterDays, ceilingPct, now } = input;
+
+  if (!isInMarkdownCollection || !activatedAt || formulaRecommendedPrice == null) {
+    return { eligible: false, daysSinceActive: null, ceiling: null, suggestedPrice: null };
+  }
+
+  const daysSinceActive = Math.floor((now.getTime() - activatedAt.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysSinceActive < afterDays) {
+    return { eligible: false, daysSinceActive, ceiling: null, suggestedPrice: null };
+  }
+
+  const ceiling = roundCharmPrice(formulaRecommendedPrice * (1 + ceilingPct / 100));
+  if (currentPrice <= ceiling) {
+    return { eligible: false, daysSinceActive, ceiling, suggestedPrice: null }; // already inside the allowed band
+  }
+
+  return { eligible: true, daysSinceActive, ceiling, suggestedPrice: ceiling };
+}
+
 export type CodRowFlag = "below-floor" | "competitive" | "above-market" | "no-data";
 
 // Same competitive-band idea as the undercut engine (suggestionEngine.ts's

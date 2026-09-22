@@ -5,6 +5,7 @@ import { env } from "../lib/env";
 import { computeSuggestion } from "../services/suggestionEngine";
 import {
   computeK,
+  computeMarkdown,
   flagForPrice,
   parseScenarios,
   pickScenario,
@@ -133,7 +134,17 @@ pricingRouter.get("/:storeId", async (req, res) => {
   });
 });
 
-async function sendCodPricingTable(res: Response, store: { id: string; pricingProfile: string }) {
+async function sendCodPricingTable(
+  res: Response,
+  store: {
+    id: string;
+    pricingProfile: string;
+    markdownEnabled: boolean;
+    markdownCollectionId: string | null;
+    markdownAfterDays: number;
+    markdownCeilingPct: number;
+  }
+) {
   const [products, costs, config, productCategories, brands] = await Promise.all([
     prisma.product.findMany({ where: { storeId: store.id }, orderBy: { title: "asc" } }),
     prisma.cost.findMany({ where: { storeId: store.id } }),
@@ -236,13 +247,37 @@ async function sendCodPricingTable(res: Response, store: { id: string; pricingPr
     return roundCharmPrice(raws.reduce((a, b) => a + b, 0) / raws.length);
   };
 
+  const now = new Date();
+
   const rows = products.map((product) => {
     const { cost, fromCategory } = costFor(product);
     const recommendedPrice = cost != null ? priceFromCost(cost, k, config.roundStep) : null;
-    const recommendedComparePrice = basePriceFor(product);
     const tags = product.tags ? product.tags.split(",").filter(Boolean) : [];
     const discountTagged = tags.some((t) => t.trim().toLowerCase() === config.discountTag.trim().toLowerCase());
     const deltaPct = recommendedPrice != null ? ((product.price - recommendedPrice) / recommendedPrice) * 100 : null;
+
+    const isInMarkdownCollection =
+      store.markdownEnabled &&
+      store.markdownCollectionId != null &&
+      (categoryIdsByProduct.get(product.id) ?? []).includes(store.markdownCollectionId);
+    const markdown = computeMarkdown({
+      isInMarkdownCollection,
+      activatedAt: product.activatedAt,
+      currentPrice: product.price,
+      formulaRecommendedPrice: recommendedPrice,
+      afterDays: store.markdownAfterDays,
+      ceilingPct: store.markdownCeilingPct,
+      now,
+    });
+
+    // A markdown-eligible row overrides BOTH the price suggestion (down to
+    // the ceiling) and the compare-at suggestion (up to the product's real
+    // original price, priceAtActivation) — the same two fields the existing
+    // single/bulk Publish buttons already publish together, so "publish"
+    // for one of these rows means exactly "show 140 crossed out, 91.90 live"
+    // with no separate markdown-specific action needed.
+    const suggested = markdown.eligible ? markdown.suggestedPrice : recommendedPrice;
+    const recommendedComparePrice = markdown.eligible ? product.priceAtActivation : basePriceFor(product);
 
     return {
       productId: product.id,
@@ -266,10 +301,12 @@ async function sendCodPricingTable(res: Response, store: { id: string; pricingPr
       minComp: null,
       avgComp: null,
       deltaPct,
-      suggested: recommendedPrice,
+      suggested,
       recommendedComparePrice,
       floor: recommendedPrice ?? 0,
       flag: cost == null ? "no-data" : flagForPrice(product.price, recommendedPrice),
+      markdownEligible: markdown.eligible,
+      daysSinceActive: markdown.daysSinceActive,
     };
   });
 
