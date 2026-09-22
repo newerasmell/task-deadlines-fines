@@ -31,6 +31,8 @@ export function StoreForm({
   const [undercutPct, setUndercutPct] = useState(String(store?.undercutPct ?? 1));
   const [priceEnding, setPriceEnding] = useState(store?.priceEnding ?? "");
   const [minMarginPct, setMinMarginPct] = useState(String(store?.minMarginPct ?? 10));
+  const [salesAnalyticsEnabled, setSalesAnalyticsEnabled] = useState(store?.salesAnalyticsEnabled ?? false);
+  const [ga4PropertyId, setGa4PropertyId] = useState(store?.ga4PropertyId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,6 +57,8 @@ export function StoreForm({
         undercutPct: Number(undercutPct),
         priceEnding: priceEnding.trim() || null,
         minMarginPct: Number(minMarginPct),
+        salesAnalyticsEnabled,
+        ga4PropertyId: ga4PropertyId.trim() || null,
       };
       if (clientSecret.trim()) body.shopifyClientSecret = clientSecret.trim();
 
@@ -164,6 +168,31 @@ export function StoreForm({
       )}
       {pricingProfile === "cod_formula" && (
         <p className="muted small">The formula itself (cost mix, delivery scenarios, agency fee) is configured on the Pricing page once this store is saved.</p>
+      )}
+
+      <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <input
+          type="checkbox"
+          checked={salesAnalyticsEnabled}
+          onChange={(e) => setSalesAnalyticsEnabled(e.target.checked)}
+        />
+        Enable "Продажби" tab (6-month units sold / avg sale price / category rollup)
+      </label>
+      {salesAnalyticsEnabled && (
+        <>
+          <p className="muted small">
+            Requires the <code>read_orders</code> scope granted to this store's Shopify app — add it under
+            dev.shopify.com → your app → Configuration, then reinstall to the store.
+          </p>
+          <label>
+            GA4 property (optional, for page views/conversion rate)
+            <input
+              value={ga4PropertyId}
+              onChange={(e) => setGa4PropertyId(e.target.value)}
+              placeholder="properties/123456789"
+            />
+          </label>
+        </>
       )}
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">

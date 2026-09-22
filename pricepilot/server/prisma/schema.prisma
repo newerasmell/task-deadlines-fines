@@ -94,6 +94,18 @@ model Store {
   // competitor prices; see CodFormulaConfig and codPricingEngine.ts.
   pricingProfile    String   @default("competitor")
 
+  // Opt-in, per store — the "Продажби" tab (6-month units sold/avg realized
+  // price/page views/conv-rate, rolled up by Shopify collection) only shows
+  // up and only syncs for a store with this on. Off by default: it needs a
+  // read_orders Shopify scope most stores haven't granted yet, and GA4 wiring
+  // most stores haven't configured — turning it on for everyone would just
+  // show empty/broken data for stores that aren't set up for it.
+  salesAnalyticsEnabled Boolean @default(false)
+  // GA4 property to pull page views from (e.g. "properties/123456789") —
+  // null means the page-views/conv-rate columns stay blank even with
+  // salesAnalyticsEnabled on; see services/ga4Client.ts.
+  ga4PropertyId         String?
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -103,6 +115,7 @@ model Store {
   manualMatches     ManualMatch[]
   publishLogs       PublishLog[]
   codFormulaConfig  CodFormulaConfig?
+  categories        Category[]
 }
 
 // Up to 3 active competitor sources per store. Refresh health (degraded
@@ -181,9 +194,94 @@ model Product {
   manualMatches       ManualMatch[]
   scrapeAttempts      ScrapeAttempt[]
   ambiguousMatches    AmbiguousMatch[]
+  categories          ProductCategory[]
+  sales               ProductSales?
+  pageViews           ProductPageViews?
 
   @@unique([storeId, shopifyVariantId])
   @@index([storeId, barcode])
+}
+
+// A Shopify collection the sales-analytics feature groups products by
+// ("Category" in the UI — Шапки/Тениски/Чанти etc.). Synced alongside the
+// catalog for any store with salesAnalyticsEnabled; a product can sit in
+// more than one collection (Shopify allows that), so it can roll up into
+// more than one category's totals — same as browsing the storefront.
+model Category {
+  id                  String   @id @default(cuid())
+  storeId             String
+  store               Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  shopifyCollectionId String   // Shopify collection GID
+  title               String
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  products            ProductCategory[]
+  categoryCost        CategoryCost?
+
+  @@unique([storeId, shopifyCollectionId])
+}
+
+model ProductCategory {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, categoryId])
+  @@index([categoryId])
+}
+
+// Rolling last-6-months sales aggregate per variant — replaced wholesale on
+// each sync (services/ordersSync.ts) rather than storing every order line
+// item, since only the 6-month rollup is ever shown. avgSalePrice6m is
+// revenue6m / unitsSold6m at read time, not stored, so it's never stale
+// relative to the two numbers it's derived from.
+model ProductSales {
+  id          String   @id @default(cuid())
+  productId   String   @unique
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  unitsSold6m Int
+  revenue6m   Float    // sum of realized line-item price * qty, in store currency
+  periodStart DateTime
+  periodEnd   DateTime
+  syncedAt    DateTime @default(now())
+}
+
+// Rolling last-6-months GA4 page views per variant's product page — separate
+// from ProductSales since it comes from a different source (GA4 Data API,
+// see services/ga4Client.ts) on its own sync cadence, and simply doesn't
+// exist for a store that hasn't configured ga4PropertyId yet.
+model ProductPageViews {
+  id          String   @id @default(cuid())
+  productId   String   @unique
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  pageViews6m Int
+  periodStart DateTime
+  periodEnd   DateTime
+  syncedAt    DateTime @default(now())
+}
+
+// Manually-entered average acquisition cost for a whole category (e.g.
+// "Шапки — 25€") — only meaningful for a store on pricingProfile=cod_formula,
+// where codPricingEngine.ts needs a per-product cost to price off of. Used
+// as a fallback ONLY for a product with no SKU/EAN row in Cost: importing a
+// real cost via costs.csv always wins over this category-wide estimate.
+model CategoryCost {
+  id         String   @id @default(cuid())
+  categoryId String   @unique
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  cost       Float
+  currency   String
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 // A bulk-index source (jeftinije_hr) found more than one plausible

@@ -50,6 +50,8 @@ export interface Store {
   pricingProfile: PricingProfile;
   groupId: string | null;
   hasClientSecret: boolean;
+  salesAnalyticsEnabled: boolean;
+  ga4PropertyId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -234,4 +236,38 @@ export interface Cost {
   storeId: string;
   skuOrEan: string;
   cost: number;
+}
+
+export interface SalesProductRow {
+  productId: string;
+  title: string;
+  vendor: string | null;
+  sku: string | null;
+  imageUrl: string | null;
+  inventoryQuantity: number | null;
+  unitsSold6m: number;
+  avgSalePrice6m: number | null;
+  pageViews6m: number | null;
+  convRate6m: number | null; // percent, e.g. 3.2 = 3.2%
+  categoryIds: string[];
+}
+
+export interface SalesCategoryRow {
+  categoryId: string;
+  title: string;
+  productCount: number;
+  unitsSold6m: number;
+  avgSalePrice6m: number | null;
+  pageViews6m: number | null;
+  convRate6m: number | null;
+  cost: number | null; // manually-set average acquisition cost, COD stores only
+  currency: string;
+}
+
+export interface SalesResponse {
+  salesAnalyticsEnabled: boolean;
+  pricingProfile: PricingProfile;
+  currency: string;
+  products: SalesProductRow[];
+  categories: SalesCategoryRow[];
 }

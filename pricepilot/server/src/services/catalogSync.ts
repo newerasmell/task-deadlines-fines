@@ -19,6 +19,11 @@ interface VariantNode {
   inventoryQuantity: number | null;
 }
 
+interface CollectionNode {
+  id: string;
+  title: string;
+}
+
 interface ProductNode {
   id: string;
   title: string;
@@ -27,13 +32,14 @@ interface ProductNode {
   tags: string[];
   featuredImage: { url: string } | null;
   variants: { edges: { node: VariantNode }[] };
+  collections: { edges: { node: CollectionNode }[] };
 }
 
 async function upsertVariantRow(storeId: string, product: ProductNode, variant: VariantNode) {
   const price = Number(variant.price);
   const compareAtPrice = variant.compareAtPrice != null ? Number(variant.compareAtPrice) : null;
   const tags = (product.tags ?? []).join(",");
-  await prisma.product.upsert({
+  return prisma.product.upsert({
     where: { storeId_shopifyVariantId: { storeId, shopifyVariantId: variant.id } },
     create: {
       storeId,
@@ -67,6 +73,32 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
   });
 }
 
+// Category = Shopify collection, only meaningful for the opt-in sales
+// analytics feature — skipped entirely for a store that hasn't turned it
+// on, so a normal sync doesn't pay for work nobody asked for. Membership is
+// replaced wholesale each sync (not diffed) since a product's collections
+// can just as easily shrink on the Shopify side as grow, and there's no
+// cheap way to tell "removed" from "never was" without doing that anyway.
+async function syncProductCategories(storeId: string, productId: string, collections: CollectionNode[]) {
+  const categoryIds: string[] = [];
+  for (const c of collections) {
+    const category = await prisma.category.upsert({
+      where: { storeId_shopifyCollectionId: { storeId, shopifyCollectionId: c.id } },
+      create: { storeId, shopifyCollectionId: c.id, title: c.title },
+      update: { title: c.title },
+    });
+    categoryIds.push(category.id);
+  }
+  await prisma.productCategory.deleteMany({ where: { productId, categoryId: { notIn: categoryIds } } });
+  for (const categoryId of categoryIds) {
+    await prisma.productCategory.upsert({
+      where: { productId_categoryId: { productId, categoryId } },
+      create: { productId, categoryId },
+      update: {},
+    });
+  }
+}
+
 const PRODUCTS_COUNT_QUERY = `query { productsCount { count } }`;
 
 async function getProductsCount(store: Store): Promise<number> {
@@ -89,6 +121,9 @@ const PRODUCTS_PAGE_QUERY = `
           variants(first: 100) {
             edges { node { id sku barcode price compareAtPrice inventoryQuantity } }
           }
+          collections(first: 10) {
+            edges { node { id title } }
+          }
         }
       }
     }
@@ -104,8 +139,10 @@ async function syncViaCursor(store: Store): Promise<number> {
       await shopifyGraphQL(store, PRODUCTS_PAGE_QUERY, { first: PAGE_SIZE, after });
 
     for (const { node: product } of data.products.edges) {
+      const collections = product.collections.edges.map((e) => e.node);
       for (const { node: variant } of product.variants.edges) {
-        await upsertVariantRow(store.id, product, variant);
+        const row = await upsertVariantRow(store.id, product, variant);
+        if (store.salesAnalyticsEnabled) await syncProductCategories(store.id, row.id, collections);
         variantCount++;
       }
     }
@@ -130,6 +167,9 @@ const BULK_QUERY = `
           featuredImage { url }
           variants {
             edges { node { id sku barcode price compareAtPrice inventoryQuantity } }
+          }
+          collections {
+            edges { node { id title } }
           }
         }
       }
@@ -178,19 +218,28 @@ async function pollBulkOperation(store: Store, timeoutMs = 5 * 60 * 1000): Promi
 // Bulk Operations results come back as JSONL: one line per node (products
 // AND their nested variants, interleaved), each variant line carrying a
 // __parentId back-reference to its product's id instead of real nesting.
-async function downloadAndParseBulkResult(url: string): Promise<{ product: ProductNode; variant: VariantNode }[]> {
+async function downloadAndParseBulkResult(
+  url: string
+): Promise<{ product: ProductNode; variant: VariantNode; collections: CollectionNode[] }[]> {
   const res = await fetch(url);
   if (!res.ok) throw new ShopifyApiError(`Failed to download bulk operation result: ${res.status}`);
   const text = await res.text();
 
-  const products = new Map<string, Omit<ProductNode, "variants">>();
+  const products = new Map<string, Omit<ProductNode, "variants" | "collections">>();
   const variantsByParent = new Map<string, VariantNode[]>();
+  const collectionsByParent = new Map<string, CollectionNode[]>();
 
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     const node = JSON.parse(line) as Record<string, unknown> & { id: string; __parentId?: string };
 
-    if (node.__parentId) {
+    // Product, ProductVariant, and Collection nodes all come back interleaved
+    // in the same JSONL stream, distinguished only by __parentId (present on
+    // both children) and the GID's own type segment — the two child types
+    // don't otherwise share a recognizable shape (a Collection node has no
+    // price/sku, so field-sniffing would work today but silently break the
+    // moment either query adds a field the other also happens to have).
+    if (node.__parentId && node.id.includes("/ProductVariant/")) {
       const variant: VariantNode = {
         id: node.id,
         sku: (node.sku as string | null) ?? null,
@@ -202,6 +251,11 @@ async function downloadAndParseBulkResult(url: string): Promise<{ product: Produ
       const list = variantsByParent.get(node.__parentId) ?? [];
       list.push(variant);
       variantsByParent.set(node.__parentId, list);
+    } else if (node.__parentId && node.id.includes("/Collection/")) {
+      const collection: CollectionNode = { id: node.id, title: node.title as string };
+      const list = collectionsByParent.get(node.__parentId) ?? [];
+      list.push(collection);
+      collectionsByParent.set(node.__parentId, list);
     } else {
       products.set(node.id, {
         id: node.id,
@@ -214,11 +268,12 @@ async function downloadAndParseBulkResult(url: string): Promise<{ product: Produ
     }
   }
 
-  const rows: { product: ProductNode; variant: VariantNode }[] = [];
+  const rows: { product: ProductNode; variant: VariantNode; collections: CollectionNode[] }[] = [];
   for (const [productId, product] of products) {
     const variants = variantsByParent.get(productId) ?? [];
+    const collections = collectionsByParent.get(productId) ?? [];
     for (const variant of variants) {
-      rows.push({ product: { ...product, variants: { edges: [] } }, variant });
+      rows.push({ product: { ...product, variants: { edges: [] }, collections: { edges: [] } }, variant, collections });
     }
   }
   return rows;
@@ -237,8 +292,9 @@ async function syncViaBulkOperation(store: Store): Promise<number> {
   if (!completed.url) return 0; // no products at all
 
   const rows = await downloadAndParseBulkResult(completed.url);
-  for (const { product, variant } of rows) {
-    await upsertVariantRow(store.id, product, variant);
+  for (const { product, variant, collections } of rows) {
+    const row = await upsertVariantRow(store.id, product, variant);
+    if (store.salesAnalyticsEnabled) await syncProductCategories(store.id, row.id, collections);
   }
   return rows.length;
 }

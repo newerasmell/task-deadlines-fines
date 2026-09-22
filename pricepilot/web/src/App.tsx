@@ -8,6 +8,7 @@ import { Login } from "./pages/Login";
 import { PricingTable } from "./pages/PricingTable";
 import { Unmatched } from "./pages/Unmatched";
 import { PublishLog } from "./pages/PublishLog";
+import { Sales } from "./pages/Sales";
 import { Settings } from "./pages/Settings";
 import { Stores } from "./pages/Stores";
 import { StoreSettings } from "./pages/StoreSettings";
@@ -33,6 +34,7 @@ function AppRoutes() {
         <Route path="/" element={<PricingTable />} />
         <Route path="/unmatched" element={<Unmatched />} />
         <Route path="/publish-log" element={<PublishLog />} />
+        <Route path="/sales" element={<Sales />} />
         <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/stores" element={<Stores />} />
         <Route path="/stores/:storeId" element={<StoreSettings />} />

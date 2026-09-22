@@ -133,19 +133,46 @@ pricingRouter.get("/:storeId", async (req, res) => {
 });
 
 async function sendCodPricingTable(res: Response, store: { id: string; pricingProfile: string }) {
-  const [products, costs, config] = await Promise.all([
+  const [products, costs, config, productCategories] = await Promise.all([
     prisma.product.findMany({ where: { storeId: store.id }, orderBy: { title: "asc" } }),
     prisma.cost.findMany({ where: { storeId: store.id } }),
     prisma.codFormulaConfig.upsert({ where: { storeId: store.id }, create: { storeId: store.id }, update: {} }),
+    // Only needed as a fallback for a product with no SKU/EAN row in Cost
+    // below (costFor tries this second, never first) — a manually-set
+    // category acquisition cost (Settings → Продажби) filling in for
+    // products nobody's bothered importing a real cost for yet.
+    prisma.productCategory.findMany({
+      where: { product: { storeId: store.id } },
+      select: { productId: true, category: { select: { categoryCost: { select: { cost: true } } } } },
+    }),
   ]);
 
   const costBySkuOrEan = new Map(costs.map((c) => [c.skuOrEan, c.cost]));
-  const costFor = (product: (typeof products)[number]): number | null =>
-    (product.sku ? costBySkuOrEan.get(product.sku) : undefined) ??
-    (product.barcode ? costBySkuOrEan.get(product.barcode) : undefined) ??
-    null;
+  const categoryCostsByProduct = new Map<string, number[]>();
+  for (const pc of productCategories) {
+    if (pc.category.categoryCost == null) continue;
+    const list = categoryCostsByProduct.get(pc.productId) ?? [];
+    list.push(pc.category.categoryCost.cost);
+    categoryCostsByProduct.set(pc.productId, list);
+  }
 
-  const knownCosts = products.map(costFor).filter((c): c is number => c != null);
+  const costFor = (product: (typeof products)[number]): { cost: number | null; fromCategory: boolean } => {
+    const skuCost =
+      (product.sku ? costBySkuOrEan.get(product.sku) : undefined) ??
+      (product.barcode ? costBySkuOrEan.get(product.barcode) : undefined) ??
+      null;
+    if (skuCost != null) return { cost: skuCost, fromCategory: false };
+    const catCosts = categoryCostsByProduct.get(product.id);
+    if (catCosts && catCosts.length > 0) {
+      // A product in more than one category with a cost set (rare, but
+      // Shopify collections aren't mutually exclusive) averages them rather
+      // than picking one arbitrarily.
+      return { cost: catCosts.reduce((a, b) => a + b, 0) / catCosts.length, fromCategory: true };
+    }
+    return { cost: null, fromCategory: false };
+  };
+
+  const knownCosts = products.map((p) => costFor(p).cost).filter((c): c is number => c != null);
   const avgCost = knownCosts.length > 0 ? knownCosts.reduce((a, b) => a + b, 0) / knownCosts.length : 0;
 
   const scenarios = parseScenarios(config);
@@ -153,7 +180,7 @@ async function sendCodPricingTable(res: Response, store: { id: string; pricingPr
   const { k, reason } = computeK(config, avgCost, scenario);
 
   const rows = products.map((product) => {
-    const cost = costFor(product);
+    const { cost, fromCategory } = costFor(product);
     const recommendedPrice = cost != null ? priceFromCost(cost, k, config.roundStep) : null;
     const recommendedComparePrice = compareFromPrice(recommendedPrice, config.discountPct);
     const tags = product.tags ? product.tags.split(",").filter(Boolean) : [];
@@ -172,6 +199,7 @@ async function sendCodPricingTable(res: Response, store: { id: string; pricingPr
       tags,
       discountTagged,
       cost,
+      costFromCategory: fromCategory,
       ourPrice: product.price,
       compareAtPrice: product.compareAtPrice,
       inventoryQuantity: product.inventoryQuantity,

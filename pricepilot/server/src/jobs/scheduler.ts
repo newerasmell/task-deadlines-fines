@@ -2,6 +2,8 @@ import cron from "node-cron";
 import { prisma } from "../lib/prisma";
 import { syncCatalog } from "../services/catalogSync";
 import { refreshSource } from "../services/competitorCollection";
+import { syncOrders } from "../services/ordersSync";
+import { syncPageViews } from "../services/pageViewsSync";
 
 // Per-source refresh interval defaults to 24h (per the brief) — tracked
 // here as "has it been >= 24h since lastRefreshedAt", checked on a 15-min
@@ -30,6 +32,21 @@ async function nightlyCatalogSync() {
       await syncCatalog(store.id);
     } catch (err) {
       console.error(`[scheduler] catalog sync failed for store ${store.id}`, err);
+    }
+    // Orders bulk operation reads the categories/products the catalog sync
+    // just wrote, so it always runs second — and only for a store that
+    // opted into the sales-analytics tab (syncOrders itself also checks
+    // this, but skipping here avoids an unnecessary Shopify round trip).
+    if (!store.salesAnalyticsEnabled) continue;
+    try {
+      await syncOrders(store.id);
+    } catch (err) {
+      console.error(`[scheduler] orders sync failed for store ${store.id}`, err);
+    }
+    try {
+      await syncPageViews(store.id);
+    } catch (err) {
+      console.error(`[scheduler] GA4 page-views sync failed for store ${store.id}`, err);
     }
   }
 }

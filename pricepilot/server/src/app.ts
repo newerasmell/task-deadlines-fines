@@ -17,6 +17,7 @@ import { groupsRouter } from "./routes/groups";
 import { pricingRouter } from "./routes/pricing";
 import { publishRouter } from "./routes/publish";
 import { publishLogRouter } from "./routes/publishLog";
+import { salesRouter } from "./routes/sales";
 import { sourcesRouter } from "./routes/sources";
 import { storesRouter } from "./routes/stores";
 import { unmatchedRouter } from "./routes/unmatched";
@@ -58,6 +59,7 @@ export function createApp() {
   app.use("/api/unmatched", requireAuth, unmatchedRouter);
   app.use("/api/costs", requireAuth, costsRouter);
   app.use("/api/cod-config", requireAuth, codConfigRouter);
+  app.use("/api/sales", requireAuth, salesRouter);
   app.use("/api/users", requireAuth, requireUltimateAdmin, usersRouter);
   app.use("/api/audit-log", requireAuth, auditLogRouter);
 

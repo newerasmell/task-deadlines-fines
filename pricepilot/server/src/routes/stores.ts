@@ -5,6 +5,8 @@ import { logAudit } from "../lib/audit";
 import { encrypt } from "../lib/crypto";
 import { prisma } from "../lib/prisma";
 import { syncCatalog } from "../services/catalogSync";
+import { syncOrders } from "../services/ordersSync";
+import { syncPageViews } from "../services/pageViewsSync";
 import { testShopifyConnection } from "../services/shopifyClient";
 
 export const storesRouter = Router();
@@ -34,6 +36,8 @@ const createSchema = z.object({
   minMarginPct: z.number().nonnegative().default(10),
   pricingProfile: z.enum(["competitor", "cod_formula"]).default("competitor"),
   groupId: z.string().nullable().optional(),
+  salesAnalyticsEnabled: z.boolean().default(false),
+  ga4PropertyId: z.string().nullable().optional(),
 });
 
 storesRouter.post("/", async (req, res) => {
@@ -93,6 +97,10 @@ storesRouter.post("/:id/sync-now", async (req, res) => {
 
   try {
     const result = await syncCatalog(store.id);
+    if (store.salesAnalyticsEnabled) {
+      await syncOrders(store.id);
+      await syncPageViews(store.id);
+    }
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(502).json({ ok: false, error: err instanceof Error ? err.message : "Sync failed" });
