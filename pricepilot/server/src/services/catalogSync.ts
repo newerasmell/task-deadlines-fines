@@ -51,8 +51,21 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
   // manual price edit doesn't reset it). This is the clock the new-arrival
   // markdown feature (codPricingEngine.ts) counts its days from, and
   // priceAtActivation is what "the original price" meant at that moment.
+  //
+  // The FIRST stamp prefers Shopify's own publishedAt over "now" when it's
+  // in the past — confirmed live: without this, a product that had already
+  // been active for months got activatedAt reset to today's sync time on
+  // the first run after this field existed, understating its real age by
+  // however long it was already live. Ongoing syncs still never touch
+  // activatedAt again once set, regardless of what publishedAt does later.
   const justActivated = product.status === "ACTIVE" && !existing?.activatedAt;
-  const activatedAt = justActivated ? new Date() : (existing?.activatedAt ?? null);
+  const publishedAtDate = product.publishedAt ? new Date(product.publishedAt) : null;
+  const now = new Date();
+  const activatedAt = justActivated
+    ? publishedAtDate && publishedAtDate < now
+      ? publishedAtDate
+      : now
+    : (existing?.activatedAt ?? null);
   const priceAtActivation = justActivated ? price : (existing?.priceAtActivation ?? null);
 
   return prisma.product.upsert({
