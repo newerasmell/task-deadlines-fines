@@ -86,6 +86,35 @@ export function roundCharmPrice(raw: number): number {
   return round2(Math.round(raw) - 0.1);
 }
 
+// Stable, deterministic [0, 1) value derived from a string id — deliberately
+// NOT Math.random(): the same product must always land in the same spot, or
+// "suggested" would flicker on every page reload and undermine trust in
+// what gets published. Distribution doesn't need to be cryptographic-grade,
+// just spread a handful of ids across the range instead of clustering.
+function stableFraction(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return (hash % 10000) / 10000;
+}
+
+// Every product priced off a shared CATEGORY-AVERAGE cost (no SKU/EAN cost
+// of its own) computes the exact same recommended price — confirmed live: a
+// whole "Шапки" category costed off one shared 25€ average all suggested
+// exactly 79.90€. Spreads them across [price, price×1.15] instead, anchored
+// per-product so the same item always lands in the same place on reload —
+// a brand-coefficient-style placement doesn't work here since two products
+// from the same brand would still collide on the same number. Never
+// applied to a product with its own real SKU cost, which already varies
+// naturally on its own.
+const CATEGORY_PRICE_VARIATION_PCT = 15;
+
+export function varyPriceForSharedCost(price: number, productId: string): number {
+  const fraction = stableFraction(productId);
+  return roundCharmPrice(price * (1 + fraction * (CATEGORY_PRICE_VARIATION_PCT / 100)));
+}
+
 // Where a product's suggested base/compare-at price falls inside its
 // category's manually-set [min, max] envelope — placed by how its brand's
 // coefficient (1-10, Марки tab) ranks against the coefficients of every

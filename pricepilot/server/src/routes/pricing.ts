@@ -12,6 +12,7 @@ import {
   priceFromCost,
   rawBasePriceFromCoefficient,
   roundCharmPrice,
+  varyPriceForSharedCost,
 } from "../services/codPricingEngine";
 
 export const pricingRouter = Router();
@@ -283,13 +284,24 @@ async function sendCodPricingTable(
       now,
     });
 
+    // A product priced off a shared category-average cost (fromCategory)
+    // would otherwise suggest the EXACT same price as every other product
+    // in that category — confirmed live on a whole "Шапки" category costed
+    // off one shared 25€ average, all suggesting 79.90€. Spread across
+    // [recommendedPrice, recommendedPrice×1.15] instead, per product. Never
+    // applied to a product with its own real SKU cost, which already
+    // varies naturally; and never touches `floor`/deltaPct/flag below,
+    // which stay anchored to the true formula price.
+    const variedPrice =
+      recommendedPrice != null && fromCategory ? varyPriceForSharedCost(recommendedPrice, product.id) : recommendedPrice;
+
     // A markdown-eligible row overrides BOTH the price suggestion (down to
     // the ceiling) and the compare-at suggestion (up to the product's real
     // original price, priceAtActivation) — the same two fields the existing
     // single/bulk Publish buttons already publish together, so "publish"
     // for one of these rows means exactly "show 140 crossed out, 91.90 live"
     // with no separate markdown-specific action needed.
-    const suggested = markdown.eligible ? markdown.suggestedPrice : recommendedPrice;
+    const suggested = markdown.eligible ? markdown.suggestedPrice : variedPrice;
     const baseFromCoefficient = basePriceFor(product);
     const recommendedComparePrice = markdown.eligible ? product.priceAtActivation : baseFromCoefficient.price;
     const recommendedComparePriceReason = markdown.eligible ? null : baseFromCoefficient.reason;
