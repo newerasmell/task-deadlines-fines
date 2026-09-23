@@ -103,7 +103,8 @@ button.small-btn {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 10px 20px;
   padding: 12px 22px;
   background: #fff;
   border-bottom: 1px solid var(--border);
@@ -131,8 +132,10 @@ button.small-btn {
 
 .topnav {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .topnav a {
@@ -323,62 +326,126 @@ table.pricing-table tbody tr:hover {
   background: #fafbfd;
 }
 
-/* Frozen leading (checkbox + product) and trailing (actions) columns —
-   with ~15 columns of horizontal scroll on this table, it was easy to
-   lose track of which product a given cell belonged to, or to scroll
-   past the Publish button entirely. These stay pinned in view. */
-table.pricing-table th:nth-child(1),
-table.pricing-table td:nth-child(1) {
-  position: sticky;
-  left: 0;
-  width: 36px;
-  z-index: 2;
-  background: var(--card);
+/* Pricing table, card layout — replaces a wide <table> that needed
+   horizontal scrolling on anything narrower than a large monitor.
+   Each product is its own card; .pricing-cards reflows the number of
+   cards per row to whatever the viewport actually has room for, so
+   every field is visible at once on a phone (1 column, all fields
+   stacked inside the card) all the way up to a wide desktop (several
+   cards per row) — no scrollbar, no hidden columns, no frozen edges. */
+.pricing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 0.86rem;
 }
 
-table.pricing-table th:nth-child(2),
-table.pricing-table td:nth-child(2) {
-  position: sticky;
-  left: 36px;
-  z-index: 2;
-  background: var(--card);
-  box-shadow: 2px 0 4px rgba(41, 47, 76, 0.06);
-}
-
-table.pricing-table th:nth-child(1),
-table.pricing-table th:nth-child(2) {
-  background: #f9fafc;
-  z-index: 3;
-}
-
-table.pricing-table tbody tr:hover td:nth-child(1),
-table.pricing-table tbody tr:hover td:nth-child(2) {
-  background: #fafbfd;
-}
-
-table.pricing-table th:last-child,
-table.pricing-table td:last-child {
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  background: var(--card);
-  box-shadow: -2px 0 4px rgba(41, 47, 76, 0.06);
-}
-
-table.pricing-table th:last-child {
-  background: #f9fafc;
-  z-index: 3;
-}
-
-table.pricing-table tbody tr:hover td:last-child {
-  background: #fafbfd;
-}
-
-.product-cell {
+.select-all-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 220px;
+  gap: 6px;
+}
+
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sort-control select {
+  min-width: 0;
+}
+
+.pricing-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 14px;
+}
+
+.pricing-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  min-width: 0;
+}
+
+.pricing-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.pricing-card-head-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.pricing-card-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 10px 14px;
+}
+
+.pricing-card-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.pricing-card-sources .source-cell {
+  white-space: normal;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-label {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.field-value {
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.pricing-card-suggested {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.pricing-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.pricing-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .product-thumb {
