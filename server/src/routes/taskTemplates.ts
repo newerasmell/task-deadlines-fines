@@ -1,9 +1,27 @@
 import { Router } from "express";
 import { z } from "zod";
+import { OPEN_STATUSES } from "../jobs/deadlineScanner";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 
 export const taskTemplatesRouter = Router();
+
+// Stopping a recurring series (deactivating or deleting its template) used
+// to leave every Task it had already spawned exactly as-is — including ones
+// still sitting open past their own deadline. The deadline scanner has no
+// idea the series behind them is gone, so it kept escalating fines on them
+// forever: confirmed live, a template deleted days earlier still had its
+// last occurrence racking up a new fine every day. Cancelling its still-open
+// occurrences here (not touching PENDING_REVIEW/DONE/already-CANCELLED
+// ones — those aren't part of this fine path, and a submission genuinely
+// awaiting review shouldn't vanish just because the series stopped) is what
+// actually takes them out of the deadline scanner's OPEN_STATUSES query.
+async function cancelOpenOccurrences(templateId: string): Promise<void> {
+  await prisma.task.updateMany({
+    where: { templateId, status: { in: OPEN_STATUSES as unknown as string[] } },
+    data: { status: "CANCELLED" },
+  });
+}
 
 taskTemplatesRouter.use(requireAuth);
 
@@ -149,16 +167,25 @@ taskTemplatesRouter.patch("/:id", async (req, res) => {
       data,
       include: templateInclude,
     });
+    // Only on a true active->inactive transition, not every PATCH — an
+    // already-inactive template being edited otherwise shouldn't re-run this
+    // (harmless either way, since it's scoped to still-open tasks, but no
+    // reason to do the extra query on every unrelated field edit).
+    if (existing.active && parsed.data.active === false) {
+      await cancelOpenOccurrences(template.id);
+    }
     res.json(template);
   } catch {
     res.status(404).json({ error: "Not found" });
   }
 });
 
-// A hard delete, unlike the active toggle above (which just pauses future
-// occurrences) — already-spawned Task rows keep their own copied data and
-// simply lose their back-reference (templateId set null), so nothing about
-// past occurrences is lost.
+// A hard delete of the template row itself, unlike the active toggle above
+// — already-spawned Task rows keep their own copied data and simply lose
+// their back-reference (templateId set null via onDelete:SetNull), so
+// nothing about past occurrences is lost. Still-open ones are cancelled
+// first (same as deactivating), while the templateId link is still intact
+// to find them by.
 taskTemplatesRouter.delete("/:id", async (req, res) => {
   const existing = await prisma.recurringTaskTemplate.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "Not found" });
@@ -167,6 +194,7 @@ taskTemplatesRouter.delete("/:id", async (req, res) => {
   }
 
   try {
+    await cancelOpenOccurrences(existing.id);
     await prisma.recurringTaskTemplate.delete({ where: { id: req.params.id } });
     res.status(204).send();
   } catch {
