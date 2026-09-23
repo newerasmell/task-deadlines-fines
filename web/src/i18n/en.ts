@@ -86,6 +86,10 @@ export const en: Record<string, string> = {
   "Няма завършени задачи.": "No completed tasks.",
   "Няма активни задачи.": "No active tasks.",
   "Няма задачи.": "No tasks.",
+  "Няма задачи, отговарящи на филтъра.": "No tasks match your filters.",
+  "Изчисти филтъра": "Clear filters",
+  "Задачата от глобата вече не съществува (изтрита или премахната след затваряне на нейния повтарящ се шаблон).":
+    "The task behind this fine no longer exists (deleted, or removed after its recurring series was stopped).",
   "Кликни за редакция": "Click to edit",
   "Провлачи в „В процес“, за да започнеш": "Drag into \"In progress\" to start",
   "Разгъни": "Expand",

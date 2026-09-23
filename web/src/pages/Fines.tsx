@@ -321,7 +321,7 @@ export function Fines() {
                       </td>
                       <td data-label={t("Задача")}>
                         {f.task ? (
-                          <Link to={`/tasks?search=${encodeURIComponent(f.task.title)}`}>{f.task.title}</Link>
+                          <Link to={`/tasks?taskId=${f.task.id}`}>{f.task.title}</Link>
                         ) : (
                           <span className="muted">{t("Ръчна глоба")}</span>
                         )}

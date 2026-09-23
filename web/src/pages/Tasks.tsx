@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, apiUpload, attachmentUrl } from "../api/client";
@@ -58,16 +58,22 @@ export function Tasks() {
   const [tab, setTab] = useState<Tab>("active");
   const [view, setView] = useState<ViewMode>(isAdmin ? "board" : "list");
   const [searchParams] = useSearchParams();
-  // A link from Fines (a fine on a task stuck open — see the deadline scanner)
-  // deep-links here with ?search=<title> so it's found without hunting through
-  // every board column manually.
-  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
+  const [search, setSearch] = useState("");
   const [filterEmployee, setFilterEmployee] = useState("");
   const [filterPriority, setFilterPriority] = useState<Priority | "">("");
   const [filterStatus, setFilterStatus] = useState<Task["status"] | "">("");
   const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
   const [googleConnected, setGoogleConnected] = useState(false);
   const [completedLimit, setCompletedLimit] = useState(20);
+  // A link from Fines (a fine on a task that's hard to spot — see the
+  // deadline scanner) deep-links here with ?taskId=<id>. Resolved by id
+  // rather than a title text-search: a title-search silently hid every
+  // OTHER task whenever it didn't match (wrong tab, edited title, deleted
+  // task) and read as "the whole list is broken" — confirmed live.
+  const deepLinkTaskId = searchParams.get("taskId");
+  const deepLinkApplied = useRef(false);
+  const [deepLinkMissing, setDeepLinkMissing] = useState(false);
+  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
 
   function selectTab(next: Tab) {
     setTab(next);
@@ -100,6 +106,32 @@ export function Tasks() {
     ]).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!deepLinkTaskId || loading || deepLinkApplied.current) return;
+    deepLinkApplied.current = true;
+    const target = tasks.find((tk) => tk.id === deepLinkTaskId);
+    if (!target) {
+      setDeepLinkMissing(true);
+      return;
+    }
+    setTab(target.status === "DONE" ? "completed" : "active");
+    setView("list");
+    setFilterEmployee("");
+    setFilterPriority("");
+    setFilterStatus("");
+    setExpandedDescIds((cur) => new Set(cur).add(target.id));
+    setHighlightTaskId(target.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkTaskId, loading, tasks]);
+
+  useEffect(() => {
+    if (!highlightTaskId) return;
+    document.getElementById(`task-row-${highlightTaskId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = setTimeout(() => setHighlightTaskId(null), 4000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightTaskId, tab, view]);
 
   async function startWork(id: string) {
     await api(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ status: "IN_PROGRESS" }) });
@@ -145,6 +177,11 @@ export function Tasks() {
 
   return (
     <div>
+      {deepLinkMissing && (
+        <p className="notice card small">
+          {t("Задачата от глобата вече не съществува (изтрита или премахната след затваряне на нейния повтарящ се шаблон).")}
+        </p>
+      )}
       <div className="page-header">
         <h1>{t("Задачи")}</h1>
         <div className="form-row" style={{ margin: 0 }}>
@@ -354,8 +391,10 @@ export function Tasks() {
 
               return (
                 <Fragment key={tk.id}>
-                  <div className="grid-row">
-                    <div className="grid-cell" data-label={t("Задача")}>
+                  <div className={`grid-row${highlightTaskId === tk.id ? " grid-row-highlight" : ""}`}>
+                    {/* display:contents on .grid-row means it has no box of its own, so the
+                        scroll-to-highlight target id has to live on an actual child box. */}
+                    <div id={`task-row-${tk.id}`} className="grid-cell" data-label={t("Задача")}>
                       <div
                         className="task-cell-clickable"
                         onClick={() => {
@@ -488,7 +527,26 @@ export function Tasks() {
             })}
             {allVisibleTasks.length === 0 && (
               <div className="grid-cell-full muted">
-                {tab === "completed" ? t("Няма завършени задачи.") : t("Няма активни задачи.")}
+                {search || filterEmployee || filterPriority || filterStatus ? (
+                  <>
+                    {t("Няма задачи, отговарящи на филтъра.")}{" "}
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        setSearch("");
+                        setFilterEmployee("");
+                        setFilterPriority("");
+                        setFilterStatus("");
+                      }}
+                    >
+                      {t("Изчисти филтъра")}
+                    </button>
+                  </>
+                ) : tab === "completed" ? (
+                  t("Няма завършени задачи.")
+                ) : (
+                  t("Няма активни задачи.")
+                )}
               </div>
             )}
           </div>
