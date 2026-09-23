@@ -355,14 +355,33 @@ async function syncViaBulkOperation(store: Store): Promise<number> {
   return rows.length;
 }
 
-export async function syncCatalog(storeId: string): Promise<{ variantCount: number; method: "cursor" | "bulk" }> {
+export async function syncCatalog(
+  storeId: string
+): Promise<{ variantCount: number; method: "cursor" | "bulk"; removedCount: number }> {
   const store = await prisma.store.findUniqueOrThrow({ where: { id: storeId } });
+  // Captured before any upsert below touches syncedAt, so every row this
+  // run actually sees ends up with a syncedAt strictly after this instant.
+  const syncStartedAt = new Date();
   const productCount = await getProductsCount(store);
 
-  if (productCount > BULK_THRESHOLD_PRODUCT_COUNT) {
-    const variantCount = await syncViaBulkOperation(store);
-    return { variantCount, method: "bulk" };
-  }
-  const variantCount = await syncViaCursor(store);
-  return { variantCount, method: "cursor" };
+  const { variantCount, method } =
+    productCount > BULK_THRESHOLD_PRODUCT_COUNT
+      ? { variantCount: await syncViaBulkOperation(store), method: "bulk" as const }
+      : { variantCount: await syncViaCursor(store), method: "cursor" as const };
+
+  // Prunes rows for a variant Shopify no longer returns AT ALL — confirmed
+  // live: deleting and recreating a product in Shopify (a common fix for a
+  // bad SKU/import) gives its variants brand new shopifyVariantIds, which
+  // this sync then creates as new rows, while the old ones — never touched
+  // again since their shopifyVariantId stopped matching anything — stuck
+  // around forever as stale duplicates: same SKU/barcode as the real
+  // listing, but frozen with whatever price/image/cost data (or lack of
+  // it) they had the moment they fell out of sync. A full catalog sync
+  // (both the cursor and bulk paths above touch every product the store
+  // has) is a complete accounting each run, so anything with a syncedAt
+  // still older than this run started is safe to remove — this is NOT run
+  // after a partial/filtered sync, only the full ones here.
+  const removed = await prisma.product.deleteMany({ where: { storeId, syncedAt: { lt: syncStartedAt } } });
+
+  return { variantCount, method, removedCount: removed.count };
 }

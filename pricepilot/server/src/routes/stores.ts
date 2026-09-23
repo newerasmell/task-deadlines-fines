@@ -101,6 +101,15 @@ storesRouter.post("/:id/sync-now", async (req, res) => {
 
   try {
     const result = await syncCatalog(store.id);
+    if (result.removedCount > 0) {
+      await logAudit(
+        req.userId!,
+        "STORE_UPDATED",
+        "Store",
+        store.id,
+        `Catalog sync removed ${result.removedCount} stale product row(s) no longer in Shopify for ${store.name}`
+      );
+    }
     if (store.salesAnalyticsEnabled) {
       await syncOrders(store.id);
       await syncPageViews(store.id);

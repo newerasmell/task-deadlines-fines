@@ -30,7 +30,8 @@ export const storeConfig: Record<string, string> = {
   "Запази": "Save",
 
   // StoreSettings.tsx
-  "✓ Синхронизирани {count} варианта ({method})": "✓ Synced {count} variants ({method})",
+  "✓ Синхронизирани {count} варианта ({method}){removed}": "✓ Synced {count} variants ({method}){removed}",
+  " · премахнати {n} остарели": " · removed {n} stale",
   'Изтриване на магазин „{name}“? Това ще премахне и продуктите, източниците и историята му.':
     'Delete store "{name}"? This removes its products, sources, and history too.',
   "Зареждане…": "Loading…",

@@ -52,12 +52,17 @@ export function StoreSettings() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await api<{ ok: boolean; variantCount?: number; method?: string; error?: string }>(`/stores/${store.id}/sync-now`, {
-        method: "POST",
-      });
+      const res = await api<{ ok: boolean; variantCount?: number; method?: string; removedCount?: number; error?: string }>(
+        `/stores/${store.id}/sync-now`,
+        { method: "POST" }
+      );
       setSyncResult(
         res.ok
-          ? t("✓ Синхронизирани {count} варианта ({method})", { count: res.variantCount ?? 0, method: res.method ?? "" })
+          ? t("✓ Синхронизирани {count} варианта ({method}){removed}", {
+              count: res.variantCount ?? 0,
+              method: res.method ?? "",
+              removed: res.removedCount ? t(" · премахнати {n} остарели", { n: res.removedCount }) : "",
+            })
           : t("✕ {error}", { error: res.error ?? "" })
       );
     } finally {

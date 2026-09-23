@@ -29,7 +29,10 @@ async function nightlyCatalogSync() {
   const stores = await prisma.store.findMany();
   for (const store of stores) {
     try {
-      await syncCatalog(store.id);
+      const result = await syncCatalog(store.id);
+      if (result.removedCount > 0) {
+        console.log(`[scheduler] catalog sync for store ${store.id} removed ${result.removedCount} stale product row(s)`);
+      }
     } catch (err) {
       console.error(`[scheduler] catalog sync failed for store ${store.id}`, err);
     }
