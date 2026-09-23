@@ -363,6 +363,28 @@ export function PricingTable() {
   const isCod = currentStore.pricingProfile === "cod_formula";
   const allVisibleSelected = filteredSortedRows.length > 0 && filteredSortedRows.every((r) => selected.has(r.productId));
 
+  // Fixed, explicit column widths for the table view — CSS's auto table
+  // layout hands any leftover width to whichever column has the widest
+  // content, which on a large real catalog (thousands of rows, so the
+  // widest cell in each column can be almost anything) produced huge,
+  // unpredictable gaps between columns instead of a compact table.
+  // table-layout:fixed + a <colgroup> makes every column exactly this
+  // width regardless of content or row count.
+  const tableColWidths = [
+    36, // checkbox
+    260, // product
+    250, // price (our price -> suggested)
+    90, // compare-at
+    100, // active от
+    ...(isCod ? [80] : []), // cost
+    ...data.sources.map(() => 140), // one per source
+    ...(!isCod ? [80] : []), // min
+    90, // Δ%
+    ...(isCod ? [120] : []), // recommended compare-at
+    80, // status
+    120, // actions
+  ];
+
   // Shared between the table and card layouts below so the two views can
   // never quietly drift apart on what a cell/field actually shows.
   function renderProductHead(row: PricingRow) {
@@ -597,6 +619,11 @@ export function PricingTable() {
       {viewMode === "table" ? (
         <div className="table-wrap">
           <table className="pricing-table pricing-table-compact">
+            <colgroup>
+              {tableColWidths.map((w, i) => (
+                <col key={i} style={{ width: w }} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 <th>

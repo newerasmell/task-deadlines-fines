@@ -304,15 +304,18 @@ table.pricing-table {
 }
 
 /* On the Pricing page specifically, the page itself can now be full-
-   width (see .app-main-wide) — but a plain width:100% table would still
-   stretch to fill that, and CSS auto table layout hands ALL the extra
-   space to whichever column has the widest content (Product, given long
-   titles), leaving one huge dead gap before the next column instead of
-   spreading it evenly. Sizing to content instead — the table only takes
-   the width its columns actually need, and .table-wrap's overflow-x
-   still covers the case where that's wider than the viewport. */
+   width (see .app-main-wide) — but CSS's normal auto table layout hands
+   any leftover width to whichever column has the widest content, and on
+   a real catalog (thousands of rows, so the widest cell in a column can
+   be almost anything) that produced huge, unpredictable gaps between
+   columns instead of a compact table. table-layout:fixed with an
+   explicit <colgroup> (see tableColWidths in PricingTable.tsx) pins
+   every column to a known width regardless of content or row count, and
+   width:auto keeps the table itself sized to the sum of those columns
+   instead of stretching to fill the page. */
 table.pricing-table.pricing-table-compact {
   width: auto;
+  table-layout: fixed;
 }
 
 table.pricing-table th,
@@ -321,6 +324,7 @@ table.pricing-table td {
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 
 table.pricing-table th {
@@ -332,6 +336,10 @@ table.pricing-table th {
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
+}
+
+table.pricing-table-compact th {
+  white-space: normal;
 }
 
 table.pricing-table th.sorted {
@@ -449,8 +457,11 @@ table.pricing-table tbody tr:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 200px;
-  max-width: 420px;
+  min-width: 0;
+}
+
+.table-product-cell > div {
+  min-width: 0;
 }
 
 /* The one comparison this whole page exists to make legible: what we
