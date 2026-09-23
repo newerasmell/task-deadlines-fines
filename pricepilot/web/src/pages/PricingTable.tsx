@@ -363,27 +363,33 @@ export function PricingTable() {
   const isCod = currentStore.pricingProfile === "cod_formula";
   const allVisibleSelected = filteredSortedRows.length > 0 && filteredSortedRows.every((r) => selected.has(r.productId));
 
-  // Fixed, explicit column widths for the table view — CSS's auto table
-  // layout hands any leftover width to whichever column has the widest
-  // content, which on a large real catalog (thousands of rows, so the
-  // widest cell in each column can be almost anything) produced huge,
-  // unpredictable gaps between columns instead of a compact table.
-  // table-layout:fixed + a <colgroup> makes every column exactly this
-  // width regardless of content or row count.
-  const tableColWidths = [
-    36, // checkbox
-    260, // product
-    250, // price (our price -> suggested)
-    90, // compare-at
-    100, // active от
-    ...(isCod ? [80] : []), // cost
-    ...data.sources.map(() => 140), // one per source
-    ...(!isCod ? [80] : []), // min
-    90, // Δ%
-    ...(isCod ? [120] : []), // recommended compare-at
-    80, // status
-    120, // actions
+  // Relative column widths for the table view, turned into percentages
+  // that always sum to exactly 100 (see tableColPercents below). Plain
+  // width:100% + CSS's default auto table layout hands any leftover
+  // width to whichever column has the widest content, which on a large
+  // real catalog (thousands of rows, so the widest cell in a column can
+  // be almost anything) produced huge, unpredictable gaps between
+  // columns. table-layout:fixed ignores content for sizing and only
+  // looks at these ratios, so every column gets a consistent, sensible
+  // share of the table's width — filling the full page width on a wide
+  // screen instead of sitting at a fixed size with dead space after it,
+  // but never letting one column swallow the difference either.
+  const tableColWeights = [
+    3, // checkbox
+    22, // product
+    19, // price (our price -> suggested)
+    8, // compare-at
+    9, // active от
+    ...(isCod ? [7] : []), // cost
+    ...data.sources.map(() => 11), // one per source
+    ...(!isCod ? [7] : []), // min
+    8, // Δ%
+    ...(isCod ? [10] : []), // recommended compare-at
+    7, // status
+    9, // actions
   ];
+  const tableColWeightSum = tableColWeights.reduce((a, b) => a + b, 0);
+  const tableColPercents = tableColWeights.map((w) => (w / tableColWeightSum) * 100);
 
   // Shared between the table and card layouts below so the two views can
   // never quietly drift apart on what a cell/field actually shows.
@@ -620,8 +626,8 @@ export function PricingTable() {
         <div className="table-wrap">
           <table className="pricing-table pricing-table-compact">
             <colgroup>
-              {tableColWidths.map((w, i) => (
-                <col key={i} style={{ width: w }} />
+              {tableColPercents.map((pct, i) => (
+                <col key={i} style={{ width: `${pct}%` }} />
               ))}
             </colgroup>
             <thead>

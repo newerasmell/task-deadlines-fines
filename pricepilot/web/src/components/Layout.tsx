@@ -1,11 +1,10 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useStores } from "../context/StoreContext";
 
 export function Layout() {
   const { user, logout } = useAuth();
   const { stores, groups, currentStore, setCurrentStoreId, loading } = useStores();
-  const location = useLocation();
 
   const ungrouped = stores.filter((s) => !s.groupId);
 
@@ -76,7 +75,7 @@ export function Layout() {
         </button>
       </header>
 
-      <main className={`app-main${location.pathname === "/" ? " app-main-wide" : ""}`}>
+      <main className="app-main">
         <Outlet />
       </main>
     </div>

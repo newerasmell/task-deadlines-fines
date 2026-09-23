@@ -160,10 +160,6 @@ button.small-btn {
   margin: 0 auto;
 }
 
-.app-main-wide {
-  max-width: none;
-}
-
 .muted {
   color: var(--muted);
 }
@@ -303,18 +299,20 @@ table.pricing-table {
   font-size: 0.86rem;
 }
 
-/* On the Pricing page specifically, the page itself can now be full-
-   width (see .app-main-wide) — but CSS's normal auto table layout hands
-   any leftover width to whichever column has the widest content, and on
-   a real catalog (thousands of rows, so the widest cell in a column can
-   be almost anything) that produced huge, unpredictable gaps between
-   columns instead of a compact table. table-layout:fixed with an
-   explicit <colgroup> (see tableColWidths in PricingTable.tsx) pins
-   every column to a known width regardless of content or row count, and
-   width:auto keeps the table itself sized to the sum of those columns
-   instead of stretching to fill the page. */
+/* The table should fill its (centered, max-width:1600px) container and
+   scale smoothly as that container's width changes with the viewport —
+   but CSS's normal auto table layout hands any leftover width to
+   whichever column has the widest content, and on a real catalog
+   (thousands of rows, so the widest cell in a column can be almost
+   anything) that produced huge, unpredictable gaps between columns
+   instead of an evenly filled table. table-layout:fixed with an
+   explicit <colgroup> of percentage widths (see tableColPercents in
+   PricingTable.tsx) instead gives every column a fixed, known SHARE of
+   the table's width regardless of content or row count — every column
+   (and the whole table) grows and shrinks together with the container,
+   instead of one column (or the space after the last column)
+   absorbing the whole difference. */
 table.pricing-table.pricing-table-compact {
-  width: auto;
   table-layout: fixed;
 }
 
@@ -340,6 +338,15 @@ table.pricing-table th {
 
 table.pricing-table-compact th {
   white-space: normal;
+}
+
+/* The overflow-wrap:anywhere above is meant for stray long tokens (a SKU,
+   an unbroken URL) — applied to a short button label at a narrow column
+   width it instead split words mid-letter ("Publis" / "h"). Buttons wrap
+   on their own space instead, same as any normal text. */
+table.pricing-table-compact button {
+  overflow-wrap: normal;
+  word-break: keep-all;
 }
 
 table.pricing-table th.sorted {
