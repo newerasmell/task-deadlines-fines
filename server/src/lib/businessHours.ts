@@ -14,12 +14,8 @@ function toZoned(date: Date): DateTime {
   return DateTime.fromJSDate(date, { zone: env.timezone });
 }
 
-// isNonWorkingDay works off getUTCDay(), so it needs a UTC-midnight instant
-// for the LOCAL calendar day, not the local-zoned instant itself — same
-// technique deadlineFallsOnWeekend already uses, for the same reason.
 function isWorkingDay(dt: DateTime): boolean {
-  const localMidnightUtc = new Date(Date.UTC(dt.year, dt.month - 1, dt.day));
-  return !isNonWorkingDay(localMidnightUtc);
+  return !isNonWorkingDay(dt.toJSDate());
 }
 
 function windowStart(dt: DateTime): DateTime {
