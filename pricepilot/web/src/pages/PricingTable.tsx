@@ -530,7 +530,7 @@ export function PricingTable() {
         <div>
           <div className="product-title">
             {row.title}
-            {row.priority && <span className="tag" title="Always scraped every run">★</span>}
+            {!isCod && row.priority && <span className="tag" title="Always scraped every run">★</span>}
             {isCod && row.saleDiscountApplied && (
               <span
                 className="tag tag-sale"
@@ -644,9 +644,11 @@ export function PricingTable() {
         <button className="small-btn" onClick={() => publishSingle(row)} disabled={suggestedValue == null || status.state === "pending"}>
           Publish
         </button>
-        <button className="small-btn secondary" onClick={() => togglePriority(row)}>
-          {row.priority ? "Unflag priority" : "Flag priority"}
-        </button>
+        {!isCod && (
+          <button className="small-btn secondary" onClick={() => togglePriority(row)}>
+            {row.priority ? "Unflag priority" : "Flag priority"}
+          </button>
+        )}
       </>
     );
   }
