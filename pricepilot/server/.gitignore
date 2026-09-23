@@ -5,3 +5,4 @@ dist/
 *.db-journal
 scripts/out/*.csv
 scripts/local/__pycache__/
+tsconfig.tsbuildinfo
