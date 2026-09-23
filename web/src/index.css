@@ -575,6 +575,11 @@ button.secondary:hover {
   background: #fafbfd;
 }
 
+.table tr.row-highlight td {
+  background: #fff3cd;
+  transition: background 2.5s ease 1.5s;
+}
+
 .table tr:last-child td {
   border-bottom: none;
 }

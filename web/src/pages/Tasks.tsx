@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, apiUpload, attachmentUrl } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
 import type { GoogleCalendarStatus, Priority, Task, TaskSubmission, User } from "../api/types";
@@ -56,8 +56,8 @@ export function Tasks() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<{ taskId: string; mode: ExpandedMode } | null>(null);
   const [tab, setTab] = useState<Tab>("active");
-  const [view, setView] = useState<ViewMode>(isAdmin ? "board" : "list");
   const [searchParams] = useSearchParams();
+  const [view, setView] = useState<ViewMode>(isAdmin ? "board" : "list");
   const [search, setSearch] = useState("");
   const [filterEmployee, setFilterEmployee] = useState("");
   const [filterPriority, setFilterPriority] = useState<Priority | "">("");
@@ -106,6 +106,21 @@ export function Tasks() {
     ]).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Syncs `view` to a `?view=` param on every real navigation (a Link click
+  // — e.g. a task's ↻ badge going to "?view=templates&templateId=..."),
+  // not just once at mount: a badge click navigates within this already-
+  // mounted /tasks route, so a one-time initializer would never see it.
+  // Inert otherwise, since clicking the Табло/Списък/Шаблони buttons only
+  // calls setView and never touches the URL, so `searchParams` doesn't
+  // change and this effect doesn't re-fire.
+  useEffect(() => {
+    const viewParam = searchParams.get("view");
+    if (viewParam === "board" || viewParam === "list" || viewParam === "templates") {
+      setView(viewParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => {
     if (!deepLinkTaskId || loading || deepLinkApplied.current) return;
@@ -414,9 +429,14 @@ export function Tasks() {
                         <div className={`cell-title${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
                           {tk.title}
                           {tk.templateId && (
-                            <span className="badge" title={t("Повтаряща се задача")}>
+                            <Link
+                              to={`/tasks?view=templates&templateId=${tk.templateId}`}
+                              className="badge"
+                              title={t("Повтаряща се задача — виж шаблона")}
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               ↻
-                            </span>
+                            </Link>
                           )}
                           {tk.projectId && (
                             <span className="badge" title={t("Стъпка {order} от проект", { order: tk.chainOrder ?? "?" })}>
@@ -737,7 +757,16 @@ function TaskBoard({
                             <div className="board-card-head">
                               <div className="board-card-title">
                                 {tk.title}
-                                {tk.templateId && <span title={t("Повтаряща се задача")}> ↻</span>}
+                                {tk.templateId && (
+                                  <Link
+                                    to={`/tasks?view=templates&templateId=${tk.templateId}`}
+                                    title={t("Повтаряща се задача — виж шаблона")}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {" "}
+                                    ↻
+                                  </Link>
+                                )}
                                 {tk.projectId && <span title={t("Стъпка {order} от проект", { order: tk.chainOrder ?? "?" })}> 🔗{tk.chainOrder}</span>}
                                 {isAdmin && locked && (
                                   <span title={t("Зададена от Ultimate Admin — само той може да я редактира/изтрие")}> 🔒</span>

@@ -68,6 +68,7 @@ export interface Task {
   ownerId: string | null;
   owner: UserRef | null;
   templateId: string | null;
+  template?: { id: string; title: string; active: boolean } | null;
   deadline: string;
   priority: Priority;
   status: TaskStatus;

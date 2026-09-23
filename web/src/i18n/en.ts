@@ -72,6 +72,7 @@ export const en: Record<string, string> = {
   "Всички статуси": "All statuses",
   "Приоритет": "Priority",
   "Повтаряща се задача": "Recurring task",
+  "Повтаряща се задача — виж шаблона": "Recurring task — view the template",
   "Започни": "Start",
   "Подай за преглед": "Submit for review",
   "Прегледай": "Review",
@@ -90,6 +91,8 @@ export const en: Record<string, string> = {
   "Изчисти филтъра": "Clear filters",
   "Задачата от глобата вече не съществува (изтрита или премахната след затваряне на нейния повтарящ се шаблон).":
     "The task behind this fine no longer exists (deleted, or removed after its recurring series was stopped).",
+  "Шаблонът вече не съществува (вероятно е бил изтрит по-рано).":
+    "This template no longer exists (it was probably deleted earlier).",
   "Кликни за редакция": "Click to edit",
   "Провлачи в „В процес“, за да започнеш": "Drag into \"In progress\" to start",
   "Разгъни": "Expand",

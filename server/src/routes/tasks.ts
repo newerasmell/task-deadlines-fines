@@ -28,6 +28,10 @@ const taskInclude = {
   createdBy: { select: { id: true, name: true, email: true, isSuperAdmin: true } },
   owner: { select: { id: true, name: true, email: true } },
   fines: true,
+  // Just enough for the UI to link a recurring occurrence straight to its
+  // template (e.g. from the ↻ badge) — full template detail lives on
+  // GET /task-templates.
+  template: { select: { id: true, title: true, active: true } },
 } as const;
 
 // A regular Admin may assign, review and see every task, but may not edit or

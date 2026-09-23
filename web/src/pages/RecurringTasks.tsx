@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { FREQUENCY_LABELS, PRIORITY_LABELS, WEEKDAY_LABELS, WEEKDAYS } from "../api/types";
 import type { Priority, RecurringFrequency, RecurringTaskTemplate, User, Weekday } from "../api/types";
@@ -35,6 +36,14 @@ export function RecurringTasks() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchParams] = useSearchParams();
+  // A link from a task's ↻ badge (Tasks.tsx) deep-links here with
+  // ?templateId=<id> so the template actually generating that task can be
+  // found and stopped directly, instead of scanning the whole table by eye.
+  const deepLinkTemplateId = searchParams.get("templateId");
+  const deepLinkApplied = useRef(false);
+  const [deepLinkMissing, setDeepLinkMissing] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
 
   async function refresh() {
     setTemplates(await api<RecurringTaskTemplate[]>("/task-templates"));
@@ -43,6 +52,24 @@ export function RecurringTasks() {
   useEffect(() => {
     Promise.all([refresh(), api<User[]>("/users").then(setEmployees)]).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!deepLinkTemplateId || loading || deepLinkApplied.current) return;
+    deepLinkApplied.current = true;
+    const target = templates.find((tpl) => tpl.id === deepLinkTemplateId);
+    if (!target) {
+      setDeepLinkMissing(true);
+      return;
+    }
+    setHighlightId(target.id);
+  }, [deepLinkTemplateId, loading, templates]);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    document.getElementById(`template-row-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = setTimeout(() => setHighlightId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [highlightId]);
 
   async function toggleActive(tpl: RecurringTaskTemplate) {
     await api(`/task-templates/${tpl.id}`, { method: "PATCH", body: JSON.stringify({ active: !tpl.active }) });
@@ -64,6 +91,11 @@ export function RecurringTasks() {
 
   return (
     <div>
+      {deepLinkMissing && (
+        <p className="notice card small">
+          {t("Шаблонът вече не съществува (вероятно е бил изтрит по-рано).")}
+        </p>
+      )}
       <div className="page-header">
         <h1>{t("Повтарящи се задачи")}</h1>
         <button
@@ -108,7 +140,7 @@ export function RecurringTasks() {
         <tbody>
           {templates.map((tpl) => (
             <Fragment key={tpl.id}>
-              <tr>
+              <tr id={`template-row-${tpl.id}`} className={highlightId === tpl.id ? "row-highlight" : ""}>
                 <td data-label={t("Заглавие")}>{tpl.title}</td>
                 <td className="person-cell" data-label={t("Служител")}>
                   <div className="person-cell-group">
