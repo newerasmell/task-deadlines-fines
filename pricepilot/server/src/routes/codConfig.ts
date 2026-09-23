@@ -43,10 +43,15 @@ const updateSchema = z.object({
   roundStep: z.number().positive().optional(),
   discountPct: z.number().min(1).max(90).optional(),
   discountTag: z.string().min(1).optional(),
+  saleDiscountMinPct: z.number().min(0).max(95).optional(),
+  saleDiscountMaxPct: z.number().min(0).max(95).optional(),
   pricingScenario: z.enum(["pess", "avg", "opt"]).optional(),
   pricingN: z.number().positive().optional(),
   scenarios: z.array(scenarioSchema).length(3).optional(),
   brackets: z.array(bracketSchema).min(1).optional(),
+}).refine((v) => v.saleDiscountMinPct == null || v.saleDiscountMaxPct == null || v.saleDiscountMinPct <= v.saleDiscountMaxPct, {
+  message: "saleDiscountMinPct must be <= saleDiscountMaxPct",
+  path: ["saleDiscountMinPct"],
 });
 
 codConfigRouter.patch("/:storeId", async (req, res) => {

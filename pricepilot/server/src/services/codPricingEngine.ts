@@ -181,22 +181,22 @@ export function computeMarkdown(input: MarkdownInput): MarkdownResult {
   return { eligible: true, daysSinceActive, ceiling, suggestedPrice: ceiling };
 }
 
-const SALE_DISCOUNT_MIN_PCT = 30;
-const SALE_DISCOUNT_MAX_PCT = 35;
-
-// Where a "c_sale"-tagged item's extra markdown lands within [30,35]% off —
-// same direction as rawBasePriceFromCoefficient: a higher coefficient
-// (premium brand, presumably fatter margin) can absorb the deeper end of
-// the cut; a budget brand's already-thin margin gets the gentler end. Uses
-// the coefficient's own raw 1-10 scale rather than a category-relative
-// ranking (unlike base-price placement) — a SALE tag should still produce
-// a discount even for a product whose category has no min/max base-price
-// range configured. A brand that's never been ranked (no coefficient set)
-// falls back to the midpoint rather than blocking the discount outright.
-export function saleDiscountPctForCoefficient(coefficient: number | null): number {
-  if (coefficient == null) return (SALE_DISCOUNT_MIN_PCT + SALE_DISCOUNT_MAX_PCT) / 2;
+// Where a "c_sale"-tagged item's extra markdown lands within the store's own
+// [min,max] SALE range (CodFormulaConfig.saleDiscountMinPct/MaxPct, editable
+// on the formula settings panel — what counts as an aggressive clearance
+// discount varies by market/country) — same direction as
+// rawBasePriceFromCoefficient: a higher coefficient (premium brand,
+// presumably fatter margin) can absorb the deeper end of the cut; a budget
+// brand's already-thin margin gets the gentler end. Uses the coefficient's
+// own raw 1-10 scale rather than a category-relative ranking (unlike
+// base-price placement) — a SALE tag should still produce a discount even
+// for a product whose category has no min/max base-price range configured.
+// A brand that's never been ranked (no coefficient set) falls back to the
+// midpoint rather than blocking the discount outright.
+export function saleDiscountPctForCoefficient(coefficient: number | null, minPct: number, maxPct: number): number {
+  if (coefficient == null) return (minPct + maxPct) / 2;
   const normalized = Math.min(1, Math.max(0, (coefficient - 1) / 9));
-  return SALE_DISCOUNT_MIN_PCT + normalized * (SALE_DISCOUNT_MAX_PCT - SALE_DISCOUNT_MIN_PCT);
+  return minPct + normalized * (maxPct - minPct);
 }
 
 export interface SaleDiscountResult {
@@ -213,9 +213,15 @@ export interface SaleDiscountResult {
 // own acquisition cost: a clearance sale can price well below the formula's
 // normal margin-protecting floor, but never below what the item actually
 // cost to acquire — that would turn "moving old stock" into a real loss.
-export function applySaleDiscount(basePrice: number | null, coefficient: number | null, costFloor: number | null): SaleDiscountResult {
+export function applySaleDiscount(
+  basePrice: number | null,
+  coefficient: number | null,
+  costFloor: number | null,
+  minPct: number,
+  maxPct: number
+): SaleDiscountResult {
   if (basePrice == null) return { applied: false, discountPct: null, preSalePrice: null, price: null };
-  const discountPct = saleDiscountPctForCoefficient(coefficient);
+  const discountPct = saleDiscountPctForCoefficient(coefficient, minPct, maxPct);
   const raw = basePrice * (1 - discountPct / 100);
   const floored = costFloor != null ? Math.max(raw, costFloor) : raw;
   return { applied: true, discountPct, preSalePrice: basePrice, price: roundCharmPrice(floored) };

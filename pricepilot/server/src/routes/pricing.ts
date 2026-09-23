@@ -338,7 +338,9 @@ async function sendCodPricingTable(
     // markdown ceiling if that's already kicked in — never below the
     // product's own acquisition cost. See applySaleDiscount's own comment.
     const coefficient = product.vendor ? coefficientByVendor.get(product.vendor) ?? null : null;
-    const sale = discountTagged ? applySaleDiscount(preSaleSuggested, coefficient, cost) : { applied: false, discountPct: null, preSalePrice: null, price: null };
+    const sale = discountTagged
+      ? applySaleDiscount(preSaleSuggested, coefficient, cost, config.saleDiscountMinPct, config.saleDiscountMaxPct)
+      : { applied: false, discountPct: null, preSalePrice: null, price: null };
     const suggested = sale.applied && sale.price != null ? sale.price : preSaleSuggested;
 
     return {

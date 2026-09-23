@@ -89,6 +89,8 @@ export interface CodFormulaConfig {
   roundStep: number;
   discountPct: number;
   discountTag: string;
+  saleDiscountMinPct: number;
+  saleDiscountMaxPct: number;
   pricingScenario: string;
   pricingN: number;
   scenariosJson: string;

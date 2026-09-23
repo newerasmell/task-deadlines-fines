@@ -428,6 +428,12 @@ model CodFormulaConfig {
   // codPricingEngine.ts. Also just shown as a badge in the UI for a product
   // tagged but with no suggested price to discount yet.
   discountTag   String   @default("c_sale")
+  // The [min,max] range the SALE tag's extra cut is placed in by the
+  // product's brand coefficient — see saleDiscountPctForCoefficient in
+  // codPricingEngine.ts. Editable per store: what counts as an aggressive
+  // clearance discount varies by market/country and by store.
+  saleDiscountMinPct Float @default(30)
+  saleDiscountMaxPct Float @default(35)
   pricingScenario String @default("avg") // pess | avg | opt — which scenario's A/d/S feeds the price formula
   pricingN      Float    @default(1000) // N used for F/N in the price formula (not the live order count)
 

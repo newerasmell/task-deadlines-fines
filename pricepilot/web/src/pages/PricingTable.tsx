@@ -536,7 +536,7 @@ export function PricingTable() {
                 className="tag tag-sale"
                 title={`Tagged "${data!.formula?.config.discountTag}" in Shopify — доп. ${row.saleDiscountPct?.toFixed(0)}% от ${fmtMoney(row.salePreDiscountPrice ?? null, currentStore!.currency)}`}
               >
-                🏷 SALE -{row.saleDiscountPct?.toFixed(0)}%
+                SALE -{row.saleDiscountPct?.toFixed(0)}%
               </span>
             )}
             {isCod && row.discountTagged && !row.saleDiscountApplied && (
@@ -1164,6 +1164,8 @@ function CodFormulaPanel({
   const [roundStep, setRoundStep] = useState("1");
   const [discountPct, setDiscountPct] = useState("50");
   const [discountTag, setDiscountTag] = useState("sale");
+  const [saleDiscountMinPct, setSaleDiscountMinPct] = useState("30");
+  const [saleDiscountMaxPct, setSaleDiscountMaxPct] = useState("35");
   const [pricingScenario, setPricingScenario] = useState("avg");
   const [pricingN, setPricingN] = useState("1000");
   const [scenarios, setScenarios] = useState<CodScenarioInput[]>([]);
@@ -1185,6 +1187,8 @@ function CodFormulaPanel({
     setRoundStep(String(c.roundStep));
     setDiscountPct(String(c.discountPct));
     setDiscountTag(c.discountTag);
+    setSaleDiscountMinPct(String(c.saleDiscountMinPct));
+    setSaleDiscountMaxPct(String(c.saleDiscountMaxPct));
     setPricingScenario(c.pricingScenario);
     setPricingN(String(c.pricingN));
     setScenarios(JSON.parse(c.scenariosJson));
@@ -1207,6 +1211,10 @@ function CodFormulaPanel({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (Number(saleDiscountMinPct) > Number(saleDiscountMaxPct)) {
+      setError("SALE отстъпка: минимумът не може да е по-голям от максимума.");
+      return;
+    }
     setSaving(true);
     try {
       await api(`/cod-config/${storeId}`, {
@@ -1223,6 +1231,8 @@ function CodFormulaPanel({
           roundStep: Number(roundStep),
           discountPct: Number(discountPct),
           discountTag: discountTag.trim() || "sale",
+          saleDiscountMinPct: Number(saleDiscountMinPct),
+          saleDiscountMaxPct: Number(saleDiscountMaxPct),
           pricingScenario,
           pricingN: Number(pricingN),
           scenarios,
@@ -1329,10 +1339,22 @@ function CodFormulaPanel({
               <input type="number" step="1" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
             </label>
             <label>
-              SALE таг (доп. отстъпка 30–35% на база коеф. на марката)
+              SALE таг
               <input value={discountTag} onChange={(e) => setDiscountTag(e.target.value)} placeholder="c_sale" />
             </label>
+            <label>
+              SALE отстъпка — мин. %
+              <input type="number" step="1" min="0" max="95" value={saleDiscountMinPct} onChange={(e) => setSaleDiscountMinPct(e.target.value)} />
+            </label>
+            <label>
+              SALE отстъпка — макс. %
+              <input type="number" step="1" min="0" max="95" value={saleDiscountMaxPct} onChange={(e) => setSaleDiscountMaxPct(e.target.value)} />
+            </label>
           </div>
+          <p className="muted small" style={{ margin: "-6px 0 8px" }}>
+            SALE-таг-нат продукт взима допълнителна отстъпка между мин. и макс. % от вече изчислената Recommended
+            цена, на база коефициента на марката (по-висок коефициент → по-близо до макс. %).
+          </p>
 
           {mode !== "cost" && (
             <div>
