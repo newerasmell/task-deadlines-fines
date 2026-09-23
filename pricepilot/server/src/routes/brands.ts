@@ -59,3 +59,60 @@ brandsRouter.delete("/:storeId/coefficient/:vendor", async (req, res) => {
   await logAudit(req.userId!, "BRAND_COEFFICIENT_UPDATED", "Brand", null, `Cleared price coefficient of "${req.params.vendor}"`);
   res.json({ ok: true });
 });
+
+const copyToSchema = z.object({ targetStoreIds: z.array(z.string().min(1)).min(1) });
+
+// Clothing brands price the same the world over, so a chain running several
+// COD storefronts sets one store's coefficients once and clones them onto
+// the rest here, instead of re-typing the same 1-10 ranking store by store.
+// Overwrites whatever coefficient a target store already had for a vendor
+// they share with the source (that's the point — keep them in sync), but
+// never touches a target-only vendor the source doesn't sell.
+brandsRouter.post("/:storeId/copy-to", async (req, res) => {
+  const parsed = copyToSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const sourceStoreId = req.params.storeId;
+  const targetStoreIds = [...new Set(parsed.data.targetStoreIds)].filter((id) => id !== sourceStoreId);
+  if (targetStoreIds.length === 0) return res.status(400).json({ error: "No valid target stores." });
+
+  const [sourceStore, sourceBrandsRaw, sourceVendorGroups, targetStores] = await Promise.all([
+    prisma.store.findUnique({ where: { id: sourceStoreId } }),
+    prisma.brand.findMany({ where: { storeId: sourceStoreId, coefficient: { not: null } } }),
+    prisma.product.groupBy({ by: ["vendor"], where: { storeId: sourceStoreId, vendor: { not: null } } }),
+    prisma.store.findMany({ where: { id: { in: targetStoreIds } } }),
+  ]);
+  if (!sourceStore) return res.status(404).json({ error: "Source store not found." });
+  if (targetStores.length !== targetStoreIds.length) return res.status(404).json({ error: "One or more target stores not found." });
+
+  // Only vendors this store actually sells right now — matches the rows
+  // shown on the tab itself, so a stale coefficient left over from a
+  // discontinued brand never silently reappears on another store.
+  const sellingVendors = new Set(sourceVendorGroups.map((g) => g.vendor));
+  const sourceBrands = sourceBrandsRaw.filter((b) => sellingVendors.has(b.vendor));
+  if (sourceBrands.length === 0) return res.status(400).json({ error: "Source store has no brand coefficients to copy." });
+
+  await prisma.$transaction(
+    targetStores.flatMap((store) =>
+      sourceBrands.map((b) =>
+        prisma.brand.upsert({
+          where: { storeId_vendor: { storeId: store.id, vendor: b.vendor } },
+          create: { storeId: store.id, vendor: b.vendor, coefficient: b.coefficient },
+          update: { coefficient: b.coefficient },
+        })
+      )
+    )
+  );
+
+  for (const store of targetStores) {
+    await logAudit(
+      req.userId!,
+      "BRAND_COEFFICIENT_UPDATED",
+      "Store",
+      store.id,
+      `Copied ${sourceBrands.length} brand coefficient(s) from "${sourceStore.name}" onto "${store.name}"`
+    );
+  }
+
+  res.json({ copiedBrands: sourceBrands.length, targetStoreCount: targetStores.length });
+});
