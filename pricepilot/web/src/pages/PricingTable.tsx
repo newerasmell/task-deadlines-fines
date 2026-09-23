@@ -30,6 +30,46 @@ function fmtMoney(v: number | null, currency: string): string {
   return `${v.toFixed(2)} ${currency}`;
 }
 
+// A group's variants very often share the same cost/recommended/compare-at
+// (the same physical product, just different sizes) — collapsing to one
+// value instead of a range whenever every row actually agrees, rather than
+// always showing "X – X", is what makes those fields worth putting on the
+// group's own summary row at all.
+function summarizeNumbers(values: (number | null)[]): { allSame: boolean; min: number | null; max: number | null } {
+  const nonNull = values.filter((v): v is number => v != null);
+  if (nonNull.length === 0) return { allSame: true, min: null, max: null };
+  const min = Math.min(...nonNull);
+  const max = Math.max(...nonNull);
+  return { allSame: min === max && nonNull.length === values.length, min, max };
+}
+
+function fmtMoneyRange(values: (number | null)[], currency: string): string {
+  const { allSame, min, max } = summarizeNumbers(values);
+  if (min == null) return "—";
+  return allSame ? fmtMoney(min, currency) : `${fmtMoney(min, currency)} – ${fmtMoney(max, currency)}`;
+}
+
+function fmtPctRange(values: (number | null)[]): string {
+  const { allSame, min, max } = summarizeNumbers(values);
+  if (min == null || max == null) return "—";
+  const fmt = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+  return allSame ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
+}
+
+function fmtNumberRange(values: (number | null)[]): string {
+  const { allSame, min, max } = summarizeNumbers(values);
+  if (min == null || max == null) return "—";
+  return allSame ? String(min) : `${min} – ${max}`;
+}
+
+// activatedAt (ISO strings) has no natural "range" the way a price does —
+// shown only when every variant actually shares the exact same instant
+// (the normal case, one sync stamping the whole product at once).
+function fmtActivatedAtIfUniform(values: (string | null)[]): string {
+  const first = values[0];
+  return values.every((v) => v === first) ? fmtActivatedAt(first) : "—";
+}
+
 function fmtFreshness(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const hours = Math.floor(ms / (1000 * 60 * 60));
@@ -801,21 +841,36 @@ export function PricingTable() {
 
                 const isExpanded = expandedGroups.has(group.key);
                 const groupSelected = group.rows.every((r) => selected.has(r.productId));
-                const ourPrices = group.rows.map((r) => r.ourPrice);
-                const minOur = Math.min(...ourPrices);
-                const maxOur = Math.max(...ourPrices);
+                const flags = group.rows.map((r) => r.flag);
+                const uniformFlag = flags.every((f) => f === flags[0]) ? flags[0] : null;
+
+                // The bulk input mirrors what a single-row publish already does — send the
+                // suggested price together with its recommendedComparePrice — so prefill it
+                // with that shared value (when every variant agrees) instead of leaving it
+                // blank until the user retypes a number the system already computed.
+                const suggestedSummary = summarizeNumbers(group.rows.map((r) => suggestedFor(r)));
+                const prefillSuggested = suggestedSummary.allSame ? suggestedSummary.min : null;
+                const currentCompareAtSummary = summarizeNumbers(group.rows.map((r) => r.compareAtPrice));
+                const recommendedCompareAtSummary = summarizeNumbers(group.rows.map((r) => r.recommendedComparePrice));
+                const compareAtWillChange =
+                  isCod &&
+                  recommendedCompareAtSummary.allSame &&
+                  recommendedCompareAtSummary.min != null &&
+                  (!currentCompareAtSummary.allSame || currentCompareAtSummary.min !== recommendedCompareAtSummary.min);
 
                 return (
                   <Fragment key={group.key}>
                     <tr className="group-header-row">
-                      <td colSpan={totalCols}>
-                        <div className="group-row-compact">
-                          <input
-                            type="checkbox"
-                            checked={groupSelected}
-                            onChange={() => toggleGroupSelection(group.rows)}
-                            aria-label="Select all variants"
-                          />
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={groupSelected}
+                          onChange={() => toggleGroupSelection(group.rows)}
+                          aria-label="Select all variants"
+                        />
+                      </td>
+                      <td>
+                        <div className="table-product-cell group-row-head">
                           <button
                             type="button"
                             className="group-expand-btn"
@@ -827,30 +882,78 @@ export function PricingTable() {
                               ▸
                             </span>
                           </button>
-                          <div className="table-product-cell group-row-head">{renderProductHead(group.rows[0])}</div>
-                          <div className="group-row-summary">
-                            <span className="muted">Our price</span>{" "}
-                            <b>
-                              {fmtMoney(minOur, currentStore.currency)} – {fmtMoney(maxOur, currentStore.currency)}
-                            </b>
-                            <span className="group-row-count">{group.rows.length} variants</span>
+                          {renderProductHead(group.rows[0])}
+                          <span className="group-row-count">{group.rows.length} variants</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="price-compare">
+                          <div className="price-compare-current">
+                            <span className="field-label">Our price</span>
+                            <span className="price-compare-value">
+                              {fmtMoneyRange(
+                                group.rows.map((r) => r.ourPrice),
+                                currentStore!.currency
+                              )}
+                            </span>
                           </div>
-                          <div className="group-row-bulk">
-                            <span className="muted small">Set suggested for all:</span>
+                          <span className="price-compare-arrow">→</span>
+                          <div className={`price-compare-suggested flag-${uniformFlag ?? "no-data"}`}>
+                            <span className="field-label">
+                              {isCod ? "Recommended" : "Suggested"} — {group.rows.length}x
+                            </span>
                             <input
+                              className="suggested-input-big"
                               type="number"
                               step="0.01"
-                              value={groupBulkValue.get(group.key) ?? ""}
+                              value={groupBulkValue.get(group.key) ?? (prefillSuggested != null ? String(prefillSuggested) : "")}
                               onChange={(e) => setGroupBulkValue((cur) => new Map(cur).set(group.key, e.target.value))}
+                              onBlur={() => applyGroupBulk(group.key, group.rows)}
                               placeholder="—"
-                              className="suggested-input"
                             />
-                            <button type="button" className="small-btn" onClick={() => applyGroupBulk(group.key, group.rows)}>
-                              Apply to {group.rows.length}
-                            </button>
+                            <span className={`badge flag-${uniformFlag ?? "no-data"}`}>
+                              {uniformFlag ? FLAG_LABELS[uniformFlag] : "Mixed"}
+                            </span>
+                            {compareAtWillChange && (
+                              <span className="price-compare-note">
+                                Compare-at → {fmtMoney(recommendedCompareAtSummary.min, currentStore!.currency)}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
+                      <td>
+                        {fmtMoneyRange(
+                          group.rows.map((r) => r.compareAtPrice),
+                          currentStore!.currency
+                        )}
+                      </td>
+                      <td className="small">{fmtActivatedAtIfUniform(group.rows.map((r) => r.activatedAt))}</td>
+                      {isCod && <td>{fmtNumberRange(group.rows.map((r) => r.cost))}</td>}
+                      {data!.sources.map((s) => (
+                        <td key={s.id} className="muted small">
+                          —
+                        </td>
+                      ))}
+                      {!isCod && (
+                        <td>
+                          {fmtMoneyRange(
+                            group.rows.map((r) => r.minComp),
+                            currentStore!.currency
+                          )}
+                        </td>
+                      )}
+                      <td>{fmtPctRange(group.rows.map((r) => r.deltaPct))}</td>
+                      {isCod && (
+                        <td>
+                          {fmtMoneyRange(
+                            group.rows.map((r) => r.recommendedComparePrice),
+                            currentStore!.currency
+                          )}
+                        </td>
+                      )}
+                      <td></td>
+                      <td></td>
                     </tr>
                     {isExpanded && group.rows.map((row) => renderVariantRow(row, true))}
                   </Fragment>
