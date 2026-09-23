@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { PricingTableResponse, Source, UnmatchedRow } from "../api/types";
 import { useStores } from "../context/StoreContext";
+import { useT } from "../i18n/I18nContext";
 
 export function Unmatched() {
   const { currentStore } = useStores();
+  const t = useT();
   const [sources, setSources] = useState<Source[]>([]);
   const [rows, setRows] = useState<UnmatchedRow[]>([]);
   const [products, setProducts] = useState<{ id: string; title: string }[]>([]);
@@ -58,22 +60,23 @@ export function Unmatched() {
     refresh();
   }
 
-  if (!currentStore) return <p className="muted">No store selected.</p>;
-  if (loading) return <p className="center-loading">Loading…</p>;
+  if (!currentStore) return <p className="muted">{t("Няма избран магазин.")}</p>;
+  if (loading) return <p className="center-loading">{t("Зареждане…")}</p>;
 
   return (
     <div>
       <div className="page-header">
-        <h1>Unmatched — {currentStore.name}</h1>
+        <h1>{t("Несъпоставени — {name}", { name: currentStore.name })}</h1>
       </div>
       <p className="muted">
-        Competitor listings that couldn't be matched to a product by EAN or by normalized brand+name+ml. Bind one manually
-        below — manual bindings always take priority over automatic matching on future refreshes.
+        {t(
+          "Обяви на конкуренти, които не са съпоставени с продукт по EAN или по нормализирани марка+име+мл. Съпостави ръчно по-долу — ръчните съпоставяния винаги имат приоритет пред автоматичното съпоставяне при бъдещи опреснявания."
+        )}
       </p>
 
       <div className="filters-bar">
         <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
-          <option value="">All sources</option>
+          <option value="">{t("Всички източници")}</option>
           {sources.map((s) => (
             <option key={s.id} value={s.id}>
               {s.label}
@@ -105,7 +108,7 @@ export function Unmatched() {
                   value={binding[row.id] ?? ""}
                   onChange={(e) => setBinding((cur) => ({ ...cur, [row.id]: e.target.value }))}
                 >
-                  <option value="">Bind to product…</option>
+                  <option value="">{t("Съпостави с продукт…")}</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.title}
@@ -113,12 +116,12 @@ export function Unmatched() {
                   ))}
                 </select>
                 <button className="small-btn" onClick={() => bindByProductSelect(row)} disabled={!binding[row.id]}>
-                  Bind
+                  {t("Съпостави")}
                 </button>
               </div>
               <div className="form-row" style={{ margin: 0 }}>
                 <input
-                  placeholder="or paste competitor URL / EAN for a specific product"
+                  placeholder={t("или постави URL / EAN на конкурент за конкретен продукт")}
                   value={manualInput[row.id] ?? ""}
                   onChange={(e) => setManualInput((cur) => ({ ...cur, [row.id]: e.target.value }))}
                 />
@@ -126,15 +129,15 @@ export function Unmatched() {
                   className="small-btn secondary"
                   onClick={() => bindByManualText(binding[row.id], row.sourceId, row.id)}
                   disabled={!binding[row.id] || !manualInput[row.id]}
-                  title="Pick a product above first, then confirm the URL/EAN"
+                  title={t("Първо избери продукт по-горе, после потвърди URL/EAN")}
                 >
-                  Confirm
+                  {t("Потвърди")}
                 </button>
               </div>
             </div>
           </div>
         ))}
-        {rows.length === 0 && <p className="muted">Nothing unmatched right now.</p>}
+        {rows.length === 0 && <p className="muted">{t("В момента няма несъпоставени.")}</p>}
       </div>
     </div>
   );

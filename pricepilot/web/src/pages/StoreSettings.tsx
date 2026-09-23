@@ -6,14 +6,16 @@ import { CostsImport } from "../components/CostsImport";
 import { SourcesSection } from "../components/SourcesSection";
 import { StoreForm } from "../components/StoreForm";
 import { useStores } from "../context/StoreContext";
+import { useT } from "../i18n/I18nContext";
 
-const PROFILE_LABELS = { competitor: "Competitor tracking", cod_formula: "COD formula" } as const;
+const PROFILE_LABELS = { competitor: "Проследяване на конкуренти", cod_formula: "COD формула" } as const;
 
 // The dedicated per-store settings page — reached by picking a store on
 // /stores. Loads only THAT store's connection/sources/costs, replacing the
 // old single Settings page which stacked every store's config plus the
 // full store list plus account/team management all on top of each other.
 export function StoreSettings() {
+  const t = useT();
   const { storeId } = useParams<{ storeId: string }>();
   const navigate = useNavigate();
   const { stores, groups, setCurrentStoreId, refreshStores, loading } = useStores();
@@ -37,7 +39,9 @@ export function StoreSettings() {
       const res = await api<{ ok: boolean; shopName?: string; error?: string }>(`/stores/${store.id}/test-connection`, {
         method: "POST",
       });
-      setTestResult(res.ok ? `✓ Connected to "${res.shopName}"` : `✕ ${res.error}`);
+      setTestResult(
+        res.ok ? t('✓ Свързано с „{shopName}“', { shopName: res.shopName ?? "" }) : t("✕ {error}", { error: res.error ?? "" })
+      );
     } finally {
       setTesting(false);
     }
@@ -51,7 +55,11 @@ export function StoreSettings() {
       const res = await api<{ ok: boolean; variantCount?: number; method?: string; error?: string }>(`/stores/${store.id}/sync-now`, {
         method: "POST",
       });
-      setSyncResult(res.ok ? `✓ Synced ${res.variantCount} variants (${res.method})` : `✕ ${res.error}`);
+      setSyncResult(
+        res.ok
+          ? t("✓ Синхронизирани {count} варианта ({method})", { count: res.variantCount ?? 0, method: res.method ?? "" })
+          : t("✕ {error}", { error: res.error ?? "" })
+      );
     } finally {
       setSyncing(false);
     }
@@ -59,30 +67,35 @@ export function StoreSettings() {
 
   async function deleteStore() {
     if (!store) return;
-    if (!window.confirm(`Delete store "${store.name}"? This removes its products, sources, and history too.`)) return;
+    if (
+      !window.confirm(
+        t("Изтриване на магазин „{name}“? Това ще премахне и продуктите, източниците и историята му.", { name: store.name })
+      )
+    )
+      return;
     await api(`/stores/${store.id}`, { method: "DELETE" });
     await refreshStores();
     navigate("/stores");
   }
 
-  if (loading) return <p className="center-loading">Loading…</p>;
+  if (loading) return <p className="center-loading">{t("Зареждане…")}</p>;
   if (!store) {
     return (
       <div>
-        <Link to="/stores">← Stores</Link>
+        <Link to="/stores">{t("← Магазини")}</Link>
         <p className="muted" style={{ marginTop: 12 }}>
-          Store not found — it may have been deleted.
+          {t("Магазинът не е намерен — може да е бил изтрит.")}
         </p>
       </div>
     );
   }
 
-  const groupName = groups.find((g) => g.id === store.groupId)?.name ?? "Ungrouped";
+  const groupName = groups.find((g) => g.id === store.groupId)?.name ?? t("Без група");
 
   return (
     <div>
       <Link to="/stores" className="small">
-        ← Stores
+        {t("← Магазини")}
       </Link>
 
       <div className="page-header" style={{ marginTop: 8 }}>
@@ -96,13 +109,13 @@ export function StoreSettings() {
           {testResult && <span className="small">{testResult}</span>}
           {syncResult && <span className="small">{syncResult}</span>}
           <button className="secondary" onClick={testConnection} disabled={testing}>
-            {testing ? "Testing…" : "Test connection"}
+            {testing ? t("Тестване…") : t("Тествай връзката")}
           </button>
           <button className="secondary" onClick={syncNow} disabled={syncing}>
-            {syncing ? "Syncing…" : "Sync now"}
+            {syncing ? t("Синхронизиране…") : t("Синхронизирай сега")}
           </button>
           <button className="secondary" onClick={deleteStore}>
-            Delete store
+            {t("Изтрий магазина")}
           </button>
         </div>
       </div>
@@ -111,7 +124,7 @@ export function StoreSettings() {
         <AccordionItem
           open={connectionOpen}
           onToggle={() => setConnectionOpen((v) => !v)}
-          headerLeft={<span>Connection &amp; pricing rule</span>}
+          headerLeft={<span>{t("Връзка и правило за ценообразуване")}</span>}
         >
           <StoreForm
             store={store}
@@ -125,12 +138,12 @@ export function StoreSettings() {
       </div>
 
       <div className="settings-section">
-        <h2>Sources</h2>
+        <h2>{t("Източници")}</h2>
         <SourcesSection storeId={store.id} />
       </div>
 
       <div className="settings-section">
-        <h2>Import costs</h2>
+        <h2>{t("Импортирай себестойности")}</h2>
         <CostsImport storeId={store.id} />
       </div>
     </div>

@@ -3,6 +3,10 @@ import type { ChangeEvent, FormEvent } from "react";
 import { api } from "../api/client";
 import type { AmbiguousMatch, ScrapeAttempt, Source, SourceType } from "../api/types";
 import { AccordionItem } from "./Accordion";
+import { useT } from "../i18n/I18nContext";
+import type { useI18n } from "../i18n/I18nContext";
+
+type T = ReturnType<typeof useI18n>["t"];
 
 const MAX_SOURCES_PER_STORE = 4; // was 3 per the original brief; raised at the user's request
 
@@ -15,15 +19,17 @@ function defaultTabFor(type: SourceType): SourceTab {
   return "edit";
 }
 
-function tabsFor(type: SourceType): { key: SourceTab; label: string }[] {
-  const tabs: { key: SourceTab; label: string }[] = [{ key: "edit", label: "Edit" }];
-  if (type === "manual_import") tabs.push({ key: "import", label: "Import" });
-  if (type === "scrape" || type === "manual_import") tabs.push({ key: "results", label: "Results" });
-  if (type === "jeftinije_hr" || type === "notino_hr" || type === "manual_import") tabs.push({ key: "queue", label: "Review queue" });
+function tabsFor(type: SourceType, t: T): { key: SourceTab; label: string }[] {
+  const tabs: { key: SourceTab; label: string }[] = [{ key: "edit", label: t("Редактиране") }];
+  if (type === "manual_import") tabs.push({ key: "import", label: t("Импортиране") });
+  if (type === "scrape" || type === "manual_import") tabs.push({ key: "results", label: t("Резултати") });
+  if (type === "jeftinije_hr" || type === "notino_hr" || type === "manual_import")
+    tabs.push({ key: "queue", label: t("Опашка за преглед") });
   return tabs;
 }
 
 export function SourcesSection({ storeId }: { storeId: string }) {
+  const t = useT();
   const [sources, setSources] = useState<Source[]>([]);
   const [addingSource, setAddingSource] = useState(false);
   // Accordion at the source level: at most one source's panel is open,
@@ -67,7 +73,7 @@ export function SourcesSection({ storeId }: { storeId: string }) {
   // we kicked it off, then read the result off lastMatchedCount/lastError.
   async function refreshSource(id: string) {
     setRefreshing(id);
-    setRefreshResult((cur) => ({ ...cur, [id]: "Started — scrape sources can take several minutes…" }));
+    setRefreshResult((cur) => ({ ...cur, [id]: t("Стартирано — извличането от източници може да отнеме няколко минути…") }));
     const requestedAt = Date.now();
     try {
       const res = await api<{ ok: boolean; started?: boolean; alreadyRunning?: boolean; error?: string }>(
@@ -75,16 +81,16 @@ export function SourcesSection({ storeId }: { storeId: string }) {
         { method: "POST" }
       );
       if (!res.ok) {
-        setRefreshResult((cur) => ({ ...cur, [id]: `✕ ${res.error ?? "Error"}` }));
+        setRefreshResult((cur) => ({ ...cur, [id]: `✕ ${res.error ?? t("Грешка")}` }));
         return;
       }
       if (res.alreadyRunning) {
-        setRefreshResult((cur) => ({ ...cur, [id]: "Already refreshing — check back shortly." }));
+        setRefreshResult((cur) => ({ ...cur, [id]: t("Вече се обновява — проверете отново скоро.") }));
         return;
       }
       await pollUntilRefreshed(id, requestedAt);
     } catch (err) {
-      setRefreshResult((cur) => ({ ...cur, [id]: err instanceof Error ? `✕ ${err.message}` : "✕ Error" }));
+      setRefreshResult((cur) => ({ ...cur, [id]: err instanceof Error ? `✕ ${err.message}` : `✕ ${t("Грешка")}` }));
     } finally {
       setRefreshing(null);
     }
@@ -101,16 +107,18 @@ export function SourcesSection({ storeId }: { storeId: string }) {
       if (source?.lastRefreshedAt && new Date(source.lastRefreshedAt).getTime() >= requestedAt) {
         setRefreshResult((cur) => ({
           ...cur,
-          [id]: source.lastError ? `✕ ${source.lastError}` : `✓ ${source.lastMatchedCount ?? 0} prices fetched`,
+          [id]: source.lastError
+            ? `✕ ${source.lastError}`
+            : t("✓ {count} извлечени цени", { count: source.lastMatchedCount ?? 0 }),
         }));
         return;
       }
     }
-    setRefreshResult((cur) => ({ ...cur, [id]: "Still running — check back later." }));
+    setRefreshResult((cur) => ({ ...cur, [id]: t("Все още работи — проверете по-късно.") }));
   }
 
   async function remove(id: string) {
-    if (!window.confirm("Delete this source? Its collected competitor prices go with it.")) return;
+    if (!window.confirm(t("Изтриване на този източник? Събраните цени на конкуренти ще бъдат изтрити заедно с него."))) return;
     await api(`/sources/${id}`, { method: "DELETE" });
     if (openSourceId === id) setOpenSourceId(null);
     refresh();
@@ -121,7 +129,7 @@ export function SourcesSection({ storeId }: { storeId: string }) {
       <div className="entity-list" style={{ marginBottom: addingSource ? 12 : 0 }}>
         {sources.map((s) => {
           const open = openSourceId === s.id;
-          const tabs = tabsFor(s.type);
+          const tabs = tabsFor(s.type, t);
           return (
             <AccordionItem
               key={s.id}
@@ -130,9 +138,9 @@ export function SourcesSection({ storeId }: { storeId: string }) {
               headerLeft={
                 <span>
                   {s.label} <span className="accordion-meta">({s.type})</span>
-                  {s.degraded && <span className="tag">degraded</span>}
-                  {!s.active && <span className="tag">inactive</span>}
-                  {!s.autoRefresh && <span className="tag">manual only</span>}
+                  {s.degraded && <span className="tag">{t("влошено")}</span>}
+                  {!s.active && <span className="tag">{t("неактивно")}</span>}
+                  {!s.autoRefresh && <span className="tag">{t("само ръчно")}</span>}
                 </span>
               }
               headerRight={
@@ -140,11 +148,11 @@ export function SourcesSection({ storeId }: { storeId: string }) {
                   {refreshResult[s.id] && <span className="small">{refreshResult[s.id]}</span>}
                   {s.type !== "manual_import" && (
                     <button className="small-btn secondary" onClick={() => refreshSource(s.id)} disabled={refreshing === s.id}>
-                      {refreshing === s.id ? "Refreshing…" : "Refresh now"}
+                      {refreshing === s.id ? t("Обновяване…") : t("Обнови сега")}
                     </button>
                   )}
                   <button className="small-btn secondary" onClick={() => remove(s.id)}>
-                    Delete
+                    {t("Изтрий")}
                   </button>
                 </div>
               }
@@ -153,9 +161,9 @@ export function SourcesSection({ storeId }: { storeId: string }) {
                 {s.baseUrl}
                 {s.searchUrlTemplate && ` · ${s.searchUrlTemplate}`}
                 <br />
-                Last refreshed: {s.lastRefreshedAt ? new Date(s.lastRefreshedAt).toLocaleString() : "never"}
-                {s.lastTriggeredBy && ` by ${s.lastTriggeredBy}`}
-                {s.lastMatchedCount !== null && ` (${s.lastMatchedCount} prices)`}
+                {t("Последно обновено")}: {s.lastRefreshedAt ? new Date(s.lastRefreshedAt).toLocaleString() : t("никога")}
+                {s.lastTriggeredBy && ` ${t("от")} ${s.lastTriggeredBy}`}
+                {s.lastMatchedCount !== null && ` (${s.lastMatchedCount} ${t("цени")})`}
                 {s.lastError && (
                   <>
                     <br />
@@ -166,14 +174,14 @@ export function SourcesSection({ storeId }: { storeId: string }) {
 
               {tabs.length > 1 && (
                 <div className="tabs compact">
-                  {tabs.map((t) => (
+                  {tabs.map((tab) => (
                     <button
-                      key={t.key}
+                      key={tab.key}
                       type="button"
-                      className={openTab === t.key ? "active" : "secondary"}
-                      onClick={() => setOpenTab(t.key)}
+                      className={openTab === tab.key ? "active" : "secondary"}
+                      onClick={() => setOpenTab(tab.key)}
                     >
-                      {t.label}
+                      {tab.label}
                     </button>
                   ))}
                 </div>
@@ -196,14 +204,14 @@ export function SourcesSection({ storeId }: { storeId: string }) {
             </AccordionItem>
           );
         })}
-        {sources.length === 0 && <p className="muted">No sources yet.</p>}
+        {sources.length === 0 && <p className="muted">{t("Все още няма източници.")}</p>}
       </div>
 
       {!addingSource && !openSourceId && sources.length < MAX_SOURCES_PER_STORE && (
-        <button onClick={() => setAddingSource(true)}>+ Add source</button>
+        <button onClick={() => setAddingSource(true)}>{t("+ Добави източник")}</button>
       )}
       {sources.length >= MAX_SOURCES_PER_STORE && !addingSource && (
-        <p className="muted small">Maximum of {MAX_SOURCES_PER_STORE} sources per store.</p>
+        <p className="muted small">{t("Максимум {max} източника на магазин.", { max: MAX_SOURCES_PER_STORE })}</p>
       )}
       {addingSource && (
         <div className="accordion-item">
@@ -230,6 +238,7 @@ export function SourcesSection({ storeId }: { storeId: string }) {
 // in prices on the exported template — no fuzzy product matching needed on
 // re-import since every row already carries our own product_id.
 function ManualImportPanel({ source, onImported }: { source: Source; onImported: () => void }) {
+  const t = useT();
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ matched: number; notFoundCount: number; errorCount: number; errors: string[] } | null>(
@@ -297,41 +306,50 @@ function ManualImportPanel({ source, onImported }: { source: Source; onImported:
   return (
     <div>
       <p className="muted small">
-        1. Download the research template (every product, plus a suggested search URL). 2. Search {source.baseUrl} for
-        each one and fill in <code>competitor_price</code> (or mark <code>not_found</code>) on the same file. 3.
-        Upload it back here — rows are matched by <code>product_id</code>, so nothing here relies on titles lining
-        up exactly.
+        {t("1. Изтеглете шаблона за проучване (всеки продукт, плюс предложен URL за търсене). 2. Търсете {baseUrl} за всеки продукт и попълнете", {
+          baseUrl: source.baseUrl,
+        })}{" "}
+        <code>competitor_price</code>
+        {t(" (или отбележете")} <code>not_found</code>
+        {t(") в същия файл. 3. Качете го обратно тук — редовете се съпоставят по")} <code>product_id</code>
+        {t(", така че нищо тук не разчита заглавията да съвпадат точно.")}
       </p>
       <div className="form-row">
         <button className="small-btn secondary" onClick={downloadTemplate} disabled={downloading}>
-          {downloading ? "Preparing…" : "Download template"}
+          {downloading ? t("Подготовка…") : t("Изтегли шаблон")}
         </button>
         <input type="file" accept=".csv,text/csv" onChange={handleFile} disabled={importing} />
       </div>
       {result && (
         <div className="small" style={{ marginTop: 8 }}>
-          Imported {result.matched} price(s), {result.notFoundCount} marked not-found.
+          {t("Импортирани {matched} цена/и, {notFound} отбелязани като ненамерени.", {
+            matched: result.matched,
+            notFound: result.notFoundCount,
+          })}
           {result.errorCount > 0 && (
             <div className="error-text">
-              {result.errorCount} row(s) skipped: {result.errors.join("; ")}
+              {t("{count} ред(а) пропуснати: {errors}", { count: result.errorCount, errors: result.errors.join("; ") })}
             </div>
           )}
         </div>
       )}
       <p className="muted small" style={{ marginTop: 12 }}>
-        If your research turned up candidates you weren't sure about, upload that separate review file (e.g.{" "}
-        <code>ambiguous_review.csv</code>) here — they'll show up under the "Review queue" tab instead of needing to
-        be resolved by hand in the spreadsheet.
+        {t("Ако при проучването сте открили кандидати, в които не сте сигурни, качете отделния файл за преглед (напр.")}{" "}
+        <code>ambiguous_review.csv</code>
+        {t(') тук — те ще се появят в раздел "Опашка за преглед" вместо да се налага да бъдат разрешавани ръчно в таблицата.')}
       </p>
       <div className="form-row">
         <input type="file" accept=".csv,text/csv" onChange={handleAmbiguousFile} disabled={importingAmbiguous} />
       </div>
       {ambiguousResult && (
         <div className="small" style={{ marginTop: 8 }}>
-          {ambiguousResult.imported} product(s) added to the review queue.
+          {t("{count} продукт(и) добавени в опашката за преглед.", { count: ambiguousResult.imported })}
           {ambiguousResult.errorCount > 0 && (
             <div className="error-text">
-              {ambiguousResult.errorCount} row(s) skipped: {ambiguousResult.errors.join("; ")}
+              {t("{count} ред(а) пропуснати: {errors}", {
+                count: ambiguousResult.errorCount,
+                errors: ambiguousResult.errors.join("; "),
+              })}
             </div>
           )}
         </div>
@@ -341,6 +359,7 @@ function ManualImportPanel({ source, onImported }: { source: Source; onImported:
 }
 
 function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourceType: SourceType }) {
+  const t = useT();
   const [attempts, setAttempts] = useState<ScrapeAttempt[] | null>(null);
 
   useEffect(() => {
@@ -348,13 +367,13 @@ function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourc
     api<ScrapeAttempt[]>(`/sources/${sourceId}/attempts`).then(setAttempts);
   }, [sourceId]);
 
-  if (attempts === null) return <p className="muted small">Loading…</p>;
+  if (attempts === null) return <p className="muted small">{t("Зареждане…")}</p>;
   if (attempts.length === 0) {
     return (
       <p className="muted small">
         {sourceType === "manual_import"
-          ? "No results imported yet — switch to the Import tab, download the template, fill it in, and upload it."
-          : 'No products searched yet — click "Refresh now" first.'}
+          ? t("Все още няма импортирани резултати — превключете към раздел \"Импортиране\", изтеглете шаблона, попълнете го и го качете.")
+          : t('Все още няма търсени продукти — първо натиснете "Обнови сега".')}
       </p>
     );
   }
@@ -364,19 +383,22 @@ function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourc
   return (
     <div>
       <p className="muted small">
-        {foundCount} of {attempts.length} {sourceType === "manual_import" ? "researched" : "searched"} products
-        currently have a price from this source.
+        {t("{found} от {total} {kind} продукта в момента имат цена от този източник.", {
+          found: foundCount,
+          total: attempts.length,
+          kind: sourceType === "manual_import" ? t("проучени") : t("търсени"),
+        })}
         {sourceType !== "manual_import" &&
-          " Only the most recent attempt per product is kept — not every product is searched every run (see the priority/rotation note above)."}
+          t(" Запазва се само последният опит за всеки продукт — не всеки продукт се търси при всяко изпълнение (вижте бележката за приоритет/ротация по-горе).")}
       </p>
       <div style={{ overflowX: "auto" }}>
         <table className="pricing-table">
           <thead>
             <tr>
-              <th>Product</th>
-              <th>Result</th>
-              <th>Price</th>
-              <th>When</th>
+              <th>{t("Продукт")}</th>
+              <th>{t("Резултат")}</th>
+              <th>{t("Цена")}</th>
+              <th>{t("Кога")}</th>
             </tr>
           </thead>
           <tbody>
@@ -390,11 +412,11 @@ function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourc
                 <td>
                   {a.found ? (
                     <a href={a.url} target="_blank" rel="noreferrer">
-                      ✓ found
+                      {t("✓ намерено")}
                     </a>
                   ) : (
                     <span className="error-text" title={a.error ?? undefined}>
-                      ✕ {a.error ?? "not found"}
+                      ✕ {a.error ?? t("не е намерено")}
                     </span>
                   )}
                 </td>
@@ -414,6 +436,7 @@ function ScrapeAttemptsPanel({ sourceId, sourceType }: { sourceId: string; sourc
 // through the same recordFoundPrice() path a clean automatic match would,
 // dismissing just marks it so the crawl doesn't keep re-surfacing it.
 function AmbiguousMatchesPanel({ sourceId }: { sourceId: string }) {
+  const t = useT();
   const [matches, setMatches] = useState<AmbiguousMatch[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -451,17 +474,22 @@ function AmbiguousMatchesPanel({ sourceId }: { sourceId: string }) {
     }
   }
 
-  if (matches === null) return <p className="muted small">Loading…</p>;
+  if (matches === null) return <p className="muted small">{t("Зареждане…")}</p>;
   if (matches.length === 0) {
-    return <p className="muted small">Nothing to review — every match from the last crawl was either confident or not found.</p>;
+    return (
+      <p className="muted small">
+        {t("Няма нищо за преглед — всяко съпоставяне от последното сканиране е било или сигурно, или ненамерено.")}
+      </p>
+    );
   }
 
   return (
     <div>
       <p className="muted small">
-        {matches.length} product(s) with more than one plausible listing. Pick the right one, or dismiss if none of
-        them are actually a match — dismissing keeps it from reappearing unless the crawl finds different candidates
-        next time.
+        {t(
+          "{count} продукт(и) с повече от едно вероятно обявление. Изберете правилното или отхвърлете, ако нито едно от тях не е реално съвпадение — отхвърлянето му пречи да се появи отново, освен ако сканирането не намери различни кандидати следващия път.",
+          { count: matches.length }
+        )}
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {matches.map((m) => (
@@ -471,7 +499,7 @@ function AmbiguousMatchesPanel({ sourceId }: { sourceId: string }) {
               {m.productTitle}
             </strong>{" "}
             <span className="muted small">
-              (our price: {m.ourPrice.toFixed(2)}
+              ({t("нашата цена")}: {m.ourPrice.toFixed(2)}
               {m.productSku ? `, ${m.productSku}` : ""})
             </span>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
@@ -481,17 +509,22 @@ function AmbiguousMatchesPanel({ sourceId }: { sourceId: string }) {
                     className="small-btn secondary"
                     disabled={busyId === m.id || c.price === null}
                     onClick={() => confirm(m.id, c)}
-                    title={c.price === null ? "No price on this listing — can't confirm it" : undefined}
+                    title={c.price === null ? t("Няма цена в това обявление — не може да бъде потвърдено") : undefined}
                   >
-                    Use this
+                    {t("Използвай това")}
                   </button>
                   <a href={c.url} target="_blank" rel="noreferrer">
                     {c.title}
                   </a>
-                  <span className="muted small">{c.price !== null ? c.price.toFixed(2) : "no price"}</span>
+                  <span className="muted small">{c.price !== null ? c.price.toFixed(2) : t("няма цена")}</span>
                   {c.sizeUnconfirmed && (
-                    <span className="small error-text" title="This listing's title didn't show a size — the price above may be for a different variant than ours. Open the link and check before using it.">
-                      ⚠ size not confirmed — check page before using
+                    <span
+                      className="small error-text"
+                      title={t(
+                        "Заглавието на това обявление не показва размер — цената по-горе може да е за различен вариант от нашия. Отворете връзката и проверете преди да я използвате."
+                      )}
+                    >
+                      {t("⚠ размерът не е потвърден — проверете страницата преди да използвате")}
                     </span>
                   )}
                 </div>
@@ -499,7 +532,7 @@ function AmbiguousMatchesPanel({ sourceId }: { sourceId: string }) {
             </div>
             <div style={{ marginTop: 8 }}>
               <button className="small-btn secondary" disabled={busyId === m.id} onClick={() => dismiss(m.id)}>
-                None of these — dismiss
+                {t("Нито едно от тях — отхвърли")}
               </button>
             </div>
           </div>
@@ -520,6 +553,7 @@ function SourceForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const isEdit = Boolean(source);
   const [label, setLabel] = useState(source?.label ?? "");
   const [type, setType] = useState<SourceType>(source?.type ?? "shopify_json");
@@ -570,7 +604,7 @@ function SourceForm({
       else await api("/sources", { method: "POST", body: JSON.stringify(body) });
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -580,28 +614,27 @@ function SourceForm({
     <form className="form" style={{ marginBottom: 0 }} onSubmit={handleSubmit}>
       {isEdit && (
         <p className="small" style={{ margin: "0 0 4px" }}>
-          Changing this source's URL/type replaces its identity, not adds a new one. Use "+ Add source" instead if
-          you meant to track another site.
+          {t('Промяната на URL/типа на този източник заменя самоличността му, не добавя нов. Използвайте "+ Добави източник", ако искате да следите друг сайт.')}
         </p>
       )}
       <div className="form-row">
         <label>
-          Label
+          {t("Име")}
           <input value={label} onChange={(e) => setLabel(e.target.value)} required />
         </label>
         <label>
-          Type
+          {t("Тип")}
           <select value={type} onChange={(e) => handleTypeChange(e.target.value as SourceType)}>
-            <option value="shopify_json">Shopify JSON (competitor runs Shopify)</option>
-            <option value="scrape">Scrape (search + parse)</option>
-            <option value="manual_import">Manual import (Cowork research → CSV)</option>
-            <option value="jeftinije_hr">jeftinije.hr (bulk brand-listing crawl)</option>
-            <option value="notino_hr">notino.hr (per-brand listing crawl — test)</option>
+            <option value="shopify_json">{t("Shopify JSON (конкурентът използва Shopify)")}</option>
+            <option value="scrape">{t("Сканиране (търсене + анализ)")}</option>
+            <option value="manual_import">{t("Ръчно импортиране (проучване чрез Cowork → CSV)")}</option>
+            <option value="jeftinije_hr">{t("jeftinije.hr (масово сканиране на брандове)")}</option>
+            <option value="notino_hr">{t("notino.hr (сканиране по бранд — тест)")}</option>
           </select>
         </label>
       </div>
       <label>
-        Base URL
+        {t("Базов URL")}
         <input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
@@ -611,7 +644,8 @@ function SourceForm({
       </label>
       {(type === "scrape" || type === "manual_import") && (
         <label>
-          Search URL template {type === "manual_import" && <span className="muted">(optional — a starting point for whoever's researching)</span>}
+          {t("Шаблон за URL за търсене")}{" "}
+          {type === "manual_import" && <span className="muted">{t("(незадължително — отправна точка за проучващия)")}</span>}
           <input
             value={searchUrlTemplate}
             onChange={(e) => setSearchUrlTemplate(e.target.value)}
@@ -621,32 +655,33 @@ function SourceForm({
       )}
       {type === "jeftinije_hr" && (
         <p className="muted small" style={{ margin: 0 }}>
-          Crawls jeftinije.hr's brand-filtered listing pages once per run (no per-product search) and matches
-          strictly against brand + ml + concentration; anything less than certain goes to the review queue instead
-          of being guessed.
+          {t(
+            "Сканира филтрираните по бранд страници на jeftinije.hr веднъж на изпълнение (без търсене по продукт) и съпоставя стриктно по бранд + мл + концентрация; всичко, което не е сигурно, отива в опашката за преглед вместо да се гадае."
+          )}
         </p>
       )}
       {type === "notino_hr" && (
         <p className="muted small" style={{ margin: 0 }}>
-          Test source: crawls a single brand's listing page on notino.hr (currently just DIOR — see BRAND_SLUGS in
-          notinoScraper.ts to add more) and matches the same way as jeftinije.hr.
+          {t(
+            "Тестов източник: сканира страницата с обяви на един бранд в notino.hr (в момента само DIOR — вижте BRAND_SLUGS в notinoScraper.ts за добавяне на още) и съпоставя по същия начин като jeftinije.hr."
+          )}
         </p>
       )}
       <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-        Active
+        {t("Активен")}
       </label>
       <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-        Auto-refresh every 24h (unchecked = only when someone clicks "Refresh now")
+        {t('Автоматично обновяване на всеки 24ч (без отметка = само при натискане на "Обнови сега")')}
       </label>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>
-          {submitting ? "Saving…" : isEdit ? "Save changes" : "Add source"}
+          {submitting ? t("Запазване…") : isEdit ? t("Запази промените") : t("Добави източник")}
         </button>
         <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
+          {t("Отказ")}
         </button>
       </div>
     </form>

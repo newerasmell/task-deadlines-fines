@@ -13,13 +13,14 @@ import type {
   RowFlag,
 } from "../api/types";
 import { useStores } from "../context/StoreContext";
+import { useT } from "../i18n/I18nContext";
 
 const FLAG_LABELS: Record<RowFlag, string> = {
-  "above-market": "Above market",
-  competitive: "Competitive",
-  "below-market": "Below market",
-  "below-floor": "Below floor",
-  "no-data": "No data",
+  "above-market": "Над пазара",
+  competitive: "Конкурентна",
+  "below-market": "Под пазара",
+  "below-floor": "Под минимума",
+  "no-data": "Няма данни",
 };
 
 type SortKey = "title" | "ourPrice" | "minComp" | "deltaPct" | "suggested" | "matchedSourceCount" | "activatedAt";
@@ -70,12 +71,12 @@ function fmtActivatedAtIfUniform(values: (string | null)[]): string {
   return values.every((v) => v === first) ? fmtActivatedAt(first) : "—";
 }
 
-function fmtFreshness(iso: string): string {
+function fmtFreshness(iso: string, t: (text: string, params?: Record<string, string | number>) => string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const hours = Math.floor(ms / (1000 * 60 * 60));
-  if (hours < 1) return "just now";
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 1) return t("току-що");
+  if (hours < 24) return t("преди {h}ч", { h: hours });
+  return t("преди {d}д", { d: Math.floor(hours / 24) });
 }
 
 // Product.activatedAt — the sync's own stamp of the first time it ever saw
@@ -111,15 +112,16 @@ function PriceCompare({
   suggestedValue: number | null;
   onSuggestedChange: (value: string) => void;
 }) {
+  const t = useT();
   return (
     <div className="price-compare">
       <div className="price-compare-current">
-        <span className="field-label">Our price</span>
+        <span className="field-label">{t("Нашата цена")}</span>
         <span className="price-compare-value">{fmtMoney(row.ourPrice, currency)}</span>
       </div>
       <span className="price-compare-arrow">→</span>
       <div className={`price-compare-suggested flag-${row.flag}`}>
-        <span className="field-label">{isCod ? "Recommended" : "Suggested"}</span>
+        <span className="field-label">{isCod ? t("Препоръчана") : t("Предложена")}</span>
         <input
           className="suggested-input-big"
           type="number"
@@ -128,10 +130,10 @@ function PriceCompare({
           onChange={(e) => onSuggestedChange(e.target.value)}
           placeholder="—"
         />
-        <span className={`badge flag-${row.flag}`}>{FLAG_LABELS[row.flag]}</span>
+        <span className={`badge flag-${row.flag}`}>{t(FLAG_LABELS[row.flag])}</span>
         {row.saleDiscountApplied && (
           <span className="price-compare-note">
-            SALE -{row.saleDiscountPct?.toFixed(0)}% от {fmtMoney(row.salePreDiscountPrice ?? null, currency)}
+            {t("SALE -{pct}% от {price}", { pct: row.saleDiscountPct?.toFixed(0) ?? "", price: fmtMoney(row.salePreDiscountPrice ?? null, currency) })}
           </span>
         )}
       </div>
@@ -141,6 +143,7 @@ function PriceCompare({
 
 export function PricingTable() {
   const { currentStore } = useStores();
+  const t = useT();
   const [data, setData] = useState<PricingTableResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -196,7 +199,7 @@ export function PricingTable() {
       const res = await api<PricingTableResponse>(`/pricing/${currentStore.id}`);
       setData(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load pricing table");
+      setError(err instanceof Error ? err.message : "Неуспешно зареждане на таблицата с цени");
     } finally {
       setLoading(false);
     }
@@ -364,13 +367,13 @@ export function PricingTable() {
       setRowStatus((cur) => {
         const next = new Map(cur);
         for (const r of res.results) {
-          next.set(r.productId, r.status === "SUCCESS" ? { state: "success" } : { state: "error", message: r.errorMessage ?? "Failed" });
+          next.set(r.productId, r.status === "SUCCESS" ? { state: "success" } : { state: "error", message: r.errorMessage ?? "Неуспешно" });
         }
         return next;
       });
       refresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Publish failed";
+      const message = err instanceof Error ? err.message : "Публикуването е неуспешно";
       setRowStatus((cur) => {
         const next = new Map(cur);
         for (const i of items) next.set(i.productId, { state: "error", message });
@@ -382,7 +385,11 @@ export function PricingTable() {
   function publishSingle(row: PricingRow) {
     const price = suggestedFor(row);
     if (price == null) return;
-    if (!skipSingleConfirm && !window.confirm(`Publish ${price.toFixed(2)} ${currentStore?.currency} for "${row.title}"?`)) return;
+    if (
+      !skipSingleConfirm &&
+      !window.confirm(t('Публикувай {price} {currency} за "{title}"?', { price: price.toFixed(2), currency: currentStore?.currency ?? "", title: row.title }))
+    )
+      return;
     doPublish([{ productId: row.productId, newPrice: price, newCompareAtPrice: row.recommendedComparePrice }], "single");
   }
 
@@ -393,7 +400,15 @@ export function PricingTable() {
       .filter((i): i is { productId: string; newPrice: number; newCompareAtPrice: number | null } => i.newPrice != null);
     if (items.length === 0) return;
     const total = items.reduce((s, i) => s + i.newPrice, 0);
-    if (!window.confirm(`Publish ${items.length} selected products (total new price sum ${total.toFixed(2)} ${currentStore?.currency})?`))
+    if (
+      !window.confirm(
+        t("Публикувай {count} избрани продукта (обща сума {total} {currency})?", {
+          count: items.length,
+          total: total.toFixed(2),
+          currency: currentStore?.currency ?? "",
+        })
+      )
+    )
       return;
     setBulkPublishing(true);
     try {
@@ -419,11 +434,11 @@ export function PricingTable() {
   async function saveManualEntry(productId: string, sourceId: string) {
     const price = Number(manualPrice);
     if (!manualPrice.trim() || Number.isNaN(price) || price <= 0) {
-      setManualError("Enter a valid price");
+      setManualError("Въведи валидна цена");
       return;
     }
     if (!manualUrl.trim()) {
-      setManualError("Enter the listing URL");
+      setManualError("Въведи линк към обявата");
       return;
     }
     setManualSaving(true);
@@ -436,7 +451,7 @@ export function PricingTable() {
       setManualEntryOpen(null);
       refresh();
     } catch (err) {
-      setManualError(err instanceof Error ? err.message : "Failed to save");
+      setManualError(err instanceof Error ? err.message : "Неуспешно запазване");
     } finally {
       setManualSaving(false);
     }
@@ -470,12 +485,12 @@ export function PricingTable() {
   if (!currentStore) {
     return (
       <div>
-        <p className="muted">No store selected yet — add one under Settings.</p>
+        <p className="muted">{t("Все още няма избран магазин — добави от Настройки.")}</p>
       </div>
     );
   }
-  if (loading) return <p className="center-loading">Loading…</p>;
-  if (error) return <p className="error-text">{error}</p>;
+  if (loading) return <p className="center-loading">{t("Зареждане…")}</p>;
+  if (error) return <p className="error-text">{t(error)}</p>;
   if (!data) return null;
 
   const isCod = currentStore.pricingProfile === "cod_formula";
@@ -530,22 +545,30 @@ export function PricingTable() {
         <div>
           <div className="product-title">
             {row.title}
-            {!isCod && row.priority && <span className="tag" title="Always scraped every run">★</span>}
+            {!isCod && row.priority && (
+              <span className="tag" title={t("Винаги се сканира при всяко изпълнение")}>
+                ★
+              </span>
+            )}
             {isCod && row.saleDiscountApplied && (
               <span
                 className="tag tag-sale"
-                title={`Tagged "${data!.formula?.config.discountTag}" in Shopify — доп. ${row.saleDiscountPct?.toFixed(0)}% от ${fmtMoney(row.salePreDiscountPrice ?? null, currentStore!.currency)}`}
+                title={t('Маркиран с таг "{tag}" в Shopify — доп. {pct}% от {price}', {
+                  tag: data!.formula?.config.discountTag ?? "",
+                  pct: row.saleDiscountPct?.toFixed(0) ?? "",
+                  price: fmtMoney(row.salePreDiscountPrice ?? null, currentStore!.currency),
+                })}
               >
                 SALE -{row.saleDiscountPct?.toFixed(0)}%
               </span>
             )}
             {isCod && row.discountTagged && !row.saleDiscountApplied && (
-              <span className="tag" title={`Tagged "${data!.formula?.config.discountTag}" in Shopify`}>
-                намален
+              <span className="tag" title={t('Маркиран с таг "{tag}" в Shopify', { tag: data!.formula?.config.discountTag ?? "" })}>
+                {t("намален")}
               </span>
             )}
             {isCod && row.markdownEligible && (
-              <span className="tag" title={`${row.daysSinceActive} дни от "active" — цена над таван, готов за намаляване`}>
+              <span className="tag" title={t('{days} дни от "active" — цена над таван, готов за намаляване', { days: row.daysSinceActive ?? "" })}>
                 🔻 markdown
               </span>
             )}
@@ -571,7 +594,7 @@ export function PricingTable() {
         onBlur={(e) => saveCost(row, e.target.value)}
         placeholder="—"
         disabled={costSaving.has(row.productId)}
-        title="Себестойност (покупна цена) — Cost.csv импорт или ръчно тук"
+        title={t("Себестойност (покупна цена) — Cost.csv импорт или ръчно тук")}
       />
     );
   }
@@ -587,19 +610,19 @@ export function PricingTable() {
             type="number"
             step="0.01"
             min="0"
-            placeholder={`Price (${currentStore!.currency})`}
+            placeholder={t("Цена ({currency})", { currency: currentStore!.currency })}
             value={manualPrice}
             onChange={(e) => setManualPrice(e.target.value)}
             autoFocus
           />
-          <input type="text" placeholder="Listing URL" value={manualUrl} onChange={(e) => setManualUrl(e.target.value)} />
-          {manualError && <div className="small row-status-error">{manualError}</div>}
+          <input type="text" placeholder={t("Линк към обявата")} value={manualUrl} onChange={(e) => setManualUrl(e.target.value)} />
+          {manualError && <div className="small row-status-error">{t(manualError)}</div>}
           <div className="manual-entry-actions">
             <button className="small-btn" onClick={() => saveManualEntry(row.productId, s.id)} disabled={manualSaving}>
-              Save
+              {t("Запази")}
             </button>
             <button className="small-btn secondary" onClick={() => setManualEntryOpen(null)} disabled={manualSaving}>
-              Cancel
+              {t("Отказ")}
             </button>
           </div>
         </div>
@@ -611,18 +634,18 @@ export function PricingTable() {
           <a href={cell.url ?? undefined} target="_blank" rel="noreferrer" title={cell.url ?? undefined}>
             {fmtMoney(cell.price, cell.currency)}
             <div className="small">
-              {fmtFreshness(cell.fetchedAt)} {cell.stale && "⚠️"}
+              {fmtFreshness(cell.fetchedAt, t)} {cell.stale && "⚠️"}
             </div>
           </a>
           {cell.isManual && (
             <div className="manual-badge-row">
-              <span className="badge manual-badge" title="Entered by hand, not from an automated source">
-                Manual
+              <span className="badge manual-badge" title={t("Въведено ръчно, не от автоматичен източник")}>
+                {t("Ръчно")}
               </span>
               <button
                 className="edit-manual-btn"
                 onClick={() => openManualEntry(row.productId, s.id, { price: cell.price, url: cell.url })}
-                title="Edit this manual entry"
+                title={t("Редактирай ръчния запис")}
               >
                 ✎
               </button>
@@ -632,8 +655,8 @@ export function PricingTable() {
       );
     }
     return (
-      <button className="add-manually-btn" onClick={() => openManualEntry(row.productId, s.id)} title={`Add a ${s.label} price manually`}>
-        + Add
+      <button className="add-manually-btn" onClick={() => openManualEntry(row.productId, s.id)} title={t("Добави цена от {label} ръчно", { label: s.label })}>
+        {t("+ Добави")}
       </button>
     );
   }
@@ -642,11 +665,11 @@ export function PricingTable() {
     return (
       <>
         <button className="small-btn" onClick={() => publishSingle(row)} disabled={suggestedValue == null || status.state === "pending"}>
-          Publish
+          {t("Публикувай")}
         </button>
         {!isCod && (
           <button className="small-btn secondary" onClick={() => togglePriority(row)}>
-            {row.priority ? "Unflag priority" : "Flag priority"}
+            {row.priority ? t("Премахни приоритет") : t("Маркирай приоритет")}
           </button>
         )}
       </>
@@ -697,11 +720,11 @@ export function PricingTable() {
           </td>
         )}
         <td>
-          {status.state === "pending" && <span className="row-status-spinner">Publishing…</span>}
-          {status.state === "success" && <span className="row-status-success">✓ Published</span>}
+          {status.state === "pending" && <span className="row-status-spinner">{t("Публикуване…")}</span>}
+          {status.state === "success" && <span className="row-status-success">{t("✓ Публикувано")}</span>}
           {status.state === "error" && (
-            <Link to="/publish-log" className="row-status-error" title={status.message}>
-              ✕ Error
+            <Link to="/publish-log" className="row-status-error" title={t(status.message)}>
+              {t("✕ Грешка")}
             </Link>
           )}
         </td>
@@ -715,23 +738,25 @@ export function PricingTable() {
   return (
     <div>
       <div className="page-header">
-        <h1>Pricing — {currentStore.name}</h1>
+        <h1>
+          {t("Ценообразуване")} — {currentStore.name}
+        </h1>
       </div>
 
       {isCod && <CodFormulaPanel storeId={currentStore.id} formula={data.formula} currency={currentStore.currency} onSaved={refresh} />}
 
       <div className="filters-bar">
-        <input placeholder="Search name / SKU / EAN" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input placeholder={t("Търсене по име / SKU / EAN")} value={search} onChange={(e) => setSearch(e.target.value)} />
         <select value={flagFilter} onChange={(e) => setFlagFilter(e.target.value as RowFlag | "")}>
-          <option value="">All statuses</option>
+          <option value="">{t("Всички статуси")}</option>
           {(Object.keys(FLAG_LABELS) as RowFlag[]).map((f) => (
             <option key={f} value={f}>
-              {FLAG_LABELS[f]}
+              {t(FLAG_LABELS[f])}
             </option>
           ))}
         </select>
         <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}>
-          <option value="">All brands</option>
+          <option value="">{t("Всички марки")}</option>
           {vendors.map((v) => (
             <option key={v} value={v}>
               {v}
@@ -740,7 +765,7 @@ export function PricingTable() {
         </select>
         {data.categories.length > 0 && (
           <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-            <option value="">All categories</option>
+            <option value="">{t("Всички категории")}</option>
             {data.categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.title}
@@ -756,22 +781,22 @@ export function PricingTable() {
           style={{ width: 90 }}
         />
         <select value={coverageFilter} onChange={(e) => setCoverageFilter(e.target.value as "" | "3" | "2" | "1" | "0")}>
-          <option value="">Any coverage</option>
-          <option value="3">Matched in 3 sources</option>
-          <option value="2">Matched in 2 sources</option>
-          <option value="1">Matched in 1 source</option>
-          <option value="0">Matched in 0 sources</option>
+          <option value="">{t("Всяко покритие")}</option>
+          <option value="3">{t("Съвпадение в 3 източника")}</option>
+          <option value="2">{t("Съвпадение в 2 източника")}</option>
+          <option value="1">{t("Съвпадение в 1 източник")}</option>
+          <option value="0">{t("Съвпадение в 0 източника")}</option>
         </select>
         {isCod && (
           <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={markdownOnly} onChange={(e) => setMarkdownOnly(e.target.checked)} />
-            Само за намаляване
+            {t("Само за намаляване")}
           </label>
         )}
         {isCod && (
           <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={saleOnly} onChange={(e) => setSaleOnly(e.target.checked)} />
-            Само SALE
+            {t("Само SALE")}
           </label>
         )}
       </div>
@@ -786,13 +811,13 @@ export function PricingTable() {
 
       {selected.size > 0 && (
         <div className="bulk-bar">
-          <span>{selected.size} selected</span>
+          <span>{t("{count} избрани", { count: selected.size })}</span>
           <span className="spacer" />
           <button onClick={publishSelected} disabled={bulkPublishing}>
-            {bulkPublishing ? "Publishing…" : `Publish ${selected.size} selected`}
+            {bulkPublishing ? t("Публикуване…") : t("Публикувай {count} избрани", { count: selected.size })}
           </button>
           <button className="secondary" onClick={() => setSelected(new Set())}>
-            Clear selection
+            {t("Изчисти избора")}
           </button>
         </div>
       )}
@@ -800,29 +825,29 @@ export function PricingTable() {
       <div className="pricing-toolbar">
         <label className="select-all-row">
           <input type="checkbox" checked={allVisibleSelected} onChange={(e) => toggleSelectAll(e.target.checked)} />
-          Select all ({filteredSortedRows.length})
+          {t("Избери всички ({count})", { count: filteredSortedRows.length })}
         </label>
         <div className="sort-control">
-          <span className="muted small">Sort by</span>
+          <span className="muted small">{t("Подреди по")}</span>
           <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
-            <option value="title">Product</option>
-            <option value="ourPrice">Our price</option>
-            <option value="activatedAt">Active от</option>
-            {!isCod && <option value="minComp">Min</option>}
-            <option value="deltaPct">{isCod ? "Δ% vs recommended" : "Δ% vs min"}</option>
-            <option value="suggested">{isCod ? "Recommended" : "Suggested"}</option>
-            {!isCod && <option value="matchedSourceCount">Coverage</option>}
+            <option value="title">{t("Продукт")}</option>
+            <option value="ourPrice">{t("Нашата цена")}</option>
+            <option value="activatedAt">{t("Активен от")}</option>
+            {!isCod && <option value="minComp">{t("Мин.")}</option>}
+            <option value="deltaPct">{isCod ? t("Δ% спрямо препоръчана") : t("Δ% спрямо мин.")}</option>
+            <option value="suggested">{isCod ? t("Препоръчана") : t("Предложена")}</option>
+            {!isCod && <option value="matchedSourceCount">{t("Покритие")}</option>}
           </select>
           <button type="button" className="small-btn secondary" onClick={() => setSortDir((d) => (d === 1 ? -1 : 1))}>
-            {sortDir === 1 ? "↑ Asc" : "↓ Desc"}
+            {sortDir === 1 ? t("↑ Възх.") : t("↓ Низх.")}
           </button>
         </div>
         <div className="view-toggle">
           <button type="button" className={`small-btn${viewMode === "table" ? "" : " secondary"}`} onClick={() => setViewMode("table")}>
-            Таблица
+            {t("Таблица")}
           </button>
           <button type="button" className={`small-btn${viewMode === "cards" ? "" : " secondary"}`} onClick={() => setViewMode("cards")}>
-            Карти
+            {t("Карти")}
           </button>
         </div>
       </div>
@@ -840,21 +865,25 @@ export function PricingTable() {
                 <th>
                   <input type="checkbox" checked={allVisibleSelected} onChange={(e) => toggleSelectAll(e.target.checked)} />
                 </th>
-                <th>Product</th>
-                <th>Price</th>
-                <th>Compare-at</th>
-                <th>Active от</th>
-                {isCod && <th>Cost</th>}
+                <th>{t("Продукт")}</th>
+                <th>{t("Цена")}</th>
+                <th>{t("Стара цена")}</th>
+                <th>{t("Активен от")}</th>
+                {isCod && <th>{t("Себестойност")}</th>}
                 {data.sources.map((s) => (
                   <th key={s.id}>
                     {s.label}
-                    {s.degraded && <span className="tag" title="Degraded — check Settings">!</span>}
+                    {s.degraded && (
+                      <span className="tag" title={t("Влошено качество — виж Настройки")}>
+                        !
+                      </span>
+                    )}
                   </th>
                 ))}
-                {!isCod && <th>Min</th>}
-                <th>{isCod ? "Δ% vs recommended" : "Δ% vs min"}</th>
-                {isCod && <th>Recommended compare-at</th>}
-                <th>Status</th>
+                {!isCod && <th>{t("Мин.")}</th>}
+                <th>{isCod ? t("Δ% спрямо препоръчана") : t("Δ% спрямо мин.")}</th>
+                {isCod && <th>{t("Препоръчана стара цена")}</th>}
+                <th>{t("Статус")}</th>
                 <th></th>
               </tr>
             </thead>
@@ -889,7 +918,7 @@ export function PricingTable() {
                           type="checkbox"
                           checked={groupSelected}
                           onChange={() => toggleGroupSelection(group.rows)}
-                          aria-label="Select all variants"
+                          aria-label={t("Избери всички варианти")}
                         />
                       </td>
                       <td>
@@ -899,20 +928,20 @@ export function PricingTable() {
                             className="group-expand-btn"
                             onClick={() => toggleGroupExpand(group.key)}
                             aria-expanded={isExpanded}
-                            aria-label={isExpanded ? "Collapse variants" : "Expand variants"}
+                            aria-label={isExpanded ? t("Свий вариантите") : t("Разгъни вариантите")}
                           >
                             <span className="group-expand-chevron" style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
                               ▸
                             </span>
                           </button>
                           {renderProductHead(group.rows[0])}
-                          <span className="group-row-count">{group.rows.length} variants</span>
+                          <span className="group-row-count">{t("{count} варианта", { count: group.rows.length })}</span>
                         </div>
                       </td>
                       <td>
                         <div className="price-compare">
                           <div className="price-compare-current">
-                            <span className="field-label">Our price</span>
+                            <span className="field-label">{t("Нашата цена")}</span>
                             <span className="price-compare-value">
                               {fmtMoneyRange(
                                 group.rows.map((r) => r.ourPrice),
@@ -923,7 +952,7 @@ export function PricingTable() {
                           <span className="price-compare-arrow">→</span>
                           <div className={`price-compare-suggested flag-${uniformFlag ?? "no-data"}`}>
                             <span className="field-label">
-                              {isCod ? "Recommended" : "Suggested"} — {group.rows.length}x
+                              {isCod ? t("Препоръчана") : t("Предложена")} — {group.rows.length}x
                             </span>
                             <input
                               className="suggested-input-big"
@@ -935,11 +964,11 @@ export function PricingTable() {
                               placeholder="—"
                             />
                             <span className={`badge flag-${uniformFlag ?? "no-data"}`}>
-                              {uniformFlag ? FLAG_LABELS[uniformFlag] : "Mixed"}
+                              {uniformFlag ? t(FLAG_LABELS[uniformFlag]) : t("Смесено")}
                             </span>
                             {compareAtWillChange && (
                               <span className="price-compare-note">
-                                Compare-at → {fmtMoney(recommendedCompareAtSummary.min, currentStore!.currency)}
+                                {t("Стара цена → {price}", { price: fmtMoney(recommendedCompareAtSummary.min, currentStore!.currency) })}
                               </span>
                             )}
                           </div>
@@ -985,7 +1014,7 @@ export function PricingTable() {
               {filteredSortedRows.length === 0 && (
                 <tr>
                   <td colSpan={totalCols} className="muted" style={{ textAlign: "center", padding: 30 }}>
-                    No products match these filters.
+                    {t("Няма продукти, отговарящи на тези филтри.")}
                   </td>
                 </tr>
               )}
@@ -1014,32 +1043,32 @@ export function PricingTable() {
 
                 <div className="pricing-card-fields">
                   <div className="field">
-                    <span className="field-label">Compare-at</span>
+                    <span className="field-label">{t("Стара цена")}</span>
                     <span className="field-value">{fmtMoney(row.compareAtPrice, currentStore.currency)}</span>
                   </div>
                   <div className="field">
-                    <span className="field-label">Active от</span>
+                    <span className="field-label">{t("Активен от")}</span>
                     <span className="field-value small">{fmtActivatedAt(row.activatedAt)}</span>
                   </div>
                   {isCod && (
                     <div className="field">
-                      <span className="field-label">Cost</span>
+                      <span className="field-label">{t("Себестойност")}</span>
                       {renderCostInput(row)}
                     </div>
                   )}
                   {!isCod && (
                     <div className="field">
-                      <span className="field-label">Min</span>
+                      <span className="field-label">{t("Мин.")}</span>
                       <span className="field-value">{fmtMoney(row.minComp, currentStore.currency)}</span>
                     </div>
                   )}
                   <div className="field">
-                    <span className="field-label">{isCod ? "Δ% vs recommended" : "Δ% vs min"}</span>
+                    <span className="field-label">{isCod ? t("Δ% спрямо препоръчана") : t("Δ% спрямо мин.")}</span>
                     <span className="field-value">{row.deltaPct != null ? `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%` : "—"}</span>
                   </div>
                   {isCod && (
                     <div className="field" title={row.recommendedComparePrice == null ? row.recommendedComparePriceReason ?? undefined : undefined}>
-                      <span className="field-label">Recommended compare-at</span>
+                      <span className="field-label">{t("Препоръчана стара цена")}</span>
                       <span className="field-value">{fmtMoney(row.recommendedComparePrice, currentStore.currency)}</span>
                     </div>
                   )}
@@ -1051,7 +1080,11 @@ export function PricingTable() {
                       <div key={s.id} className={`field source-cell${row.sourcePrices[s.id]?.stale ? " stale" : ""}`}>
                         <span className="field-label">
                           {s.label}
-                          {s.degraded && <span className="tag" title="Degraded — check Settings">!</span>}
+                          {s.degraded && (
+                            <span className="tag" title={t("Влошено качество — виж Настройки")}>
+                              !
+                            </span>
+                          )}
                         </span>
                         {renderSourceCell(row, s)}
                       </div>
@@ -1061,11 +1094,11 @@ export function PricingTable() {
 
                 <div className="pricing-card-footer">
                   <div>
-                    {status.state === "pending" && <span className="row-status-spinner">Publishing…</span>}
-                    {status.state === "success" && <span className="row-status-success">✓ Published</span>}
+                    {status.state === "pending" && <span className="row-status-spinner">{t("Публикуване…")}</span>}
+                    {status.state === "success" && <span className="row-status-success">{t("✓ Публикувано")}</span>}
                     {status.state === "error" && (
-                      <Link to="/publish-log" className="row-status-error" title={status.message}>
-                        ✕ Error
+                      <Link to="/publish-log" className="row-status-error" title={t(status.message)}>
+                        {t("✕ Грешка")}
                       </Link>
                     )}
                   </div>
@@ -1076,7 +1109,7 @@ export function PricingTable() {
           })}
           {filteredSortedRows.length === 0 && (
             <p className="muted" style={{ textAlign: "center", padding: 30, gridColumn: "1 / -1" }}>
-              No products match these filters.
+              {t("Няма продукти, отговарящи на тези филтри.")}
             </p>
           )}
         </div>
@@ -1104,19 +1137,20 @@ function PublishSettings({
   skipSingleConfirm: boolean;
   onSkipSingleConfirmChange: (v: boolean) => void;
 }) {
+  const t = useT();
   return (
     <div className="card publish-settings" style={{ marginBottom: 14 }}>
-      <div className="publish-settings-title">Publish settings</div>
+      <div className="publish-settings-title">{t("Настройки за публикуване")}</div>
       <div className="publish-settings-rows">
         {!isCod && (
           <label className="publish-setting-row">
             <input type="checkbox" checked={setCompareAt} onChange={(e) => onSetCompareAtChange(e.target.checked)} />
             <span>
-              <span className="publish-setting-label">Set compare-at to the pre-publish price</span>
+              <span className="publish-setting-label">{t("Задай старата цена на текущата преди публикуване")}</span>
               <span className="publish-setting-desc">
-                Applies to every publish below (single row or bulk) while this checkbox is on. Off by default —
-                confirmed live it can leave compare-at <em>lower</em> than the new price if you're raising it, which
-                replaces whatever real reference price was there before.
+                {t(
+                  "Важи за всяка публикация по-долу (единичен ред или групово), докато тази отметка е включена. Изключено по подразбиране — на живо се потвърди, че може да остави старата цена по-ниска от новата, ако я вдигаш, което заменя реалната референтна цена, която е била там преди."
+                )}
               </span>
             </span>
           </label>
@@ -1124,10 +1158,11 @@ function PublishSettings({
         <label className="publish-setting-row">
           <input type="checkbox" checked={skipSingleConfirm} onChange={(e) => onSkipSingleConfirmChange(e.target.checked)} />
           <span>
-            <span className="publish-setting-label">Skip the confirmation popup</span>
+            <span className="publish-setting-label">{t("Пропусни изскачащото потвърждение")}</span>
             <span className="publish-setting-desc">
-              Only for a single row's own "Publish" button — publishing several selected rows at once always asks
-              first regardless of this. Remembered on this device/browser only.
+              {t(
+                'Само за собствения бутон "Публикувай" на единичен ред — публикуването на няколко избрани реда наведнъж винаги пита първо, независимо от това. Запомня се само на това устройство/браузър.'
+              )}
             </span>
           </span>
         </label>
@@ -1174,6 +1209,7 @@ function CodFormulaPanel({
   const [brackets, setBrackets] = useState<CodBracketInput[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!formula) return;
@@ -1243,7 +1279,7 @@ function CodFormulaPanel({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error saving formula");
+      setError(err instanceof Error ? err.message : "Грешка при запазване на формулата");
     } finally {
       setSaving(false);
     }
@@ -1253,17 +1289,18 @@ function CodFormulaPanel({
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="page-header" style={{ marginBottom: expanded ? 12 : 0 }}>
         <div>
-          <strong>Формула за ценообразуване (COD)</strong>{" "}
+          <strong>{t("Формула за ценообразуване (COD)")}</strong>{" "}
           {formula && (
             <span className="muted small">
-              k = {fmtK(formula.k)} · средна себестойност {fmtMoney(formula.avgCost || null, currency)} · режим {MODE_LABELS[formula.config.mode]}
-              {formula.config.mode !== "cost" && ` · база ${SCENARIO_KEY_LABELS[formula.scenario] ?? formula.scenario}`}
+              k = {fmtK(formula.k)} · {t("средна себестойност")} {fmtMoney(formula.avgCost || null, currency)} · {t("режим")}{" "}
+              {t(MODE_LABELS[formula.config.mode])}
+              {formula.config.mode !== "cost" && ` · ${t("база")} ${t(SCENARIO_KEY_LABELS[formula.scenario] ?? formula.scenario)}`}
             </span>
           )}
-          {formula?.reason && <div className="error-text small">{formula.reason}</div>}
+          {formula?.reason && <div className="error-text small">{t(formula.reason)}</div>}
         </div>
         <button type="button" className="small-btn secondary" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? "Скрий настройките" : "Настройки на формулата"}
+          {expanded ? t("Скрий настройките") : t("Настройки на формулата")}
         </button>
       </div>
 
@@ -1271,25 +1308,25 @@ function CodFormulaPanel({
         <form className="form" onSubmit={handleSubmit}>
           <div className="form-row">
             <label>
-              Режим
+              {t("Режим")}
               <select value={mode} onChange={(e) => setMode(e.target.value as CodFormulaMode)}>
-                <option value="cost">Себестойност (k = 1/cogs_pct)</option>
-                <option value="target">Целева печалба</option>
+                <option value="cost">{t("Себестойност (k = 1/cogs_pct)")}</option>
+                <option value="target">{t("Целева печалба")}</option>
                 <option value="breakeven">Break-even</option>
               </select>
             </label>
             {mode === "cost" ? (
               <label>
-                Себестойност като % от цената
+                {t("Себестойност като % от цената")}
                 <input type="number" step="1" value={cogsPct} onChange={(e) => setCogsPct(e.target.value)} />
               </label>
             ) : (
               <label>
-                База за формулата (сценарий)
+                {t("База за формулата (сценарий)")}
                 <select value={pricingScenario} onChange={(e) => setPricingScenario(e.target.value)}>
-                  <option value="pess">Песимистичен</option>
-                  <option value="avg">Среден</option>
-                  <option value="opt">Оптимистичен</option>
+                  <option value="pess">{t("Песимистичен")}</option>
+                  <option value="avg">{t("Среден")}</option>
+                  <option value="opt">{t("Оптимистичен")}</option>
                 </select>
               </label>
             )}
@@ -1298,15 +1335,15 @@ function CodFormulaPanel({
           {mode !== "cost" && (
             <div className="form-row">
               <label>
-                Ефективна ставка на агенцията, f (%)
+                {t("Ефективна ставка на агенцията, f (%)")}
                 <input type="number" step="0.5" value={fRate} onChange={(e) => setFRate(e.target.value)} />
               </label>
               <label>
-                Целева нетна печалба, m (%) {mode === "breakeven" && <span className="muted small">(игнорира се — 0 при break-even)</span>}
+                {t("Целева нетна печалба, m (%)")} {mode === "breakeven" && <span className="muted small">{t("(игнорира се — 0 при break-even)")}</span>}
                 <input type="number" step="0.5" value={mRate} onChange={(e) => setMRate(e.target.value)} disabled={mode === "breakeven"} />
               </label>
               <label>
-                N за формулата (F/N)
+                {t("N за формулата (F/N)")}
                 <input type="number" step="50" value={pricingN} onChange={(e) => setPricingN(e.target.value)} />
               </label>
             </div>
@@ -1314,59 +1351,60 @@ function CodFormulaPanel({
 
           <div className="form-row">
             <label>
-              Артикули / поръчка (n)
+              {t("Артикули / поръчка (n)")}
               <input type="number" step="0.1" value={nItems} onChange={(e) => setNItems(e.target.value)} />
             </label>
             <label>
-              Кратност при неуспешна пратка (r)
+              {t("Кратност при неуспешна пратка (r)")}
               <input type="number" step="0.5" value={rMult} onChange={(e) => setRMult(e.target.value)} />
             </label>
             <label>
-              Загуба на върнати стоки, L (%)
+              {t("Загуба на върнати стоки, L (%)")}
               <input type="number" step="1" value={lLoss} onChange={(e) => setLLoss(e.target.value)} />
             </label>
           </div>
 
           <div className="form-row">
             <label>
-              Други разходи / месец, F ({currency})
+              {t("Други разходи / месец, F ({currency})", { currency })}
               <input type="number" step="100" value={fCost} onChange={(e) => setFCost(e.target.value)} />
             </label>
             <label>
-              Стъпка на закръгляне
+              {t("Стъпка на закръгляне")}
               <input type="number" step="0.5" value={roundStep} onChange={(e) => setRoundStep(e.target.value)} />
             </label>
             <label>
-              Намаление за зачеркнатата цена (%)
+              {t("Намаление за зачеркнатата цена (%)")}
               <input type="number" step="1" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
             </label>
             <label>
-              SALE таг
+              {t("SALE таг")}
               <input value={discountTag} onChange={(e) => setDiscountTag(e.target.value)} placeholder="c_sale" />
             </label>
             <label>
-              SALE отстъпка — мин. %
+              {t("SALE отстъпка — мин. %")}
               <input type="number" step="1" min="0" max="95" value={saleDiscountMinPct} onChange={(e) => setSaleDiscountMinPct(e.target.value)} />
             </label>
             <label>
-              SALE отстъпка — макс. %
+              {t("SALE отстъпка — макс. %")}
               <input type="number" step="1" min="0" max="95" value={saleDiscountMaxPct} onChange={(e) => setSaleDiscountMaxPct(e.target.value)} />
             </label>
           </div>
           <p className="muted small" style={{ margin: "-6px 0 8px" }}>
-            SALE-таг-нат продукт взима допълнителна отстъпка между мин. и макс. % от вече изчислената Recommended
-            цена, на база коефициента на марката (по-висок коефициент → по-близо до макс. %).
+            {t(
+              "SALE-таг-нат продукт взима допълнителна отстъпка между мин. и макс. % от вече изчислената Recommended цена, на база коефициента на марката (по-висок коефициент → по-близо до макс. %)."
+            )}
           </p>
 
           {mode !== "cost" && (
             <div>
               <p className="muted small" style={{ margin: "8px 0 4px" }}>
-                Сценарии (A = реклама/поръчка, d = delivery success rate %, S = доставка)
+                {t("Сценарии (A = реклама/поръчка, d = delivery success rate %, S = доставка)")}
               </p>
               {scenarios.map((s) => (
                 <div className="form-row" key={s.key}>
                   <label>
-                    {SCENARIO_KEY_LABELS[s.key] ?? s.label} — A
+                    {t(SCENARIO_KEY_LABELS[s.key] ?? s.label)} — A
                     <input type="number" step="0.5" value={s.A} onChange={(e) => updateScenario(s.key, "A", e.target.value)} />
                   </label>
                   <label>
@@ -1385,12 +1423,13 @@ function CodFormulaPanel({
           {mode !== "cost" && (
             <div>
               <p className="muted small" style={{ margin: "8px 0 4px" }}>
-                Агентска такса — прогресивна, по прагове на оборота
+                {t("Агентска такса — прогресивна, по прагове на оборота")}
               </p>
               <div className="form-row">
                 {brackets.map((b, i) => (
                   <label key={i}>
-                    {i === 0 ? "над 0" : `над ${brackets[i - 1].upper ?? "∞"}`} до {b.upper ?? "∞"} — ставка (%)
+                    {i === 0 ? t("над 0") : t("над {upper}", { upper: brackets[i - 1].upper ?? "∞" })}{" "}
+                    {t("до {upper} — ставка (%)", { upper: b.upper ?? "∞" })}
                     <input type="number" step="0.5" value={b.rate} onChange={(e) => updateBracket(i, "rate", e.target.value)} />
                   </label>
                 ))}
@@ -1401,7 +1440,7 @@ function CodFormulaPanel({
                   .filter(({ b }) => b.upper !== null)
                   .map(({ b, i }) => (
                     <label key={i}>
-                      праг #{i + 1} ({currency})
+                      {t("праг #{n} ({currency})", { n: i + 1, currency })}
                       <input type="number" step="1000" value={b.upper ?? ""} onChange={(e) => updateBracket(i, "upper", e.target.value)} />
                     </label>
                   ))}
@@ -1409,10 +1448,10 @@ function CodFormulaPanel({
             </div>
           )}
 
-          {error && <div className="error-text">{error}</div>}
+          {error && <div className="error-text">{t(error)}</div>}
           <div className="form-row">
             <button type="submit" disabled={saving}>
-              {saving ? "Запазване…" : "Запази формулата"}
+              {saving ? t("Запазване…") : t("Запази формулата")}
             </button>
           </div>
         </form>

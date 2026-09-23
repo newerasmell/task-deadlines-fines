@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { BrandRow } from "../api/types";
 import { useStores } from "../context/StoreContext";
+import { useT } from "../i18n/I18nContext";
 
 // Clothing brands price the same everywhere, so instead of re-typing every
 // vendor's 1-10 ranking on each new store, an admin sets it once and clones
@@ -9,6 +10,7 @@ import { useStores } from "../context/StoreContext";
 // COD formula) — the same gate the nav link itself uses.
 function CopyToStoresPanel({ storeId, brandCount }: { storeId: string; brandCount: number }) {
   const { stores, currentStore } = useStores();
+  const t = useT();
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [copying, setCopying] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -29,7 +31,14 @@ function CopyToStoresPanel({ storeId, brandCount }: { storeId: string; brandCoun
     const targetStoreIds = [...checked];
     if (targetStoreIds.length === 0) return;
     const names = targets.filter((s) => checked.has(s.id)).map((s) => s.name);
-    if (!window.confirm(`Копирай коефициентите на брандовете от "${currentStore?.name}" в: ${names.join(", ")}?\n\nТова ще презапише съществуващ коефициент за всеки споделен бранд в целевите магазини.`))
+    if (
+      !window.confirm(
+        t(
+          'Копирай коефициентите на брандовете от "{store}" в: {stores}?\n\nТова ще презапише съществуващ коефициент за всеки споделен бранд в целевите магазини.',
+          { store: currentStore?.name ?? "", stores: names.join(", ") }
+        )
+      )
+    )
       return;
     setCopying(true);
     setError(null);
@@ -39,10 +48,10 @@ function CopyToStoresPanel({ storeId, brandCount }: { storeId: string; brandCoun
         method: "POST",
         body: JSON.stringify({ targetStoreIds }),
       });
-      setResult(`Копирани ${res.copiedBrands} бранда в ${res.targetStoreCount} магазин(а).`);
+      setResult(t("Копирани {count} бранда в {stores} магазин(а).", { count: res.copiedBrands, stores: res.targetStoreCount }));
       setChecked(new Set());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Копирането се провали.");
+      setError(err instanceof Error ? err.message : t("Копирането се провали."));
     } finally {
       setCopying(false);
     }
@@ -52,10 +61,12 @@ function CopyToStoresPanel({ storeId, brandCount }: { storeId: string; brandCoun
 
   return (
     <div className="card" style={{ marginBottom: 14 }}>
-      <div className="publish-settings-title">Копирай в други магазини</div>
+      <div className="publish-settings-title">{t("Копирай в други магазини")}</div>
       <p className="muted small" style={{ marginTop: -4, marginBottom: 10 }}>
-        Приложи коефициентите на брандовете от този магазин ({brandCount}) към други магазини с отключен таб Марки
-        (Продажби + COD формула).
+        {t(
+          "Приложи коефициентите на брандовете от този магазин ({count}) към други магазини с отключен таб Марки (Продажби + COD формула).",
+          { count: brandCount }
+        )}
       </p>
       <div className="publish-settings-rows">
         {targets.map((s) => (
@@ -69,7 +80,7 @@ function CopyToStoresPanel({ storeId, brandCount }: { storeId: string; brandCoun
       </div>
       <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
         <button className="small-btn" disabled={checked.size === 0 || copying} onClick={copy}>
-          {copying ? "Копиране…" : `Копирай в ${checked.size} магазин(а)`}
+          {copying ? t("Копиране…") : t("Копирай в {count} магазин(а)", { count: checked.size })}
         </button>
         {result && <span className="row-status-success">{result}</span>}
         {error && <span className="error-text">{error}</span>}
@@ -93,6 +104,7 @@ function CoefficientCell({
   coefficient: number | null;
   onSaved: () => void;
 }) {
+  const t = useT();
   const [value, setValue] = useState(coefficient != null ? String(coefficient) : "");
   const [saving, setSaving] = useState(false);
 
@@ -132,13 +144,14 @@ function CoefficientCell({
       onBlur={(e) => save(e.target.value)}
       placeholder="—"
       disabled={saving}
-      title="1 = най-евтин, 10 = най-скъп — сравнено с другите брандове в същата категория"
+      title={t("1 = най-евтин, 10 = най-скъп — сравнено с другите брандове в същата категория")}
     />
   );
 }
 
 export function Brands() {
   const { currentStore } = useStores();
+  const t = useT();
   const [rows, setRows] = useState<BrandRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -155,17 +168,18 @@ export function Brands() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStore?.id]);
 
-  if (!currentStore) return <p className="muted">No store selected.</p>;
-  if (loading) return <p className="center-loading">Loading…</p>;
+  if (!currentStore) return <p className="muted">{t("Няма избран магазин.")}</p>;
+  if (loading) return <p className="center-loading">{t("Зареждане…")}</p>;
 
   return (
     <div>
       <div className="page-header">
-        <h1>Марки — {currentStore.name}</h1>
+        <h1>{t("Марки — {name}", { name: currentStore.name })}</h1>
       </div>
       <p className="muted small" style={{ marginTop: -4, marginBottom: 12 }}>
-        Ценови коефициент по бранд (1 = най-евтин, 10 = най-скъп). Използва се заедно с базовата цена min–max от
-        Продажби, за да се генерира предложена "базова цена" за всеки продукт в Pricing.
+        {t(
+          'Ценови коефициент по бранд (1 = най-евтин, 10 = най-скъп). Използва се заедно с базовата цена min–max от Продажби, за да се генерира предложена "базова цена" за всеки продукт в Pricing.'
+        )}
       </p>
 
       <CopyToStoresPanel storeId={currentStore.id} brandCount={rows.filter((r) => r.coefficient != null).length} />
@@ -174,9 +188,9 @@ export function Brands() {
         <table className="pricing-table">
           <thead>
             <tr>
-              <th>Бранд</th>
-              <th># продукти</th>
-              <th>Коефициент (1–10)</th>
+              <th>{t("Бранд")}</th>
+              <th>{t("# продукти")}</th>
+              <th>{t("Коефициент (1–10)")}</th>
             </tr>
           </thead>
           <tbody>
@@ -192,7 +206,7 @@ export function Brands() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={3} className="muted" style={{ textAlign: "center", padding: 30 }}>
-                  Няма синхронизирани продукти още.
+                  {t("Няма синхронизирани продукти още.")}
                 </td>
               </tr>
             )}

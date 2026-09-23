@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { PublishLogEntry, RevertResultItem } from "../api/types";
 import { useStores } from "../context/StoreContext";
+import { useT } from "../i18n/I18nContext";
 
 export function PublishLog() {
   const { currentStore } = useStores();
+  const t = useT();
   const [logs, setLogs] = useState<PublishLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
@@ -42,7 +44,7 @@ export function PublishLog() {
   function applyRevertResults(results: RevertResultItem[]) {
     const errors = new Map(revertErrors);
     for (const r of results) {
-      if (r.status === "ERROR") errors.set(r.logId, r.errorMessage ?? "Грешка при връщане.");
+      if (r.status === "ERROR") errors.set(r.logId, r.errorMessage ?? t("Грешка при връщане."));
       else errors.delete(r.logId);
     }
     setRevertErrors(errors);
@@ -50,7 +52,8 @@ export function PublishLog() {
 
   async function revertOne(log: PublishLogEntry) {
     if (!currentStore || !canRevert(log)) return;
-    if (!window.confirm(`Да върна ли "${log.productTitle ?? log.variantId}" към предходните стойности?`)) return;
+    if (!window.confirm(t('Да върна ли "{name}" към предходните стойности?', { name: log.productTitle ?? log.variantId })))
+      return;
     setReverting((cur) => new Set(cur).add(log.id));
     try {
       const res = await api<{ results: RevertResultItem[] }>("/publish/revert", {
@@ -70,7 +73,8 @@ export function PublishLog() {
 
   async function revertSelected() {
     if (!currentStore || selected.size === 0) return;
-    if (!window.confirm(`Да върна ли ${selected.size} избрани публикации към предходните им стойности?`)) return;
+    if (!window.confirm(t("Да върна ли {count} избрани публикации към предходните им стойности?", { count: selected.size })))
+      return;
     setBulkReverting(true);
     try {
       const res = await api<{ results: RevertResultItem[] }>("/publish/revert", {
@@ -101,36 +105,36 @@ export function PublishLog() {
     setSelected(checked ? new Set(revertibleLogs.map((l) => l.id)) : new Set());
   }
 
-  if (!currentStore) return <p className="muted">No store selected.</p>;
+  if (!currentStore) return <p className="muted">{t("Няма избран магазин.")}</p>;
 
   return (
     <div>
       <div className="page-header">
-        <h1>Publish log — {currentStore.name}</h1>
+        <h1>{t("Дневник публикации — {name}", { name: currentStore.name })}</h1>
         {selected.size > 0 && (
           <button className="secondary" onClick={revertSelected} disabled={bulkReverting}>
-            {bulkReverting ? "Връщам…" : `Върни избраните (${selected.size})`}
+            {bulkReverting ? t("Връщам…") : t("Върни избраните ({count})", { count: selected.size })}
           </button>
         )}
       </div>
 
       <div className="filters-bar">
-        <input placeholder="Search product title" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input placeholder={t("Търсене по заглавие на продукт")} value={search} onChange={(e) => setSearch(e.target.value)} />
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="SUCCESS">Success</option>
-          <option value="ERROR">Error</option>
+          <option value="">{t("Всички статуси")}</option>
+          <option value="SUCCESS">{t("Успешно")}</option>
+          <option value="ERROR">{t("Грешка")}</option>
         </select>
         <select value={source} onChange={(e) => setSource(e.target.value)}>
-          <option value="">Single + bulk + revert</option>
-          <option value="single">Single</option>
-          <option value="bulk">Bulk</option>
-          <option value="revert">Revert</option>
+          <option value="">{t("Единично + групово + връщане")}</option>
+          <option value="single">{t("Единично")}</option>
+          <option value="bulk">{t("Групово")}</option>
+          <option value="revert">{t("Връщане")}</option>
         </select>
       </div>
 
       {loading ? (
-        <p className="center-loading">Loading…</p>
+        <p className="center-loading">{t("Зареждане…")}</p>
       ) : (
         <div className="table-wrap">
           <table className="pricing-table">
@@ -144,13 +148,13 @@ export function PublishLog() {
                     disabled={revertibleLogs.length === 0}
                   />
                 </th>
-                <th>Product</th>
-                <th>Old price</th>
-                <th>New price</th>
-                <th>Compare-at</th>
-                <th>Status</th>
-                <th>Mode</th>
-                <th>When</th>
+                <th>{t("Продукт")}</th>
+                <th>{t("Предишна цена")}</th>
+                <th>{t("Нова цена")}</th>
+                <th>{t("Стара цена")}</th>
+                <th>{t("Статус")}</th>
+                <th>{t("Режим")}</th>
+                <th>{t("Кога")}</th>
                 <th></th>
               </tr>
             </thead>
@@ -173,18 +177,18 @@ export function PublishLog() {
                     </td>
                     <td>
                       {log.status === "SUCCESS" ? (
-                        <span className="row-status-success">✓ Success</span>
+                        <span className="row-status-success">✓ {t("Успешно")}</span>
                       ) : (
                         <span className="row-status-error" title={log.errorMessage ?? undefined}>
-                          ✕ {log.errorMessage ?? "Error"}
+                          ✕ {log.errorMessage ?? t("Грешка")}
                         </span>
                       )}
                     </td>
                     <td>
                       {log.source}
                       {log.revertedAt && (
-                        <span className="tag" title={`Върната на ${new Date(log.revertedAt).toLocaleString()}`}>
-                          Reverted
+                        <span className="tag" title={t("Върната на {date}", { date: new Date(log.revertedAt).toLocaleString() })}>
+                          {t("Върната")}
                         </span>
                       )}
                     </td>
@@ -192,7 +196,7 @@ export function PublishLog() {
                     <td>
                       {canRevert(log) && (
                         <button className="secondary small" onClick={() => revertOne(log)} disabled={reverting.has(log.id)}>
-                          {reverting.has(log.id) ? "…" : "Revert"}
+                          {reverting.has(log.id) ? "…" : t("Върни")}
                         </button>
                       )}
                       {error && (
@@ -207,7 +211,7 @@ export function PublishLog() {
               {logs.length === 0 && (
                 <tr>
                   <td colSpan={9} className="muted" style={{ textAlign: "center", padding: 30 }}>
-                    No publish activity yet.
+                    {t("Все още няма публикувани промени.")}
                   </td>
                 </tr>
               )}

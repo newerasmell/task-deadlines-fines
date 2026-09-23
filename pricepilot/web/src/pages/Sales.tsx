@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { SalesResponse, Store } from "../api/types";
 import { useStores } from "../context/StoreContext";
+import { useT } from "../i18n/I18nContext";
 
 function fmt(n: number | null, digits = 2): string {
   return n == null ? "—" : n.toFixed(digits);
@@ -21,6 +22,7 @@ function CategoryCostCell({
   cost: number | null;
   onSaved: () => void;
 }) {
+  const t = useT();
   const [value, setValue] = useState(cost != null ? String(cost) : "");
   const [saving, setSaving] = useState(false);
 
@@ -59,7 +61,7 @@ function CategoryCostCell({
       onBlur={(e) => save(e.target.value)}
       placeholder="—"
       disabled={saving}
-      title="Средна себестойност за цялата категория — fallback само за продукти без собствена себестойност от costs.csv"
+      title={t("Средна себестойност за цялата категория — fallback само за продукти без собствена себестойност от costs.csv")}
     />
   );
 }
@@ -80,6 +82,7 @@ function CategoryBasePriceCell({
   baseMaxPrice: number | null;
   onSaved: () => void;
 }) {
+  const t = useT();
   const [min, setMin] = useState(baseMinPrice != null ? String(baseMinPrice) : "");
   const [max, setMax] = useState(baseMaxPrice != null ? String(baseMaxPrice) : "");
   const [saving, setSaving] = useState(false);
@@ -112,7 +115,7 @@ function CategoryBasePriceCell({
         value={min}
         onChange={(e) => setMin(e.target.value)}
         onBlur={save}
-        placeholder="min"
+        placeholder={t("мин")}
         disabled={saving}
       />
       <span className="muted">–</span>
@@ -125,7 +128,7 @@ function CategoryBasePriceCell({
         value={max}
         onChange={(e) => setMax(e.target.value)}
         onBlur={save}
-        placeholder="max"
+        placeholder={t("макс")}
         disabled={saving}
       />
     </span>
@@ -148,6 +151,7 @@ function MarkdownSettingsPanel({
   categories: { categoryId: string; title: string }[];
   onSaved: () => void;
 }) {
+  const t = useT();
   const [enabled, setEnabled] = useState(store.markdownEnabled);
   const [collectionId, setCollectionId] = useState(store.markdownCollectionId ?? "");
   const [afterDays, setAfterDays] = useState(String(store.markdownAfterDays));
@@ -166,10 +170,11 @@ function MarkdownSettingsPanel({
 
   return (
     <div className="settings-section">
-      <h2>Намаляване на нови пристигания</h2>
+      <h2>{t("Намаляване на нови пристигания")}</h2>
       <p className="muted small" style={{ marginTop: -4, marginBottom: 8 }}>
-        Продукт от избраната колекция, станал "active" в Shopify преди повече от зададените дни, се маркира в Pricing
-        за намаляване — до таван от зададения % над цената по формулата, с истинската начална цена като compare-at.
+        {t(
+          'Продукт от избраната колекция, станал "active" в Shopify преди повече от зададените дни, се маркира в Pricing за намаляване — до таван от зададения % над цената по формулата, с истинската начална цена като compare-at.'
+        )}
       </p>
       <div className="form-row">
         <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -182,10 +187,10 @@ function MarkdownSettingsPanel({
               save({ markdownEnabled: e.target.checked });
             }}
           />
-          Включено
+          {t("Включено")}
         </label>
         <label>
-          Колекция за нови пристигания
+          {t("Колекция за нови пристигания")}
           <select
             value={collectionId}
             disabled={saving}
@@ -194,7 +199,7 @@ function MarkdownSettingsPanel({
               save({ markdownCollectionId: e.target.value || null });
             }}
           >
-            <option value="">— избери колекция —</option>
+            <option value="">{t("— избери колекция —")}</option>
             {categories.map((c) => (
               <option key={c.categoryId} value={c.categoryId}>
                 {c.title}
@@ -203,7 +208,7 @@ function MarkdownSettingsPanel({
           </select>
         </label>
         <label>
-          Дни от "active"
+          {t('Дни от "active"')}
           <input
             type="number"
             step="1"
@@ -218,7 +223,7 @@ function MarkdownSettingsPanel({
           />
         </label>
         <label>
-          Таван над формулата, %
+          {t("Таван над формулата, %")}
           <input
             type="number"
             step="0.5"
@@ -239,6 +244,7 @@ function MarkdownSettingsPanel({
 
 export function Sales() {
   const { currentStore, refreshStores } = useStores();
+  const t = useT();
   const [data, setData] = useState<SalesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -256,17 +262,18 @@ export function Sales() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStore?.id]);
 
-  if (!currentStore) return <p className="muted">No store selected.</p>;
-  if (loading) return <p className="center-loading">Loading…</p>;
+  if (!currentStore) return <p className="muted">{t("Няма избран магазин.")}</p>;
+  if (loading) return <p className="center-loading">{t("Зареждане…")}</p>;
   if (!data) return null;
 
   if (!data.salesAnalyticsEnabled) {
     return (
       <div>
-        <h1>Продажби</h1>
+        <h1>{t("Продажби")}</h1>
         <p className="muted" style={{ marginTop: 12 }}>
-          Тази функция не е включена за {currentStore.name}. Включи я от Stores → {currentStore.name} → Connection
-          &amp; pricing rule.
+          {t("Тази функция не е включена за {name}. Включи я от Stores → {name} → Connection & pricing rule.", {
+            name: currentStore.name,
+          })}
         </p>
       </div>
     );
@@ -280,8 +287,8 @@ export function Sales() {
   return (
     <div>
       <div className="page-header">
-        <h1>Продажби — {currentStore.name}</h1>
-        <span className="muted small">Последните 6 месеца</span>
+        <h1>{t("Продажби — {name}", { name: currentStore.name })}</h1>
+        <span className="muted small">{t("Последните 6 месеца")}</span>
       </div>
 
       {data.pricingProfile === "cod_formula" && (
@@ -289,26 +296,26 @@ export function Sales() {
       )}
 
       <div className="settings-section">
-        <h2>По категория</h2>
+        <h2>{t("По категория")}</h2>
         {data.pricingProfile === "cod_formula" && (
           <p className="muted small" style={{ marginTop: -4, marginBottom: 8 }}>
-            Базовата цена min–max, заедно с коефициентите в Марки, дават предложената "базова цена" на Pricing таба.
+            {t('Базовата цена min–max, заедно с коефициентите в Марки, дават предложената "базова цена" на Pricing таба.')}
           </p>
         )}
         <div className="table-wrap">
           <table className="pricing-table">
             <thead>
               <tr>
-                <th>Категория</th>
-                <th># продукти</th>
-                <th>Продадени бр.</th>
-                <th>Средна продажна цена</th>
-                <th>Посещения</th>
-                <th>Conv. rate</th>
+                <th>{t("Категория")}</th>
+                <th>{t("# продукти")}</th>
+                <th>{t("Продадени бр.")}</th>
+                <th>{t("Средна продажна цена")}</th>
+                <th>{t("Посещения")}</th>
+                <th>{t("Конверсия")}</th>
                 {data.pricingProfile === "cod_formula" && (
                   <>
-                    <th>Себестойност (ръчно)</th>
-                    <th>Базова цена min–max (ръчно)</th>
+                    <th>{t("Себестойност (ръчно)")}</th>
+                    <th>{t("Базова цена min–max (ръчно)")}</th>
                   </>
                 )}
               </tr>
@@ -342,7 +349,7 @@ export function Sales() {
               {data.categories.length === 0 && (
                 <tr>
                   <td colSpan={data.pricingProfile === "cod_formula" ? 8 : 6} className="muted" style={{ textAlign: "center", padding: 30 }}>
-                    Няма синхронизирани колекции още — пусни "Sync now" от Stores.
+                    {t('Няма синхронизирани колекции още — пусни "Sync now" от Stores.')}
                   </td>
                 </tr>
               )}
@@ -352,21 +359,21 @@ export function Sales() {
       </div>
 
       <div className="settings-section">
-        <h2>По продукт</h2>
+        <h2>{t("По продукт")}</h2>
         <div className="filters-bar">
-          <input placeholder="Търси по заглавие" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input placeholder={t("Търси по заглавие")} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="table-wrap">
           <table className="pricing-table">
             <thead>
               <tr>
-                <th>Продукт</th>
-                <th>Категории</th>
-                <th>Наличност</th>
-                <th>Продадени бр. (6м)</th>
-                <th>Средна продажна цена</th>
-                <th>Посещения (6м)</th>
-                <th>Conv. rate</th>
+                <th>{t("Продукт")}</th>
+                <th>{t("Категории")}</th>
+                <th>{t("Наличност")}</th>
+                <th>{t("Продадени бр. (6м)")}</th>
+                <th>{t("Средна продажна цена")}</th>
+                <th>{t("Посещения (6м)")}</th>
+                <th>{t("Конверсия")}</th>
               </tr>
             </thead>
             <tbody>
@@ -384,7 +391,7 @@ export function Sales() {
               {filteredProducts.length === 0 && (
                 <tr>
                   <td colSpan={7} className="muted" style={{ textAlign: "center", padding: 30 }}>
-                    Няма продукти.
+                    {t("Няма продукти.")}
                   </td>
                 </tr>
               )}

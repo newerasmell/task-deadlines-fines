@@ -2,14 +2,16 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useT } from "../i18n/I18nContext";
 
 export function Login() {
   const { needsSetup, loading } = useAuth();
+  const t = useT();
 
   if (loading) {
     return (
       <div className="auth-page">
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("Зареждане…")}</p>
       </div>
     );
   }
@@ -20,6 +22,7 @@ export function Login() {
 function LoginCard() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const t = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +36,7 @@ function LoginCard() {
       await login(email, password);
       navigate("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Wrong email or password.");
+      setError(err instanceof Error ? err.message : t("Грешен имейл или парола."));
     } finally {
       setSubmitting(false);
     }
@@ -42,21 +45,21 @@ function LoginCard() {
   return (
     <form className="auth-card" onSubmit={handleSubmit}>
       <h1>PricePilot</h1>
-      <p className="brand-subtitle-login">Shopify Competitive Pricing Dashboard</p>
+      <p className="brand-subtitle-login">{t("Табло за конкурентно ценообразуване в Shopify")}</p>
       <label>
-        Email
+        {t("Имейл")}
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
       </label>
       <label>
-        Password
+        {t("Парола")}
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
       </label>
       {error && <div className="error-text">{error}</div>}
       <button type="submit" disabled={submitting}>
-        {submitting ? "Signing in…" : "Sign in"}
+        {submitting ? t("Влизане…") : t("Вход")}
       </button>
       <p className="muted small" style={{ margin: 0 }}>
-        No account yet? Ask a teammate to add you under Settings → Team.
+        {t("Все още нямаш акаунт? Помоли колега да те добави от Настройки → Екип.")}
       </p>
     </form>
   );
@@ -69,6 +72,7 @@ function LoginCard() {
 function SetupCard() {
   const { setup } = useAuth();
   const navigate = useNavigate();
+  const t = useT();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -84,7 +88,7 @@ function SetupCard() {
       await setup(name, email, password, dashboardPassword);
       navigate("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Setup failed.");
+      setError(err instanceof Error ? err.message : t("Настройката се провали."));
     } finally {
       setSubmitting(false);
     }
@@ -93,36 +97,36 @@ function SetupCard() {
   return (
     <form className="auth-card" onSubmit={handleSubmit}>
       <h1>PricePilot</h1>
-      <p className="brand-subtitle-login">First-time setup — create the first login</p>
+      <p className="brand-subtitle-login">{t("Първоначална настройка — създай първия акаунт за вход")}</p>
       <label>
-        Your name
+        {t("Твоето име")}
         <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
       </label>
       <label>
-        Email
+        {t("Имейл")}
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </label>
       <label>
-        Password
+        {t("Парола")}
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
       </label>
       <label>
-        Dashboard password
+        {t("Парола за таблото")}
         <input
           type="password"
           value={dashboardPassword}
           onChange={(e) => setDashboardPassword(e.target.value)}
-          placeholder="from DASHBOARD_PASSWORD"
+          placeholder={t("от DASHBOARD_PASSWORD")}
           required
         />
       </label>
       <p className="muted small" style={{ margin: 0 }}>
-        The one-time key from this deploy's <code>DASHBOARD_PASSWORD</code> env var — proves you're allowed to create
-        the first account. Every teammate after you gets added from inside the app instead.
+        {t("Еднократният ключ от env променливата")} <code>DASHBOARD_PASSWORD</code>{" "}
+        {t("на този deploy — доказва, че имаш право да създадеш първия акаунт. Всеки следващ колега се добавя отвътре в приложението.")}
       </p>
       {error && <div className="error-text">{error}</div>}
       <button type="submit" disabled={submitting}>
-        {submitting ? "Creating…" : "Create account"}
+        {submitting ? t("Създаване…") : t("Създай акаунт")}
       </button>
     </form>
   );

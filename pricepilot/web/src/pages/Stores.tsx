@@ -6,10 +6,12 @@ import type { Store } from "../api/types";
 import { AccordionItem } from "../components/Accordion";
 import { StoreForm } from "../components/StoreForm";
 import { useStores } from "../context/StoreContext";
+import { useT } from "../i18n/I18nContext";
 
-const PROFILE_LABELS = { competitor: "Competitor tracking", cod_formula: "COD formula" } as const;
+const PROFILE_LABELS = { competitor: "Проследяване на конкуренти", cod_formula: "COD формула" } as const;
 
 export function Stores() {
+  const t = useT();
   const navigate = useNavigate();
   const { stores, groups, setCurrentStoreId, refreshStores, refreshGroups } = useStores();
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
@@ -28,7 +30,8 @@ export function Stores() {
   }
 
   async function deleteGroup(id: string, name: string) {
-    if (!window.confirm(`Delete group "${name}"? Its stores stay — they just become ungrouped.`)) return;
+    if (!window.confirm(t("Изтриване на групата „{name}“? Магазините в нея остават — просто стават без група.", { name })))
+      return;
     await api(`/groups/${id}`, { method: "DELETE" });
     if (expandedGroupId === id) setExpandedGroupId(null);
     refreshGroups();
@@ -49,11 +52,11 @@ export function Stores() {
   return (
     <div>
       <div className="page-header">
-        <h1>Stores</h1>
+        <h1>{t("Магазини")}</h1>
         <div style={{ display: "flex", gap: 8 }}>
           {!addingGroup && (
             <button className="secondary" onClick={() => setAddingGroup(true)}>
-              + Add group
+              {t("+ Добави група")}
             </button>
           )}
           {!addingStore && (
@@ -63,7 +66,7 @@ export function Stores() {
                 setAddingStore(true);
               }}
             >
-              + Add store
+              {t("+ Добави магазин")}
             </button>
           )}
         </div>
@@ -104,16 +107,19 @@ export function Stores() {
               onToggle={() => toggleGroup(g.id)}
               headerLeft={
                 <span>
-                  {g.name} <span className="accordion-meta">{groupStores.length} store{groupStores.length === 1 ? "" : "s"}</span>
+                  {g.name}{" "}
+                  <span className="accordion-meta">
+                    {groupStores.length} {groupStores.length === 1 ? t("магазин") : t("магазина")}
+                  </span>
                 </span>
               }
               headerRight={
                 <div className="entity-row-actions" onClick={(e) => e.stopPropagation()}>
                   <button className="small-btn secondary" onClick={() => setRenamingGroupId(renamingGroupId === g.id ? null : g.id)}>
-                    Rename
+                    {t("Преименувай")}
                   </button>
                   <button className="small-btn secondary" onClick={() => deleteGroup(g.id, g.name)}>
-                    Delete
+                    {t("Изтрий")}
                   </button>
                 </div>
               }
@@ -140,7 +146,10 @@ export function Stores() {
             onToggle={() => toggleGroup("__ungrouped")}
             headerLeft={
               <span>
-                Ungrouped <span className="accordion-meta">{ungrouped.length} store{ungrouped.length === 1 ? "" : "s"}</span>
+                {t("Без група")}{" "}
+                <span className="accordion-meta">
+                  {ungrouped.length} {ungrouped.length === 1 ? t("магазин") : t("магазина")}
+                </span>
               </span>
             }
           >
@@ -149,13 +158,16 @@ export function Stores() {
         )}
       </div>
 
-      {groups.length === 0 && ungrouped.length === 0 && <p className="muted">No stores yet — click "+ Add store" above.</p>}
+      {groups.length === 0 && ungrouped.length === 0 && (
+        <p className="muted">{t('Все още няма магазини — натиснете „+ Добави магазин“ по-горе.')}</p>
+      )}
     </div>
   );
 }
 
 function StoreRows({ stores, onOpen }: { stores: Store[]; onOpen: (store: Store) => void }) {
-  if (stores.length === 0) return <p className="muted small">No stores in this group yet.</p>;
+  const t = useT();
+  if (stores.length === 0) return <p className="muted small">{t("В тази група все още няма магазини.")}</p>;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {stores.map((store) => (
@@ -166,6 +178,7 @@ function StoreRows({ stores, onOpen }: { stores: Store[]; onOpen: (store: Store)
 }
 
 function StoreRow({ store, onOpen }: { store: Store; onOpen: () => void }) {
+  const t = useT();
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
 
@@ -176,7 +189,9 @@ function StoreRow({ store, onOpen }: { store: Store; onOpen: () => void }) {
       const res = await api<{ ok: boolean; shopName?: string; error?: string }>(`/stores/${store.id}/test-connection`, {
         method: "POST",
       });
-      setTestResult(res.ok ? `✓ Connected to "${res.shopName}"` : `✕ ${res.error}`);
+      setTestResult(
+        res.ok ? t('✓ Свързано с „{shopName}“', { shopName: res.shopName ?? "" }) : t("✕ {error}", { error: res.error ?? "" })
+      );
     } finally {
       setTesting(false);
     }
@@ -194,10 +209,10 @@ function StoreRow({ store, onOpen }: { store: Store; onOpen: () => void }) {
       </div>
       <div className="entity-row-actions">
         <button className="small-btn secondary" onClick={testConnection} disabled={testing}>
-          {testing ? "Testing…" : "Test connection"}
+          {testing ? t("Тестване…") : t("Тествай връзката")}
         </button>
         <button className="small-btn" onClick={onOpen}>
-          Open →
+          {t("Отвори →")}
         </button>
       </div>
     </div>
@@ -205,6 +220,7 @@ function StoreRow({ store, onOpen }: { store: Store; onOpen: () => void }) {
 }
 
 function AddGroupForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -217,7 +233,7 @@ function AddGroupForm({ onDone, onCancel }: { onDone: () => void; onCancel: () =
       await api("/groups", { method: "POST", body: JSON.stringify({ name }) });
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -226,16 +242,22 @@ function AddGroupForm({ onDone, onCancel }: { onDone: () => void; onCancel: () =
   return (
     <form className="form" style={{ marginBottom: 0 }} onSubmit={handleSubmit}>
       <label>
-        Group name
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Perfumes HR, COD stores" required autoFocus />
+        {t("Име на групата")}
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("напр. Парфюми HR, COD магазини")}
+          required
+          autoFocus
+        />
       </label>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>
-          {submitting ? "Adding…" : "Add group"}
+          {submitting ? t("Добавяне…") : t("Добави група")}
         </button>
         <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
+          {t("Отказ")}
         </button>
       </div>
     </form>
@@ -253,6 +275,7 @@ function RenameGroupForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(currentName);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -265,7 +288,7 @@ function RenameGroupForm({
       await api(`/groups/${groupId}`, { method: "PATCH", body: JSON.stringify({ name }) });
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -275,10 +298,10 @@ function RenameGroupForm({
     <form className="form-row" style={{ marginBottom: 14 }} onSubmit={handleSubmit}>
       <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus style={{ flex: 2 }} />
       <button type="submit" disabled={submitting}>
-        {submitting ? "Saving…" : "Save"}
+        {submitting ? t("Запазване…") : t("Запази")}
       </button>
       <button type="button" className="secondary" onClick={onCancel}>
-        Cancel
+        {t("Отказ")}
       </button>
       {error && <div className="error-text">{error}</div>}
     </form>

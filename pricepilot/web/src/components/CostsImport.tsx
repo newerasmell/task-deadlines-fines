@@ -1,8 +1,10 @@
 import { useState } from "react";
 import type { ChangeEvent } from "react";
 import { api } from "../api/client";
+import { useT } from "../i18n/I18nContext";
 
 export function CostsImport({ storeId }: { storeId: string }) {
+  const t = useT();
   const [result, setResult] = useState<{ imported: number; errorCount: number; errors: string[] } | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -27,16 +29,17 @@ export function CostsImport({ storeId }: { storeId: string }) {
   return (
     <div className="card">
       <p className="muted small">
-        CSV with two columns: SKU or EAN, then cost (a header row is optional). Used for the margin floor guard —
-        products without a cost on file fall back to a percentage of the current price instead.
+        {t(
+          "CSV с две колони: SKU или EAN, след което цена (заглавен ред не е задължителен). Използва се за защитата на минималния марж — за продукти без въведена себестойност се прилага процент от текущата цена."
+        )}
       </p>
       <input type="file" accept=".csv,text/csv" onChange={handleFile} disabled={importing} />
       {result && (
         <div className="small" style={{ marginTop: 8 }}>
-          Imported {result.imported} rows.
+          {t("Импортирани {count} реда.", { count: result.imported })}
           {result.errorCount > 0 && (
             <div className="error-text">
-              {result.errorCount} row(s) skipped: {result.errors.join("; ")}
+              {t("{count} ред(а) пропуснати: {errors}", { count: result.errorCount, errors: result.errors.join("; ") })}
             </div>
           )}
         </div>

@@ -1,0 +1,16 @@
+export const layout: Record<string, string> = {
+  "Зареждане на магазините…": "Loading stores…",
+  "Все още няма магазини — добави от Магазини": "No stores yet — add one under Stores",
+  "Без група": "Ungrouped",
+  "Ценообразуване": "Pricing",
+  "Несъпоставени": "Unmatched",
+  "Дневник публикации": "Publish log",
+  "Продажби": "Sales",
+  "Марки": "Brands",
+  "Одит лог": "Audit log",
+  "Магазини": "Stores",
+  "Настройки": "Settings",
+  "админ": "admin",
+  "Изход": "Log out",
+  "Зареждане…": "Loading…",
+};

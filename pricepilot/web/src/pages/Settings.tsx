@@ -4,19 +4,21 @@ import { api } from "../api/client";
 import type { TeamUser } from "../api/types";
 import { AccordionItem } from "../components/Accordion";
 import { useAuth } from "../context/AuthContext";
+import { useT } from "../i18n/I18nContext";
 
 export function Settings() {
+  const t = useT();
   const { user: me, needsAdminClaim } = useAuth();
 
   return (
     <div>
       <div className="page-header">
-        <h1>Settings</h1>
+        <h1>{t("Настройки")}</h1>
       </div>
 
       {needsAdminClaim && (
         <div className="settings-section">
-          <h2>Claim ultimate admin</h2>
+          <h2>{t("Заяви права на върховен администратор")}</h2>
           <ClaimAdminCard />
         </div>
       )}
@@ -24,12 +26,12 @@ export function Settings() {
       <div className="settings-section">
         {me?.isUltimateAdmin ? (
           <>
-            <h2>Team</h2>
+            <h2>{t("Екип")}</h2>
             <TeamSection />
           </>
         ) : (
           <>
-            <h2>My account</h2>
+            <h2>{t("Моят акаунт")}</h2>
             <MyAccountCard />
           </>
         )}
@@ -44,6 +46,7 @@ export function Settings() {
 // them got the role" instead of "no accounts exist yet" (e.g. this account
 // was created before the ultimate-admin role existed).
 function ClaimAdminCard() {
+  const t = useT();
   const { claimAdmin } = useAuth();
   const [dashboardPassword, setDashboardPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +59,7 @@ function ClaimAdminCard() {
     try {
       await claimAdmin(dashboardPassword);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -65,23 +68,25 @@ function ClaimAdminCard() {
   return (
     <form className="card form" onSubmit={handleSubmit}>
       <p className="muted small" style={{ margin: 0 }}>
-        No account here is an ultimate admin yet (this one predates that role, or the last admin was removed). Enter
-        this deploy's <code>DASHBOARD_PASSWORD</code> to become the first one — same one-time key the very first
-        login setup used.
+        {t(
+          "Все още няма акаунт с права на върховен администратор тук (този акаунт е отпреди въвеждането на тази роля, или последният администратор е бил премахнат). Въведете еднократния ключ"
+        )}{" "}
+        <code>DASHBOARD_PASSWORD</code>{" "}
+        {t("на тази инсталация, за да станете първият — същият еднократен ключ, използван при самата първоначална настройка при вход.")}
       </p>
       <label>
-        Dashboard password
+        {t("Парола за таблото")}
         <input
           type="password"
           value={dashboardPassword}
           onChange={(e) => setDashboardPassword(e.target.value)}
-          placeholder="from DASHBOARD_PASSWORD"
+          placeholder={t("от DASHBOARD_PASSWORD")}
           required
         />
       </label>
       {error && <div className="error-text">{error}</div>}
       <button type="submit" disabled={submitting}>
-        {submitting ? "Claiming…" : "Claim ultimate admin"}
+        {submitting ? t("Заявяване…") : t("Заяви права на върховен администратор")}
       </button>
     </form>
   );
@@ -91,6 +96,7 @@ function ClaimAdminCard() {
 // not. Managing anyone ELSE's account (TeamSection below) is restricted to
 // ultimate admins; this never sees or touches another user's row.
 function MyAccountCard() {
+  const t = useT();
   const { user: me, updateProfile } = useAuth();
   const [name, setName] = useState(me?.name ?? "");
   const [password, setPassword] = useState("");
@@ -111,7 +117,7 @@ function MyAccountCard() {
       setPassword("");
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -120,26 +126,33 @@ function MyAccountCard() {
   return (
     <form className="card form" onSubmit={handleSubmit}>
       <p className="muted small" style={{ margin: 0 }}>
-        {me?.email} — only an ultimate admin can see or change other teammates' accounts.
+        {t("{email} — само върховен администратор може да вижда или променя акаунтите на останалите колеги.", {
+          email: me?.email ?? "",
+        })}
       </p>
       <label>
-        Name
+        {t("Име")}
         <input value={name} onChange={(e) => setName(e.target.value)} required />
       </label>
       <label>
-        New password <span className="muted">(leave blank to keep the current one)</span>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} placeholder="min. 8 characters" />
+        {t("Нова парола")} <span className="muted">{t("(оставете празно, за да запазите текущата)")}</span>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} placeholder={t("мин. 8 символа")} />
       </label>
       {error && <div className="error-text">{error}</div>}
-      {success && <div className="small" style={{ color: "var(--success)" }}>Saved.</div>}
+      {success && (
+        <div className="small" style={{ color: "var(--success)" }}>
+          {t("Запазено.")}
+        </div>
+      )}
       <button type="submit" disabled={submitting}>
-        {submitting ? "Saving…" : "Save changes"}
+        {submitting ? t("Запазване…") : t("Запази промените")}
       </button>
     </form>
   );
 }
 
 function TeamSection() {
+  const t = useT();
   const { user: me } = useAuth();
   const [users, setUsers] = useState<TeamUser[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -165,30 +178,34 @@ function TeamSection() {
       await api(`/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ active: !u.active }) });
       refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     }
   }
 
   async function remove(u: TeamUser) {
-    if (!window.confirm(`Remove ${u.name}? Their past audit-log entries are kept.`)) return;
+    if (!window.confirm(t("Премахване на {name}? Записите му в одит лога се запазват.", { name: u.name }))) return;
     setError(null);
     try {
       await api(`/users/${u.id}`, { method: "DELETE" });
       if (expandedId === u.id) setExpandedId(null);
       refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     }
   }
 
   return (
     <div>
       <p className="muted small">
-        Only ultimate admins can see or manage this list. Store and pricing data is shared by everyone — this is
-        just account management, so changes are attributed to a real person (see Audit log) instead of one shared
-        password.
+        {t(
+          "Само върховни администратори могат да виждат или управляват този списък. Данните за магазините и цените са споделени от всички — това е само управление на акаунти, така че промените се приписват на конкретен човек (виж Одит лог), вместо на една обща парола."
+        )}
       </p>
-      {error && <div className="error-text" style={{ marginBottom: 10 }}>{error}</div>}
+      {error && (
+        <div className="error-text" style={{ marginBottom: 10 }}>
+          {error}
+        </div>
+      )}
 
       <div className="entity-list" style={{ marginBottom: addingUser ? 12 : 0 }}>
         {users.map((u) => (
@@ -199,30 +216,37 @@ function TeamSection() {
             headerLeft={
               <span>
                 {u.name} <span className="accordion-meta">{u.email}</span>
-                {u.isUltimateAdmin && <span className="tag">ultimate admin</span>}
-                {!u.active && <span className="tag">deactivated</span>}
-                {u.id === me?.id && <span className="tag">you</span>}
+                {u.isUltimateAdmin && <span className="tag">{t("върховен администратор")}</span>}
+                {!u.active && <span className="tag">{t("деактивиран")}</span>}
+                {u.id === me?.id && <span className="tag">{t("вие")}</span>}
               </span>
             }
             headerRight={
               <div className="entity-row-actions" onClick={(e) => e.stopPropagation()}>
                 {u.id !== me?.id && (
                   <button className="small-btn secondary" onClick={() => toggleActive(u)}>
-                    {u.active ? "Deactivate" : "Reactivate"}
+                    {u.active ? t("Деактивирай") : t("Активирай")}
                   </button>
                 )}
                 {u.id !== me?.id && (
                   <button className="small-btn secondary" onClick={() => remove(u)}>
-                    Delete
+                    {t("Изтрий")}
                   </button>
                 )}
               </div>
             }
           >
-            <TeamUserForm user={u} onDone={() => { setExpandedId(null); refresh(); }} onCancel={() => setExpandedId(null)} />
+            <TeamUserForm
+              user={u}
+              onDone={() => {
+                setExpandedId(null);
+                refresh();
+              }}
+              onCancel={() => setExpandedId(null)}
+            />
           </AccordionItem>
         ))}
-        {users.length === 0 && <p className="muted">No teammates yet.</p>}
+        {users.length === 0 && <p className="muted">{t("Все още няма колеги.")}</p>}
       </div>
 
       {!addingUser && !expandedId && (
@@ -232,7 +256,7 @@ function TeamSection() {
             setAddingUser(true);
           }}
         >
-          + Add teammate
+          {t("+ Добави колега")}
         </button>
       )}
       {addingUser && (
@@ -254,6 +278,7 @@ function TeamSection() {
 }
 
 function TeamUserForm({ user, onDone, onCancel }: { user: TeamUser | null; onDone: () => void; onCancel: () => void }) {
+  const t = useT();
   const { user: me } = useAuth();
   const isEdit = Boolean(user);
   const isSelf = user?.id === me?.id;
@@ -268,7 +293,7 @@ function TeamUserForm({ user, onDone, onCancel }: { user: TeamUser | null; onDon
     e.preventDefault();
     setError(null);
     if (!isEdit && password.length < 8) {
-      setError("Password must be at least 8 characters.");
+      setError(t("Паролата трябва да е поне 8 символа."));
       return;
     }
     setSubmitting(true);
@@ -282,7 +307,7 @@ function TeamUserForm({ user, onDone, onCancel }: { user: TeamUser | null; onDon
       }
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -292,34 +317,38 @@ function TeamUserForm({ user, onDone, onCancel }: { user: TeamUser | null; onDon
     <form className="form" style={{ marginBottom: 0 }} onSubmit={handleSubmit}>
       <div className="form-row">
         <label>
-          Name
+          {t("Име")}
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
         <label>
-          Email
+          {t("Имейл")}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
       </div>
       <label>
-        {isEdit ? "New password" : "Password"} {isEdit && <span className="muted">(leave blank to keep the current one)</span>}
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} placeholder="min. 8 characters" />
+        {isEdit ? t("Нова парола") : t("Парола")}{" "}
+        {isEdit && <span className="muted">{t("(оставете празно, за да запазите текущата)")}</span>}
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} placeholder={t("мин. 8 символа")} />
       </label>
-      <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }} title={isSelf ? "Ask another ultimate admin to change your own admin status." : undefined}>
+      <label
+        style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+        title={isSelf ? t("Помолете друг върховен администратор да промени вашия администраторски статус.") : undefined}
+      >
         <input
           type="checkbox"
           checked={isUltimateAdmin}
           onChange={(e) => setIsUltimateAdmin(e.target.checked)}
           disabled={isSelf}
         />
-        Ultimate admin — can see/manage every account, not just their own
+        {t("Върховен администратор — може да вижда/управлява всички акаунти, не само своя")}
       </label>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>
-          {submitting ? "Saving…" : isEdit ? "Save changes" : "Add teammate"}
+          {submitting ? t("Запазване…") : isEdit ? t("Запази промените") : t("Добави колега")}
         </button>
         <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
+          {t("Отказ")}
         </button>
       </div>
     </form>

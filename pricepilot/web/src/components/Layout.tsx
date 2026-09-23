@@ -1,10 +1,12 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useStores } from "../context/StoreContext";
+import { useI18n } from "../i18n/I18nContext";
 
 export function Layout() {
   const { user, logout } = useAuth();
   const { stores, groups, currentStore, setCurrentStoreId, loading } = useStores();
+  const { lang, setLang, t } = useI18n();
 
   const ungrouped = stores.filter((s) => !s.groupId);
 
@@ -18,9 +20,9 @@ export function Layout() {
 
         <div className="store-switcher">
           {loading ? (
-            <span className="muted">Loading stores…</span>
+            <span className="muted">{t("Зареждане на магазините…")}</span>
           ) : stores.length === 0 ? (
-            <span className="muted">No stores yet — add one under Stores</span>
+            <span className="muted">{t("Все още няма магазини — добави от Магазини")}</span>
           ) : (
             <select value={currentStore?.id ?? ""} onChange={(e) => setCurrentStoreId(e.target.value)}>
               {groups.map((g) => {
@@ -37,7 +39,7 @@ export function Layout() {
                 );
               })}
               {ungrouped.length > 0 && (
-                <optgroup label={groups.length > 0 ? "Ungrouped" : ""}>
+                <optgroup label={groups.length > 0 ? t("Без група") : ""}>
                   {ungrouped.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} ({s.marketCode})
@@ -51,27 +53,36 @@ export function Layout() {
 
         <nav className="topnav">
           <NavLink to="/" end>
-            Pricing
+            {t("Ценообразуване")}
           </NavLink>
-          <NavLink to="/unmatched">Unmatched</NavLink>
-          <NavLink to="/publish-log">Publish log</NavLink>
-          {currentStore?.salesAnalyticsEnabled && <NavLink to="/sales">Продажби</NavLink>}
+          <NavLink to="/unmatched">{t("Несъпоставени")}</NavLink>
+          <NavLink to="/publish-log">{t("Дневник публикации")}</NavLink>
+          {currentStore?.salesAnalyticsEnabled && <NavLink to="/sales">{t("Продажби")}</NavLink>}
           {currentStore?.salesAnalyticsEnabled && currentStore?.pricingProfile === "cod_formula" && (
-            <NavLink to="/brands">Марки</NavLink>
+            <NavLink to="/brands">{t("Марки")}</NavLink>
           )}
-          <NavLink to="/audit-log">Audit log</NavLink>
-          <NavLink to="/stores">Stores</NavLink>
-          <NavLink to="/settings">Settings</NavLink>
+          <NavLink to="/audit-log">{t("Одит лог")}</NavLink>
+          <NavLink to="/stores">{t("Магазини")}</NavLink>
+          <NavLink to="/settings">{t("Настройки")}</NavLink>
         </nav>
+
+        <div className="lang-toggle">
+          <button className={lang === "bg" ? "active" : ""} onClick={() => setLang("bg")}>
+            БГ
+          </button>
+          <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>
+            EN
+          </button>
+        </div>
 
         {user && (
           <span className="muted small" title={user.email}>
             {user.name}
-            {user.isUltimateAdmin && <span className="tag">admin</span>}
+            {user.isUltimateAdmin && <span className="tag">{t("админ")}</span>}
           </span>
         )}
         <button className="secondary" onClick={() => logout()}>
-          Log out
+          {t("Изход")}
         </button>
       </header>
 

@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { api } from "../api/client";
 import type { PricingProfile, PricingStrategy, Store } from "../api/types";
 import { useStores } from "../context/StoreContext";
+import { useT } from "../i18n/I18nContext";
 
 export function StoreForm({
   store,
@@ -17,6 +18,7 @@ export function StoreForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const { groups } = useStores();
   const isEdit = Boolean(store);
   const [name, setName] = useState(store?.name ?? "");
@@ -40,7 +42,7 @@ export function StoreForm({
     e.preventDefault();
     setError(null);
     if (!isEdit && !clientSecret.trim()) {
-      setError("Client secret is required.");
+      setError(t("Клиентската тайна е задължителна."));
       return;
     }
     setSubmitting(true);
@@ -66,7 +68,7 @@ export function StoreForm({
       else await api("/stores", { method: "POST", body: JSON.stringify(body) });
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : t("Грешка"));
     } finally {
       setSubmitting(false);
     }
@@ -76,11 +78,11 @@ export function StoreForm({
     <form className="form" style={{ marginBottom: 0 }} onSubmit={handleSubmit}>
       <div className="form-row">
         <label>
-          Name
+          {t("Име")}
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
         <label>
-          myshopify.com domain
+          {t("myshopify.com домейн")}
           <input
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
@@ -91,11 +93,11 @@ export function StoreForm({
       </div>
       <div className="form-row">
         <label>
-          Client ID
+          {t("Клиентски ID")}
           <input value={clientId} onChange={(e) => setClientId(e.target.value)} required />
         </label>
         <label>
-          Client secret {isEdit && <span className="muted">(leave blank to keep the current one)</span>}
+          {t("Клиентска тайна")} {isEdit && <span className="muted">{t("(оставете празно, за да запазите текущата)")}</span>}
           <input
             type="password"
             value={clientSecret}
@@ -105,23 +107,23 @@ export function StoreForm({
         </label>
       </div>
       <p className="muted small">
-        From your app's Dev Dashboard page (dev.shopify.com) → Settings → Credentials. Requires{" "}
-        <code>read_products</code> and <code>write_products</code> scopes, installed to this store.
+        {t("От страницата Dev Dashboard на приложението ви (dev.shopify.com) → Settings → Credentials. Изисква")}{" "}
+        <code>read_products</code> {t("и")} <code>write_products</code> {t("права, инсталирани в този магазин.")}
       </p>
       <div className="form-row">
         <label>
-          Market code
-          <input value={marketCode} onChange={(e) => setMarketCode(e.target.value)} placeholder="e.g. PL, GR, BG" required />
+          {t("Код на пазара")}
+          <input value={marketCode} onChange={(e) => setMarketCode(e.target.value)} placeholder={t("напр. PL, GR, BG")} required />
         </label>
         <label>
-          Currency
-          <input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="e.g. EUR" required />
+          {t("Валута")}
+          <input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder={t("напр. EUR")} required />
         </label>
       </div>
       <label>
-        Group
+        {t("Група")}
         <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-          <option value="">Ungrouped</option>
+          <option value="">{t("Без група")}</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.name}
@@ -131,10 +133,10 @@ export function StoreForm({
       </label>
       <div className="form-row">
         <label>
-          Pricing profile
+          {t("Ценови профил")}
           <select value={pricingProfile} onChange={(e) => setPricingProfile(e.target.value as PricingProfile)}>
-            <option value="competitor">Competitor tracking (undercut/match)</option>
-            <option value="cod_formula">COD formula (cost + logistics + ad-spend based)</option>
+            <option value="competitor">{t("Проследяване на конкуренти (подбиване/изравняване)")}</option>
+            <option value="cod_formula">{t("COD формула (базирана на себестойност + логистика + разходи за реклама)")}</option>
           </select>
         </label>
       </div>
@@ -142,32 +144,34 @@ export function StoreForm({
         <>
           <div className="form-row">
             <label>
-              Pricing strategy
+              {t("Ценова стратегия")}
               <select value={strategy} onChange={(e) => setStrategy(e.target.value as PricingStrategy)}>
-                <option value="undercut_min">Undercut lowest</option>
-                <option value="match_min">Match lowest</option>
-                <option value="undercut_avg">Undercut average</option>
+                <option value="undercut_min">{t("Подбий най-ниската")}</option>
+                <option value="match_min">{t("Изравни с най-ниската")}</option>
+                <option value="undercut_avg">{t("Подбий средната")}</option>
               </select>
             </label>
             <label>
-              Undercut %
+              {t("Процент подбиване")}
               <input type="number" step="0.1" value={undercutPct} onChange={(e) => setUndercutPct(e.target.value)} />
             </label>
           </div>
           <div className="form-row">
             <label>
-              Price ending (optional)
+              {t("Завършек на цената (незадължително)")}
               <input value={priceEnding} onChange={(e) => setPriceEnding(e.target.value)} placeholder=".99" />
             </label>
             <label>
-              Min margin % (floor guard)
+              {t("Мин. марж % (долна граница)")}
               <input type="number" step="0.1" value={minMarginPct} onChange={(e) => setMinMarginPct(e.target.value)} />
             </label>
           </div>
         </>
       )}
       {pricingProfile === "cod_formula" && (
-        <p className="muted small">The formula itself (cost mix, delivery scenarios, agency fee) is configured on the Pricing page once this store is saved.</p>
+        <p className="muted small">
+          {t("Самата формула (микс от разходи, сценарии за доставка, агентска такса) се конфигурира на страница Ценообразуване, след като магазинът бъде запазен.")}
+        </p>
       )}
 
       <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -176,16 +180,16 @@ export function StoreForm({
           checked={salesAnalyticsEnabled}
           onChange={(e) => setSalesAnalyticsEnabled(e.target.checked)}
         />
-        Enable "Продажби" tab (6-month units sold / avg sale price / category rollup)
+        {t('Активирай раздел „Продажби“ (продадени бройки за 6 месеца / средна продажна цена / обобщение по категория)')}
       </label>
       {salesAnalyticsEnabled && (
         <>
           <p className="muted small">
-            Requires the <code>read_orders</code> scope granted to this store's Shopify app — add it under
-            dev.shopify.com → your app → Configuration, then reinstall to the store.
+            {t("Изисква права")} <code>read_orders</code>{" "}
+            {t("предоставени на Shopify приложението на този магазин — добавете ги в dev.shopify.com → your app → Configuration, след което преинсталирайте в магазина.")}
           </p>
           <label>
-            GA4 property (optional, for page views/conversion rate)
+            {t("GA4 property (незадължително, за прегледи на страници/конверсия)")}
             <input
               value={ga4PropertyId}
               onChange={(e) => setGa4PropertyId(e.target.value)}
@@ -197,10 +201,10 @@ export function StoreForm({
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
         <button type="submit" disabled={submitting}>
-          {submitting ? "Saving…" : isEdit ? "Save changes" : "Add store"}
+          {submitting ? t("Запазване…") : isEdit ? t("Запази промените") : t("Добави магазин")}
         </button>
         <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
+          {t("Отказ")}
         </button>
       </div>
     </form>

@@ -152,6 +152,35 @@ button.small-btn {
   color: var(--primary);
 }
 
+.lang-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--gray-bg);
+  border-radius: 8px;
+  padding: 3px;
+  flex-shrink: 0;
+}
+
+.lang-toggle button {
+  background: transparent;
+  color: var(--muted);
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-radius: 6px;
+}
+
+.lang-toggle button:hover {
+  color: var(--text);
+}
+
+.lang-toggle button.active {
+  background: #fff;
+  color: var(--primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
 .app-main {
   flex: 1;
   padding: 22px;
