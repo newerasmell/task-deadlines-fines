@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
@@ -134,6 +134,15 @@ export function PricingTable() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
 
+  // Variant grouping (table view) — several rows sharing a shopifyProductId
+  // (a product's size/color variants, already priced together — see
+  // varyPriceForSharedCost in pricing.ts) collapse into one summary row
+  // until expanded, instead of listing every size as its own full row by
+  // default. Keyed by shopifyProductId, not productId, since that's what
+  // ties the rows together.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [groupBulkValue, setGroupBulkValue] = useState<Map<string, string>>(new Map());
+
   async function refresh() {
     if (!currentStore) return;
     setError(null);
@@ -199,6 +208,68 @@ export function PricingTable() {
     });
     return sorted;
   }, [data, flagFilter, vendorFilter, categoryFilter, search, minDeltaPct, coverageFilter, markdownOnly, sortKey, sortDir]);
+
+  // Groups filteredSortedRows by shopifyProductId, keeping each group at the
+  // position of the first row of it the current sort/filter produced — a
+  // group with only one row (the common case) renders exactly like before,
+  // untouched. Sorting the table itself still operates per row (Δ%, price…
+  // don't have one obvious "group" value), so a size run can arrive
+  // scrambled; re-sorted by size/variant label within its own group only,
+  // where it reads naturally.
+  const groupedRows = useMemo(() => {
+    const order: string[] = [];
+    const byKey = new Map<string, PricingRow[]>();
+    for (const row of filteredSortedRows) {
+      const key = row.shopifyProductId;
+      const list = byKey.get(key);
+      if (list) list.push(row);
+      else {
+        byKey.set(key, [row]);
+        order.push(key);
+      }
+    }
+    return order.map((key) => {
+      const rows = byKey.get(key)!;
+      if (rows.length > 1) {
+        // Shopify's own configured order (S, M, L, XL…) — an alphabetical
+        // sort on the label puts "L" before "M" before "S" and only
+        // happens to work for numeric sizes; variantPosition is exactly
+        // what Shopify's own admin already orders variants by.
+        rows.sort((a, b) => {
+          if (a.variantPosition != null && b.variantPosition != null) return a.variantPosition - b.variantPosition;
+          return (a.variantTitle ?? "").localeCompare(b.variantTitle ?? "", undefined, { numeric: true });
+        });
+      }
+      return { key, rows };
+    });
+  }, [filteredSortedRows]);
+
+  function toggleGroupExpand(key: string) {
+    setExpandedGroups((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleGroupSelection(rows: PricingRow[]) {
+    const allSelected = rows.every((r) => selected.has(r.productId));
+    setSelected((cur) => {
+      const next = new Set(cur);
+      for (const r of rows) {
+        if (allSelected) next.delete(r.productId);
+        else next.add(r.productId);
+      }
+      return next;
+    });
+  }
+
+  function applyGroupBulk(key: string, rows: PricingRow[]) {
+    const raw = groupBulkValue.get(key);
+    if (!raw || !raw.trim()) return;
+    for (const r of rows) setSuggestedValue(r.productId, raw);
+  }
 
   function suggestedFor(row: PricingRow): number | null {
     return edited.get(row.productId) ?? row.suggested;
@@ -390,10 +461,22 @@ export function PricingTable() {
   ];
   const tableColWeightSum = tableColWeights.reduce((a, b) => a + b, 0);
   const tableColPercents = tableColWeights.map((w) => (w / tableColWeightSum) * 100);
+  const totalCols = tableColWeights.length;
 
   // Shared between the table and card layouts below so the two views can
   // never quietly drift apart on what a cell/field actually shows.
-  function renderProductHead(row: PricingRow) {
+  // `insideGroup`: this row is one variant inside an expanded group whose
+  // header already shows the shared product title/image right above it —
+  // repeating that per variant just adds noise, so the variant's own
+  // label (size, color…) stands in for it instead.
+  function renderProductHead(row: PricingRow, insideGroup = false) {
+    if (insideGroup) {
+      return (
+        <div className="group-variant-head">
+          <span className="group-variant-label">{row.variantTitle ?? "—"}</span>
+        </div>
+      );
+    }
     return (
       <>
         {row.imageUrl ? <img src={row.imageUrl} className="product-thumb" alt="" /> : <div className="product-thumb" />}
@@ -510,6 +593,65 @@ export function PricingTable() {
           {row.priority ? "Unflag priority" : "Flag priority"}
         </button>
       </>
+    );
+  }
+
+  // The one row shape used both for an ungrouped (single-variant) product
+  // and for each variant inside an expanded group — `insideGroup` only
+  // changes the Product cell (size/variant label instead of repeating the
+  // shared title+image already shown on the group's header row above it)
+  // and a light tint + left rule to read as "belonging to" that header.
+  // Selection, editing, publish — everything else is the exact same row a
+  // group never existed, so nothing about how a row actually works changes
+  // depending on whether its product happens to have other variants.
+  function renderVariantRow(row: PricingRow, insideGroup = false) {
+    const status = rowStatus.get(row.productId) ?? { state: "idle" as const };
+    const suggestedValue = suggestedFor(row);
+    return (
+      <tr key={row.productId} className={insideGroup ? "group-variant-row" : undefined}>
+        <td>
+          <input type="checkbox" checked={selected.has(row.productId)} onChange={() => toggleRow(row.productId)} />
+        </td>
+        <td>
+          <div className="table-product-cell">{renderProductHead(row, insideGroup)}</div>
+        </td>
+        <td>
+          <PriceCompare
+            row={row}
+            currency={currentStore!.currency}
+            isCod={isCod}
+            suggestedValue={suggestedValue}
+            onSuggestedChange={(v) => setSuggestedValue(row.productId, v)}
+          />
+        </td>
+        <td>{fmtMoney(row.compareAtPrice, currentStore!.currency)}</td>
+        <td className="small">{fmtActivatedAt(row.activatedAt)}</td>
+        {isCod && <td>{renderCostInput(row)}</td>}
+        {data!.sources.map((s) => (
+          <td key={s.id} className={`source-cell${row.sourcePrices[s.id]?.stale ? " stale" : ""}`}>
+            {renderSourceCell(row, s)}
+          </td>
+        ))}
+        {!isCod && <td>{fmtMoney(row.minComp, currentStore!.currency)}</td>}
+        <td>{row.deltaPct != null ? `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%` : "—"}</td>
+        {isCod && (
+          <td title={row.recommendedComparePrice == null ? row.recommendedComparePriceReason ?? undefined : undefined}>
+            {fmtMoney(row.recommendedComparePrice, currentStore!.currency)}
+          </td>
+        )}
+        <td>
+          {status.state === "pending" && <span className="row-status-spinner">Publishing…</span>}
+          {status.state === "success" && <span className="row-status-success">✓ Published</span>}
+          {status.state === "error" && (
+            <Link to="/publish-log" className="row-status-error" title={status.message}>
+              ✕ Error
+            </Link>
+          )}
+        </td>
+        <td>
+          <div style={{ display: "flex", gap: 6, flexDirection: "column" }}>{renderActions(row, status, suggestedValue)}</div>
+        </td>
+      </tr>
     );
   }
 
@@ -654,59 +796,69 @@ export function PricingTable() {
               </tr>
             </thead>
             <tbody>
-              {filteredSortedRows.map((row) => {
-                const status = rowStatus.get(row.productId) ?? { state: "idle" as const };
-                const suggestedValue = suggestedFor(row);
+              {groupedRows.map((group) => {
+                if (group.rows.length === 1) return renderVariantRow(group.rows[0]);
+
+                const isExpanded = expandedGroups.has(group.key);
+                const groupSelected = group.rows.every((r) => selected.has(r.productId));
+                const ourPrices = group.rows.map((r) => r.ourPrice);
+                const minOur = Math.min(...ourPrices);
+                const maxOur = Math.max(...ourPrices);
+
                 return (
-                  <tr key={row.productId}>
-                    <td>
-                      <input type="checkbox" checked={selected.has(row.productId)} onChange={() => toggleRow(row.productId)} />
-                    </td>
-                    <td>
-                      <div className="table-product-cell">{renderProductHead(row)}</div>
-                    </td>
-                    <td>
-                      <PriceCompare
-                        row={row}
-                        currency={currentStore.currency}
-                        isCod={isCod}
-                        suggestedValue={suggestedValue}
-                        onSuggestedChange={(v) => setSuggestedValue(row.productId, v)}
-                      />
-                    </td>
-                    <td>{fmtMoney(row.compareAtPrice, currentStore.currency)}</td>
-                    <td className="small">{fmtActivatedAt(row.activatedAt)}</td>
-                    {isCod && <td>{renderCostInput(row)}</td>}
-                    {data.sources.map((s) => (
-                      <td key={s.id} className={`source-cell${row.sourcePrices[s.id]?.stale ? " stale" : ""}`}>
-                        {renderSourceCell(row, s)}
+                  <Fragment key={group.key}>
+                    <tr className="group-header-row">
+                      <td colSpan={totalCols}>
+                        <div className="group-row-compact">
+                          <input
+                            type="checkbox"
+                            checked={groupSelected}
+                            onChange={() => toggleGroupSelection(group.rows)}
+                            aria-label="Select all variants"
+                          />
+                          <button
+                            type="button"
+                            className="group-expand-btn"
+                            onClick={() => toggleGroupExpand(group.key)}
+                            aria-expanded={isExpanded}
+                            aria-label={isExpanded ? "Collapse variants" : "Expand variants"}
+                          >
+                            <span className="group-expand-chevron" style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
+                              ▸
+                            </span>
+                          </button>
+                          <div className="table-product-cell group-row-head">{renderProductHead(group.rows[0])}</div>
+                          <div className="group-row-summary">
+                            <span className="muted">Our price</span>{" "}
+                            <b>
+                              {fmtMoney(minOur, currentStore.currency)} – {fmtMoney(maxOur, currentStore.currency)}
+                            </b>
+                            <span className="group-row-count">{group.rows.length} variants</span>
+                          </div>
+                          <div className="group-row-bulk">
+                            <span className="muted small">Set suggested for all:</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={groupBulkValue.get(group.key) ?? ""}
+                              onChange={(e) => setGroupBulkValue((cur) => new Map(cur).set(group.key, e.target.value))}
+                              placeholder="—"
+                              className="suggested-input"
+                            />
+                            <button type="button" className="small-btn" onClick={() => applyGroupBulk(group.key, group.rows)}>
+                              Apply to {group.rows.length}
+                            </button>
+                          </div>
+                        </div>
                       </td>
-                    ))}
-                    {!isCod && <td>{fmtMoney(row.minComp, currentStore.currency)}</td>}
-                    <td>{row.deltaPct != null ? `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%` : "—"}</td>
-                    {isCod && (
-                      <td title={row.recommendedComparePrice == null ? row.recommendedComparePriceReason ?? undefined : undefined}>
-                        {fmtMoney(row.recommendedComparePrice, currentStore.currency)}
-                      </td>
-                    )}
-                    <td>
-                      {status.state === "pending" && <span className="row-status-spinner">Publishing…</span>}
-                      {status.state === "success" && <span className="row-status-success">✓ Published</span>}
-                      {status.state === "error" && (
-                        <Link to="/publish-log" className="row-status-error" title={status.message}>
-                          ✕ Error
-                        </Link>
-                      )}
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", gap: 6, flexDirection: "column" }}>{renderActions(row, status, suggestedValue)}</div>
-                    </td>
-                  </tr>
+                    </tr>
+                    {isExpanded && group.rows.map((row) => renderVariantRow(row, true))}
+                  </Fragment>
                 );
               })}
               {filteredSortedRows.length === 0 && (
                 <tr>
-                  <td colSpan={8 + data.sources.length + (isCod ? 2 : 1)} className="muted" style={{ textAlign: "center", padding: 30 }}>
+                  <td colSpan={totalCols} className="muted" style={{ textAlign: "center", padding: 30 }}>
                     No products match these filters.
                   </td>
                 </tr>

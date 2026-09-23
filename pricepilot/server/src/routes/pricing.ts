@@ -112,8 +112,11 @@ pricingRouter.get("/:storeId", async (req, res) => {
 
     return {
       productId: product.id,
+      shopifyProductId: product.shopifyProductId,
       shopifyVariantId: product.shopifyVariantId,
       title: product.title,
+      variantTitle: product.variantTitle,
+      variantPosition: product.variantPosition,
       vendor: product.vendor,
       handle: product.handle,
       sku: product.sku,
@@ -327,8 +330,11 @@ async function sendCodPricingTable(
 
     return {
       productId: product.id,
+      shopifyProductId: product.shopifyProductId,
       shopifyVariantId: product.shopifyVariantId,
       title: product.title,
+      variantTitle: product.variantTitle,
+      variantPosition: product.variantPosition,
       vendor: product.vendor,
       handle: product.handle,
       sku: product.sku,

@@ -12,6 +12,8 @@ const PAGE_SIZE = 50;
 
 interface VariantNode {
   id: string;
+  title: string;
+  position: number;
   sku: string | null;
   barcode: string | null;
   price: string;
@@ -41,6 +43,11 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
   const price = Number(variant.price);
   const compareAtPrice = variant.compareAtPrice != null ? Number(variant.compareAtPrice) : null;
   const tags = (product.tags ?? []).join(",");
+  // Shopify's own placeholder for a product with no real options ("Size",
+  // "Color", …) — meaningless to show next to other variants, so it's
+  // stored as null rather than the literal string every single-variant
+  // product would otherwise carry.
+  const variantTitle = variant.title && variant.title !== "Default Title" ? variant.title : null;
 
   const existing = await prisma.product.findUnique({
     where: { storeId_shopifyVariantId: { storeId, shopifyVariantId: variant.id } },
@@ -75,6 +82,8 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
       shopifyProductId: product.id,
       shopifyVariantId: variant.id,
       title: product.title,
+      variantTitle,
+      variantPosition: variant.position,
       vendor: product.vendor,
       handle: product.handle,
       sku: variant.sku,
@@ -92,6 +101,8 @@ async function upsertVariantRow(storeId: string, product: ProductNode, variant: 
     update: {
       shopifyProductId: product.id,
       title: product.title,
+      variantTitle,
+      variantPosition: variant.position,
       vendor: product.vendor,
       handle: product.handle,
       sku: variant.sku,
@@ -158,7 +169,7 @@ const PRODUCTS_PAGE_QUERY = `
           publishedAt
           featuredImage { url }
           variants(first: 100) {
-            edges { node { id sku barcode price compareAtPrice inventoryQuantity } }
+            edges { node { id title position sku barcode price compareAtPrice inventoryQuantity } }
           }
           collections(first: 10) {
             edges { node { id title } }
@@ -207,7 +218,7 @@ const BULK_QUERY = `
           publishedAt
           featuredImage { url }
           variants {
-            edges { node { id sku barcode price compareAtPrice inventoryQuantity } }
+            edges { node { id title position sku barcode price compareAtPrice inventoryQuantity } }
           }
           collections {
             edges { node { id title } }
@@ -283,6 +294,8 @@ async function downloadAndParseBulkResult(
     if (node.__parentId && node.id.includes("/ProductVariant/")) {
       const variant: VariantNode = {
         id: node.id,
+        title: node.title as string,
+        position: node.position as number,
         sku: (node.sku as string | null) ?? null,
         barcode: (node.barcode as string | null) ?? null,
         price: node.price as string,

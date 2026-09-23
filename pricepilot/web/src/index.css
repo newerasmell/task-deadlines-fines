@@ -471,6 +471,97 @@ table.pricing-table tbody tr:hover {
   min-width: 0;
 }
 
+/* Variant grouping — several rows sharing a shopifyProductId (a product's
+   sizes/colors, already priced together) collapse into one compact
+   summary row until expanded, instead of listing every variant as its
+   own full row. The summary itself is one <td colSpan> holding a plain
+   flex row rather than aligning to the real column grid, same trick the
+   existing "no rows match" placeholder already uses — it needs to read
+   as one continuous line, not one more row split across the table's
+   columns. */
+.group-header-row td {
+  padding: 0;
+  background: #fbfbfd;
+}
+
+.group-row-compact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.group-expand-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.group-expand-chevron {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.group-row-head {
+  width: 260px;
+  flex-shrink: 0;
+}
+
+.group-row-summary {
+  flex-grow: 1;
+  font-size: 0.82rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.group-row-count {
+  background: var(--info-bg);
+  color: var(--primary);
+  border-radius: 10px;
+  padding: 1px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.group-row-bulk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.group-variant-row td {
+  background: var(--gray-bg);
+}
+
+.group-variant-row .table-product-cell {
+  padding-left: 48px;
+}
+
+.group-variant-head {
+  display: flex;
+  align-items: center;
+}
+
+.group-variant-label {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
 /* The one comparison this whole page exists to make legible: what we
    charge right now vs. what the engine proposes. Both numbers get equal
    visual weight (large, bold) instead of blending into the surrounding

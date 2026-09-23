@@ -155,8 +155,17 @@ export interface SourcePriceCell {
 
 export interface PricingRow {
   productId: string;
+  shopifyProductId: string;
   shopifyVariantId: string;
   title: string;
+  // The variant's own Shopify title (e.g. "42") — null for a single-variant
+  // product (Shopify's "Default Title" placeholder is normalized away
+  // server-side), used only to label a row inside its size group.
+  variantTitle: string | null;
+  // Shopify's own configured display order for this variant within its
+  // product — used to sort a group's rows the way Shopify's admin already
+  // orders them (S/M/L/XL isn't sortable any other way).
+  variantPosition: number | null;
   vendor: string | null;
   handle: string | null;
   sku: string | null;

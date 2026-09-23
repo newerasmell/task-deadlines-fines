@@ -187,6 +187,20 @@ model Product {
   shopifyVariantId    String
 
   title               String
+  // Shopify's own per-variant title (e.g. "42", "Black / M") — distinct
+  // from `title` above, which is the shared PRODUCT title every variant
+  // row of the same shopifyProductId carries identically. Used only to
+  // label a variant within its group on the Pricing table; "Default
+  // Title" (Shopify's placeholder for a product with no real options) is
+  // never shown as-is, see pricing.ts's row-building.
+  variantTitle        String?
+  // Shopify's own configured display order for this variant within its
+  // product (ProductVariant.position) — S/M/L/XL isn't sortable any other
+  // way (alphabetical puts L before M before S; confirmed live), and a
+  // numeric size like "42" only sorts correctly by luck. This is exactly
+  // the order Shopify's own admin already shows, so reusing it needs no
+  // size-name parsing of our own.
+  variantPosition     Int?
   vendor              String?
   handle              String?
   sku                 String?
@@ -231,6 +245,7 @@ model Product {
 
   @@unique([storeId, shopifyVariantId])
   @@index([storeId, barcode])
+  @@index([storeId, shopifyProductId])
 }
 
 // A Shopify collection the sales-analytics feature groups products by
