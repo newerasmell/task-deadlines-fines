@@ -49,12 +49,58 @@ function fmtActivatedAt(iso: string | null): string {
   return `${date.toLocaleDateString()} (${days}d)`;
 }
 
+type ViewMode = "table" | "cards";
+
+// The price a product is at right now vs. what the engine suggests it
+// should be is the single most important comparison on this page — it
+// used to blend in as just another field among a dozen others (both in
+// the old table's columns and the card's field grid), making it hard to
+// tell at a glance which number was "current" and which was "proposed".
+// Pulled out into its own emphasized block, used identically by both the
+// table and card layouts below.
+function PriceCompare({
+  row,
+  currency,
+  isCod,
+  suggestedValue,
+  onSuggestedChange,
+}: {
+  row: PricingRow;
+  currency: string;
+  isCod: boolean;
+  suggestedValue: number | null;
+  onSuggestedChange: (value: string) => void;
+}) {
+  return (
+    <div className="price-compare">
+      <div className="price-compare-current">
+        <span className="field-label">Our price</span>
+        <span className="price-compare-value">{fmtMoney(row.ourPrice, currency)}</span>
+      </div>
+      <span className="price-compare-arrow">→</span>
+      <div className={`price-compare-suggested flag-${row.flag}`}>
+        <span className="field-label">{isCod ? "Recommended" : "Suggested"}</span>
+        <input
+          className="suggested-input-big"
+          type="number"
+          step="0.01"
+          value={suggestedValue ?? ""}
+          onChange={(e) => onSuggestedChange(e.target.value)}
+          placeholder="—"
+        />
+        <span className={`badge flag-${row.flag}`}>{FLAG_LABELS[row.flag]}</span>
+      </div>
+    </div>
+  );
+}
+
 export function PricingTable() {
   const { currentStore } = useStores();
   const [data, setData] = useState<PricingTableResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem("pp.pricingView") as ViewMode) || "table");
   const [flagFilter, setFlagFilter] = useState<RowFlag | "">("");
   const [vendorFilter, setVendorFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -110,6 +156,10 @@ export function PricingTable() {
   useEffect(() => {
     localStorage.setItem("pp.skipSingleConfirm", skipSingleConfirm ? "1" : "0");
   }, [skipSingleConfirm]);
+
+  useEffect(() => {
+    localStorage.setItem("pp.pricingView", viewMode);
+  }, [viewMode]);
 
   const vendors = useMemo(() => {
     if (!data) return [];
@@ -313,6 +363,128 @@ export function PricingTable() {
   const isCod = currentStore.pricingProfile === "cod_formula";
   const allVisibleSelected = filteredSortedRows.length > 0 && filteredSortedRows.every((r) => selected.has(r.productId));
 
+  // Shared between the table and card layouts below so the two views can
+  // never quietly drift apart on what a cell/field actually shows.
+  function renderProductHead(row: PricingRow) {
+    return (
+      <>
+        {row.imageUrl ? <img src={row.imageUrl} className="product-thumb" alt="" /> : <div className="product-thumb" />}
+        <div>
+          <div className="product-title">
+            {row.title}
+            {row.priority && <span className="tag" title="Always scraped every run">★</span>}
+            {isCod && row.discountTagged && (
+              <span className="tag" title={`Tagged "${data!.formula?.config.discountTag}" in Shopify`}>
+                намален
+              </span>
+            )}
+            {isCod && row.markdownEligible && (
+              <span className="tag" title={`${row.daysSinceActive} дни от "active" — цена над таван, готов за намаляване`}>
+                🔻 markdown
+              </span>
+            )}
+          </div>
+          <div className="product-sku">
+            {row.sku ?? "—"} {row.barcode ? `· ${row.barcode}` : ""}
+          </div>
+          {isCod && row.tags.length > 0 && <div className="small muted">{row.tags.join(", ")}</div>}
+        </div>
+      </>
+    );
+  }
+
+  function renderCostInput(row: PricingRow) {
+    return (
+      <input
+        className="suggested-input"
+        type="number"
+        step="0.01"
+        min="0"
+        value={costFor(row)}
+        onChange={(e) => setCostDraft((cur) => new Map(cur).set(row.productId, e.target.value))}
+        onBlur={(e) => saveCost(row, e.target.value)}
+        placeholder="—"
+        disabled={costSaving.has(row.productId)}
+        title="Себестойност (покупна цена) — Cost.csv импорт или ръчно тук"
+      />
+    );
+  }
+
+  function renderSourceCell(row: PricingRow, s: PricingTableResponse["sources"][number]) {
+    const cell = row.sourcePrices[s.id];
+    const cellKey = `${row.productId}:${s.id}`;
+    const isEditing = manualEntryOpen === cellKey;
+    if (isEditing) {
+      return (
+        <div className="manual-entry-form">
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder={`Price (${currentStore!.currency})`}
+            value={manualPrice}
+            onChange={(e) => setManualPrice(e.target.value)}
+            autoFocus
+          />
+          <input type="text" placeholder="Listing URL" value={manualUrl} onChange={(e) => setManualUrl(e.target.value)} />
+          {manualError && <div className="small row-status-error">{manualError}</div>}
+          <div className="manual-entry-actions">
+            <button className="small-btn" onClick={() => saveManualEntry(row.productId, s.id)} disabled={manualSaving}>
+              Save
+            </button>
+            <button className="small-btn secondary" onClick={() => setManualEntryOpen(null)} disabled={manualSaving}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (cell) {
+      return (
+        <>
+          <a href={cell.url ?? undefined} target="_blank" rel="noreferrer" title={cell.url ?? undefined}>
+            {fmtMoney(cell.price, cell.currency)}
+            <div className="small">
+              {fmtFreshness(cell.fetchedAt)} {cell.stale && "⚠️"}
+            </div>
+          </a>
+          {cell.isManual && (
+            <div className="manual-badge-row">
+              <span className="badge manual-badge" title="Entered by hand, not from an automated source">
+                Manual
+              </span>
+              <button
+                className="edit-manual-btn"
+                onClick={() => openManualEntry(row.productId, s.id, { price: cell.price, url: cell.url })}
+                title="Edit this manual entry"
+              >
+                ✎
+              </button>
+            </div>
+          )}
+        </>
+      );
+    }
+    return (
+      <button className="add-manually-btn" onClick={() => openManualEntry(row.productId, s.id)} title={`Add a ${s.label} price manually`}>
+        + Add
+      </button>
+    );
+  }
+
+  function renderActions(row: PricingRow, status: RowStatus, suggestedValue: number | null) {
+    return (
+      <>
+        <button className="small-btn" onClick={() => publishSingle(row)} disabled={suggestedValue == null || status.state === "pending"}>
+          Publish
+        </button>
+        <button className="small-btn secondary" onClick={() => togglePriority(row)}>
+          {row.priority ? "Unflag priority" : "Flag priority"}
+        </button>
+      </>
+    );
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -412,211 +584,192 @@ export function PricingTable() {
             {sortDir === 1 ? "↑ Asc" : "↓ Desc"}
           </button>
         </div>
+        <div className="view-toggle">
+          <button type="button" className={`small-btn${viewMode === "table" ? "" : " secondary"}`} onClick={() => setViewMode("table")}>
+            Таблица
+          </button>
+          <button type="button" className={`small-btn${viewMode === "cards" ? "" : " secondary"}`} onClick={() => setViewMode("cards")}>
+            Карти
+          </button>
+        </div>
       </div>
 
-      <div className="pricing-cards">
-        {filteredSortedRows.map((row) => {
-          const status = rowStatus.get(row.productId) ?? { state: "idle" as const };
-          const suggestedValue = suggestedFor(row);
-          return (
-            <div className="pricing-card" key={row.productId}>
-              <div className="pricing-card-head">
-                <input type="checkbox" checked={selected.has(row.productId)} onChange={() => toggleRow(row.productId)} />
-                {row.imageUrl ? <img src={row.imageUrl} className="product-thumb" alt="" /> : <div className="product-thumb" />}
-                <div className="pricing-card-head-info">
-                  <div className="product-title">
-                    {row.title}
-                    {row.priority && <span className="tag" title="Always scraped every run">★</span>}
-                    {isCod && row.discountTagged && (
-                      <span className="tag" title={`Tagged "${data.formula?.config.discountTag}" in Shopify`}>
-                        намален
-                      </span>
+      {viewMode === "table" ? (
+        <div className="table-wrap">
+          <table className="pricing-table">
+            <thead>
+              <tr>
+                <th>
+                  <input type="checkbox" checked={allVisibleSelected} onChange={(e) => toggleSelectAll(e.target.checked)} />
+                </th>
+                <th>Product</th>
+                <th>Price</th>
+                <th>Compare-at</th>
+                <th>Active от</th>
+                {isCod && <th>Cost</th>}
+                {data.sources.map((s) => (
+                  <th key={s.id}>
+                    {s.label}
+                    {s.degraded && <span className="tag" title="Degraded — check Settings">!</span>}
+                  </th>
+                ))}
+                {!isCod && <th>Min</th>}
+                <th>{isCod ? "Δ% vs recommended" : "Δ% vs min"}</th>
+                {isCod && <th>Recommended compare-at</th>}
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSortedRows.map((row) => {
+                const status = rowStatus.get(row.productId) ?? { state: "idle" as const };
+                const suggestedValue = suggestedFor(row);
+                return (
+                  <tr key={row.productId}>
+                    <td>
+                      <input type="checkbox" checked={selected.has(row.productId)} onChange={() => toggleRow(row.productId)} />
+                    </td>
+                    <td>
+                      <div className="table-product-cell">{renderProductHead(row)}</div>
+                    </td>
+                    <td>
+                      <PriceCompare
+                        row={row}
+                        currency={currentStore.currency}
+                        isCod={isCod}
+                        suggestedValue={suggestedValue}
+                        onSuggestedChange={(v) => setSuggestedValue(row.productId, v)}
+                      />
+                    </td>
+                    <td>{fmtMoney(row.compareAtPrice, currentStore.currency)}</td>
+                    <td className="small">{fmtActivatedAt(row.activatedAt)}</td>
+                    {isCod && <td>{renderCostInput(row)}</td>}
+                    {data.sources.map((s) => (
+                      <td key={s.id} className={`source-cell${row.sourcePrices[s.id]?.stale ? " stale" : ""}`}>
+                        {renderSourceCell(row, s)}
+                      </td>
+                    ))}
+                    {!isCod && <td>{fmtMoney(row.minComp, currentStore.currency)}</td>}
+                    <td>{row.deltaPct != null ? `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%` : "—"}</td>
+                    {isCod && (
+                      <td title={row.recommendedComparePrice == null ? row.recommendedComparePriceReason ?? undefined : undefined}>
+                        {fmtMoney(row.recommendedComparePrice, currentStore.currency)}
+                      </td>
                     )}
-                    {isCod && row.markdownEligible && (
-                      <span className="tag" title={`${row.daysSinceActive} дни от "active" — цена над таван, готов за намаляване`}>
-                        🔻 markdown
-                      </span>
-                    )}
-                  </div>
-                  <div className="product-sku">
-                    {row.sku ?? "—"} {row.barcode ? `· ${row.barcode}` : ""}
-                  </div>
-                  {isCod && row.tags.length > 0 && <div className="small muted">{row.tags.join(", ")}</div>}
+                    <td>
+                      {status.state === "pending" && <span className="row-status-spinner">Publishing…</span>}
+                      {status.state === "success" && <span className="row-status-success">✓ Published</span>}
+                      {status.state === "error" && (
+                        <Link to="/publish-log" className="row-status-error" title={status.message}>
+                          ✕ Error
+                        </Link>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6, flexDirection: "column" }}>{renderActions(row, status, suggestedValue)}</div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredSortedRows.length === 0 && (
+                <tr>
+                  <td colSpan={8 + data.sources.length + (isCod ? 2 : 1)} className="muted" style={{ textAlign: "center", padding: 30 }}>
+                    No products match these filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="pricing-cards">
+          {filteredSortedRows.map((row) => {
+            const status = rowStatus.get(row.productId) ?? { state: "idle" as const };
+            const suggestedValue = suggestedFor(row);
+            return (
+              <div className="pricing-card" key={row.productId}>
+                <div className="pricing-card-head">
+                  <input type="checkbox" checked={selected.has(row.productId)} onChange={() => toggleRow(row.productId)} />
+                  <div className="pricing-card-head-info">{renderProductHead(row)}</div>
                 </div>
-              </div>
 
-              <div className="pricing-card-fields">
-                <div className="field">
-                  <span className="field-label">Our price</span>
-                  <span className="field-value">{fmtMoney(row.ourPrice, currentStore.currency)}</span>
-                </div>
-                <div className="field">
-                  <span className="field-label">Compare-at</span>
-                  <span className="field-value">{fmtMoney(row.compareAtPrice, currentStore.currency)}</span>
-                </div>
-                <div className="field">
-                  <span className="field-label">Active от</span>
-                  <span className="field-value small">{fmtActivatedAt(row.activatedAt)}</span>
-                </div>
-                {isCod && (
-                  <div className="field">
-                    <span className="field-label">Cost</span>
-                    <input
-                      className="suggested-input"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={costFor(row)}
-                      onChange={(e) => setCostDraft((cur) => new Map(cur).set(row.productId, e.target.value))}
-                      onBlur={(e) => saveCost(row, e.target.value)}
-                      placeholder="—"
-                      disabled={costSaving.has(row.productId)}
-                      title="Себестойност (покупна цена) — Cost.csv импорт или ръчно тук"
-                    />
-                  </div>
-                )}
-                {!isCod && (
-                  <div className="field">
-                    <span className="field-label">Min</span>
-                    <span className="field-value">{fmtMoney(row.minComp, currentStore.currency)}</span>
-                  </div>
-                )}
-                <div className="field">
-                  <span className="field-label">{isCod ? "Δ% vs recommended" : "Δ% vs min"}</span>
-                  <span className="field-value">{row.deltaPct != null ? `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%` : "—"}</span>
-                </div>
-                {isCod && (
-                  <div className="field" title={row.recommendedComparePrice == null ? row.recommendedComparePriceReason ?? undefined : undefined}>
-                    <span className="field-label">Recommended compare-at</span>
-                    <span className="field-value">{fmtMoney(row.recommendedComparePrice, currentStore.currency)}</span>
-                  </div>
-                )}
-              </div>
+                <PriceCompare
+                  row={row}
+                  currency={currentStore.currency}
+                  isCod={isCod}
+                  suggestedValue={suggestedValue}
+                  onSuggestedChange={(v) => setSuggestedValue(row.productId, v)}
+                />
 
-              {data.sources.length > 0 && (
-                <div className="pricing-card-sources">
-                  {data.sources.map((s) => {
-                    const cell = row.sourcePrices[s.id];
-                    const cellKey = `${row.productId}:${s.id}`;
-                    const isEditing = manualEntryOpen === cellKey;
-                    return (
-                      <div key={s.id} className={`field source-cell${cell?.stale ? " stale" : ""}`}>
+                <div className="pricing-card-fields">
+                  <div className="field">
+                    <span className="field-label">Compare-at</span>
+                    <span className="field-value">{fmtMoney(row.compareAtPrice, currentStore.currency)}</span>
+                  </div>
+                  <div className="field">
+                    <span className="field-label">Active от</span>
+                    <span className="field-value small">{fmtActivatedAt(row.activatedAt)}</span>
+                  </div>
+                  {isCod && (
+                    <div className="field">
+                      <span className="field-label">Cost</span>
+                      {renderCostInput(row)}
+                    </div>
+                  )}
+                  {!isCod && (
+                    <div className="field">
+                      <span className="field-label">Min</span>
+                      <span className="field-value">{fmtMoney(row.minComp, currentStore.currency)}</span>
+                    </div>
+                  )}
+                  <div className="field">
+                    <span className="field-label">{isCod ? "Δ% vs recommended" : "Δ% vs min"}</span>
+                    <span className="field-value">{row.deltaPct != null ? `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%` : "—"}</span>
+                  </div>
+                  {isCod && (
+                    <div className="field" title={row.recommendedComparePrice == null ? row.recommendedComparePriceReason ?? undefined : undefined}>
+                      <span className="field-label">Recommended compare-at</span>
+                      <span className="field-value">{fmtMoney(row.recommendedComparePrice, currentStore.currency)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {data.sources.length > 0 && (
+                  <div className="pricing-card-sources">
+                    {data.sources.map((s) => (
+                      <div key={s.id} className={`field source-cell${row.sourcePrices[s.id]?.stale ? " stale" : ""}`}>
                         <span className="field-label">
                           {s.label}
                           {s.degraded && <span className="tag" title="Degraded — check Settings">!</span>}
                         </span>
-                        {isEditing ? (
-                          <div className="manual-entry-form">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder={`Price (${currentStore.currency})`}
-                              value={manualPrice}
-                              onChange={(e) => setManualPrice(e.target.value)}
-                              autoFocus
-                            />
-                            <input
-                              type="text"
-                              placeholder="Listing URL"
-                              value={manualUrl}
-                              onChange={(e) => setManualUrl(e.target.value)}
-                            />
-                            {manualError && <div className="small row-status-error">{manualError}</div>}
-                            <div className="manual-entry-actions">
-                              <button
-                                className="small-btn"
-                                onClick={() => saveManualEntry(row.productId, s.id)}
-                                disabled={manualSaving}
-                              >
-                                Save
-                              </button>
-                              <button className="small-btn secondary" onClick={() => setManualEntryOpen(null)} disabled={manualSaving}>
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : cell ? (
-                          <>
-                            <a href={cell.url ?? undefined} target="_blank" rel="noreferrer" title={cell.url ?? undefined}>
-                              {fmtMoney(cell.price, cell.currency)}
-                              <div className="small">
-                                {fmtFreshness(cell.fetchedAt)} {cell.stale && "⚠️"}
-                              </div>
-                            </a>
-                            {cell.isManual && (
-                              <div className="manual-badge-row">
-                                <span className="badge manual-badge" title="Entered by hand, not from an automated source">
-                                  Manual
-                                </span>
-                                <button
-                                  className="edit-manual-btn"
-                                  onClick={() => openManualEntry(row.productId, s.id, { price: cell.price, url: cell.url })}
-                                  title="Edit this manual entry"
-                                >
-                                  ✎
-                                </button>
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <button className="add-manually-btn" onClick={() => openManualEntry(row.productId, s.id)} title={`Add a ${s.label} price manually`}>
-                            + Add
-                          </button>
-                        )}
+                        {renderSourceCell(row, s)}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
 
-              <div className="pricing-card-suggested">
-                <div className="field">
-                  <span className="field-label">{isCod ? "Recommended" : "Suggested"}</span>
-                  <input
-                    className="suggested-input"
-                    type="number"
-                    step="0.01"
-                    value={suggestedValue ?? ""}
-                    onChange={(e) => setSuggestedValue(row.productId, e.target.value)}
-                    placeholder="—"
-                  />
-                </div>
-                <span className={`badge flag-${row.flag}`}>{FLAG_LABELS[row.flag]}</span>
-              </div>
-
-              <div className="pricing-card-footer">
-                <div>
-                  {status.state === "pending" && <span className="row-status-spinner">Publishing…</span>}
-                  {status.state === "success" && <span className="row-status-success">✓ Published</span>}
-                  {status.state === "error" && (
-                    <Link to="/publish-log" className="row-status-error" title={status.message}>
-                      ✕ Error
-                    </Link>
-                  )}
-                </div>
-                <div className="pricing-card-actions">
-                  <button
-                    className="small-btn"
-                    onClick={() => publishSingle(row)}
-                    disabled={suggestedValue == null || status.state === "pending"}
-                  >
-                    Publish
-                  </button>
-                  <button className="small-btn secondary" onClick={() => togglePriority(row)}>
-                    {row.priority ? "Unflag priority" : "Flag priority"}
-                  </button>
+                <div className="pricing-card-footer">
+                  <div>
+                    {status.state === "pending" && <span className="row-status-spinner">Publishing…</span>}
+                    {status.state === "success" && <span className="row-status-success">✓ Published</span>}
+                    {status.state === "error" && (
+                      <Link to="/publish-log" className="row-status-error" title={status.message}>
+                        ✕ Error
+                      </Link>
+                    )}
+                  </div>
+                  <div className="pricing-card-actions">{renderActions(row, status, suggestedValue)}</div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-        {filteredSortedRows.length === 0 && (
-          <p className="muted" style={{ textAlign: "center", padding: 30, gridColumn: "1 / -1" }}>
-            No products match these filters.
-          </p>
-        )}
-      </div>
+            );
+          })}
+          {filteredSortedRows.length === 0 && (
+            <p className="muted" style={{ textAlign: "center", padding: 30, gridColumn: "1 / -1" }}>
+              No products match these filters.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

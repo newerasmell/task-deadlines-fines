@@ -423,13 +423,90 @@ table.pricing-table tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
-.pricing-card-suggested {
+.view-toggle {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.table-product-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+}
+
+/* The one comparison this whole page exists to make legible: what we
+   charge right now vs. what the engine proposes. Both numbers get equal
+   visual weight (large, bold) instead of blending into the surrounding
+   field grid, and the suggested side is tinted by its flag so "below
+   floor"/"above market" reads at a glance without reading the badge text. */
+.price-compare {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  padding: 8px 10px;
+  background: #f9fafc;
+  border-radius: var(--radius);
+}
+
+.price-compare-current {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.price-compare-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.price-compare-arrow {
+  color: var(--muted);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.price-compare-suggested {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border-left: 3px solid var(--muted);
+}
+
+.price-compare-suggested.flag-above-market {
+  border-left-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.price-compare-suggested.flag-competitive {
+  border-left-color: var(--success);
+  background: var(--success-bg);
+}
+
+.price-compare-suggested.flag-below-market {
+  border-left-color: var(--primary);
+  background: var(--info-bg);
+}
+
+.price-compare-suggested.flag-below-floor {
+  border-left-color: var(--amber);
+  background: var(--amber-bg);
+}
+
+.price-compare-suggested.flag-no-data {
+  border-left-color: var(--muted);
+  background: var(--gray-bg);
+}
+
+.suggested-input-big {
+  width: 110px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 4px 8px;
 }
 
 .pricing-card-footer {
