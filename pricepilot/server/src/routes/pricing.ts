@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { env } from "../lib/env";
 import { computeSuggestion } from "../services/suggestionEngine";
 import {
+  applySaleDiscount,
   computeK,
   computeMarkdown,
   flagForPrice,
@@ -323,10 +324,22 @@ async function sendCodPricingTable(
     // single/bulk Publish buttons already publish together, so "publish"
     // for one of these rows means exactly "show 140 crossed out, 91.90 live"
     // with no separate markdown-specific action needed.
-    const suggested = markdown.eligible ? markdown.suggestedPrice : variedPrice;
+    const preSaleSuggested = markdown.eligible ? markdown.suggestedPrice : variedPrice;
     const baseFromCoefficient = basePriceFor(product);
+    // The compare-at suggestion is computed off preSaleSuggested's own
+    // inputs (markdown vs. the coefficient-based base price), NOT touched
+    // by the sale cut below — a SALE tag discounts the SELLING price
+    // further, it never lowers the crossed-out "was" price.
     const recommendedComparePrice = markdown.eligible ? product.priceAtActivation : baseFromCoefficient.price;
     const recommendedComparePriceReason = markdown.eligible ? null : baseFromCoefficient.reason;
+
+    // "c_sale"-tagged (config.discountTag) items get an EXTRA cut on top of
+    // whatever's already suggested — the normal formula price, or the
+    // markdown ceiling if that's already kicked in — never below the
+    // product's own acquisition cost. See applySaleDiscount's own comment.
+    const coefficient = product.vendor ? coefficientByVendor.get(product.vendor) ?? null : null;
+    const sale = discountTagged ? applySaleDiscount(preSaleSuggested, coefficient, cost) : { applied: false, discountPct: null, preSalePrice: null, price: null };
+    const suggested = sale.applied && sale.price != null ? sale.price : preSaleSuggested;
 
     return {
       productId: product.id,
@@ -362,6 +375,9 @@ async function sendCodPricingTable(
       flag: cost == null ? "no-data" : flagForPrice(product.price, recommendedPrice),
       markdownEligible: markdown.eligible,
       daysSinceActive: markdown.daysSinceActive,
+      saleDiscountApplied: sale.applied && sale.price != null,
+      saleDiscountPct: sale.applied ? sale.discountPct : null,
+      salePreDiscountPrice: sale.applied ? sale.preSalePrice : null,
     };
   });
 

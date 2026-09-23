@@ -423,7 +423,11 @@ model CodFormulaConfig {
   fCost         Float    @default(5000) // other monthly costs
   roundStep     Float    @default(1)
   discountPct   Float    @default(50) // discount used to derive the compare-at (slashed) price
-  discountTag   String   @default("sale") // Shopify tag that marks a product as "discounted" in the UI
+  // Shopify tag that marks a product for the extra clearance cut applied on
+  // top of its current suggested price — see applySaleDiscount in
+  // codPricingEngine.ts. Also just shown as a badge in the UI for a product
+  // tagged but with no suggested price to discount yet.
+  discountTag   String   @default("c_sale")
   pricingScenario String @default("avg") // pess | avg | opt — which scenario's A/d/S feeds the price formula
   pricingN      Float    @default(1000) // N used for F/N in the price formula (not the live order count)
 

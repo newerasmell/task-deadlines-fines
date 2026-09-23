@@ -789,6 +789,12 @@ table.pricing-table tbody tr:hover {
   margin-left: 6px;
 }
 
+.tag-sale {
+  background: var(--danger-bg);
+  color: var(--danger);
+  cursor: help;
+}
+
 .settings-section {
   margin-bottom: 28px;
 }

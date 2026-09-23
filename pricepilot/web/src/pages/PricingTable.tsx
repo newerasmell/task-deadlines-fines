@@ -129,6 +129,11 @@ function PriceCompare({
           placeholder="—"
         />
         <span className={`badge flag-${row.flag}`}>{FLAG_LABELS[row.flag]}</span>
+        {row.saleDiscountApplied && (
+          <span className="price-compare-note">
+            SALE -{row.saleDiscountPct?.toFixed(0)}% от {fmtMoney(row.salePreDiscountPrice ?? null, currency)}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -148,6 +153,7 @@ export function PricingTable() {
   const [minDeltaPct, setMinDeltaPct] = useState("");
   const [coverageFilter, setCoverageFilter] = useState<"" | "3" | "2" | "1" | "0">("");
   const [markdownOnly, setMarkdownOnly] = useState(false);
+  const [saleOnly, setSaleOnly] = useState(false);
 
   const [sortKey, setSortKey] = useState<SortKey>("title");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
@@ -235,6 +241,7 @@ export function PricingTable() {
       rows = rows.filter((r) => r.matchedSourceCount === Number(coverageFilter));
     }
     if (markdownOnly) rows = rows.filter((r) => r.markdownEligible);
+    if (saleOnly) rows = rows.filter((r) => r.saleDiscountApplied);
 
     const dir = sortDir;
     const sorted = [...rows].sort((a, b) => {
@@ -247,7 +254,7 @@ export function PricingTable() {
       return ((av as number) - (bv as number)) * dir;
     });
     return sorted;
-  }, [data, flagFilter, vendorFilter, categoryFilter, search, minDeltaPct, coverageFilter, markdownOnly, sortKey, sortDir]);
+  }, [data, flagFilter, vendorFilter, categoryFilter, search, minDeltaPct, coverageFilter, markdownOnly, saleOnly, sortKey, sortDir]);
 
   // Groups filteredSortedRows by shopifyProductId, keeping each group at the
   // position of the first row of it the current sort/filter produced — a
@@ -524,7 +531,15 @@ export function PricingTable() {
           <div className="product-title">
             {row.title}
             {row.priority && <span className="tag" title="Always scraped every run">★</span>}
-            {isCod && row.discountTagged && (
+            {isCod && row.saleDiscountApplied && (
+              <span
+                className="tag tag-sale"
+                title={`Tagged "${data!.formula?.config.discountTag}" in Shopify — доп. ${row.saleDiscountPct?.toFixed(0)}% от ${fmtMoney(row.salePreDiscountPrice ?? null, currentStore!.currency)}`}
+              >
+                🏷 SALE -{row.saleDiscountPct?.toFixed(0)}%
+              </span>
+            )}
+            {isCod && row.discountTagged && !row.saleDiscountApplied && (
               <span className="tag" title={`Tagged "${data!.formula?.config.discountTag}" in Shopify`}>
                 намален
               </span>
@@ -749,6 +764,12 @@ export function PricingTable() {
           <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={markdownOnly} onChange={(e) => setMarkdownOnly(e.target.checked)} />
             Само за намаляване
+          </label>
+        )}
+        {isCod && (
+          <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={saleOnly} onChange={(e) => setSaleOnly(e.target.checked)} />
+            Само SALE
           </label>
         )}
       </div>
@@ -1308,8 +1329,8 @@ function CodFormulaPanel({
               <input type="number" step="1" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
             </label>
             <label>
-              Таг за "намален" продукт
-              <input value={discountTag} onChange={(e) => setDiscountTag(e.target.value)} placeholder="sale" />
+              SALE таг (доп. отстъпка 30–35% на база коеф. на марката)
+              <input value={discountTag} onChange={(e) => setDiscountTag(e.target.value)} placeholder="c_sale" />
             </label>
           </div>
 

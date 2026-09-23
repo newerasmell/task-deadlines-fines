@@ -191,6 +191,9 @@ export interface PricingRow {
   flag: RowFlag;
   markdownEligible?: boolean; // COD stores only — past the new-arrival wait window and still priced above the ceiling
   daysSinceActive?: number | null;
+  saleDiscountApplied?: boolean; // COD stores only — tagged with the SALE tag and an extra cut was applied on top of `suggested`
+  saleDiscountPct?: number | null; // 30-35, placed by the brand's coefficient — null unless saleDiscountApplied
+  salePreDiscountPrice?: number | null; // `suggested` before the SALE cut (the normal formula/markdown price) — null unless saleDiscountApplied
   activatedAt: string | null; // when this variant was first synced ACTIVE in Shopify — null if never observed active
 }
 
