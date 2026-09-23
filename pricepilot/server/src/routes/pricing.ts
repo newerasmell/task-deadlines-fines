@@ -40,11 +40,20 @@ pricingRouter.get("/:storeId", async (req, res) => {
     return sendCodPricingTable(res, store);
   }
 
-  const [products, sources, costs] = await Promise.all([
+  const [products, sources, costs, productCategories, categories] = await Promise.all([
     prisma.product.findMany({ where: { storeId: store.id }, orderBy: { title: "asc" } }),
     prisma.source.findMany({ where: { storeId: store.id }, orderBy: { createdAt: "asc" } }),
     prisma.cost.findMany({ where: { storeId: store.id } }),
+    prisma.productCategory.findMany({ where: { product: { storeId: store.id } }, select: { productId: true, categoryId: true } }),
+    prisma.category.findMany({ where: { storeId: store.id }, select: { id: true, title: true }, orderBy: { title: "asc" } }),
   ]);
+
+  const categoryIdsByProduct = new Map<string, string[]>();
+  for (const pc of productCategories) {
+    const list = categoryIdsByProduct.get(pc.productId) ?? [];
+    list.push(pc.categoryId);
+    categoryIdsByProduct.set(pc.productId, list);
+  }
 
   const activeSourceIds = new Set(sources.filter((s) => s.active).map((s) => s.id));
   const competitorPrices = await prisma.competitorPrice.findMany({
@@ -111,6 +120,7 @@ pricingRouter.get("/:storeId", async (req, res) => {
       barcode: product.barcode,
       imageUrl: product.imageUrl,
       tags: product.tags ? product.tags.split(",") : [],
+      categoryIds: categoryIdsByProduct.get(product.id) ?? [],
       cost,
       ourPrice: product.price,
       compareAtPrice: product.compareAtPrice,
@@ -131,6 +141,7 @@ pricingRouter.get("/:storeId", async (req, res) => {
 
   res.json({
     sources: sources.map((s) => ({ id: s.id, label: s.label, active: s.active, degraded: s.degraded, lastRefreshedAt: s.lastRefreshedAt })),
+    categories,
     rows,
     formula: null,
   });
@@ -147,7 +158,7 @@ async function sendCodPricingTable(
     markdownCeilingPct: number;
   }
 ) {
-  const [products, costs, config, productCategories, brands] = await Promise.all([
+  const [products, costs, config, productCategories, brands, categories] = await Promise.all([
     prisma.product.findMany({ where: { storeId: store.id }, orderBy: { title: "asc" } }),
     prisma.cost.findMany({ where: { storeId: store.id } }),
     prisma.codFormulaConfig.upsert({ where: { storeId: store.id }, create: { storeId: store.id }, update: {} }),
@@ -164,6 +175,7 @@ async function sendCodPricingTable(
       },
     }),
     prisma.brand.findMany({ where: { storeId: store.id } }),
+    prisma.category.findMany({ where: { storeId: store.id }, select: { id: true, title: true }, orderBy: { title: "asc" } }),
   ]);
 
   const costBySkuOrEan = new Map(costs.map((c) => [c.skuOrEan, c.cost]));
@@ -323,6 +335,7 @@ async function sendCodPricingTable(
       barcode: product.barcode,
       imageUrl: product.imageUrl,
       tags,
+      categoryIds: categoryIdsByProduct.get(product.id) ?? [],
       discountTagged,
       cost,
       costFromCategory: fromCategory,
@@ -348,6 +361,7 @@ async function sendCodPricingTable(
 
   res.json({
     sources: [],
+    categories,
     rows,
     formula: { config, avgCost, k, reason, scenario: scenario.key },
   });

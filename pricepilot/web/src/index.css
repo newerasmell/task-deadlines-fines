@@ -323,6 +323,57 @@ table.pricing-table tbody tr:hover {
   background: #fafbfd;
 }
 
+/* Frozen leading (checkbox + product) and trailing (actions) columns —
+   with ~15 columns of horizontal scroll on this table, it was easy to
+   lose track of which product a given cell belonged to, or to scroll
+   past the Publish button entirely. These stay pinned in view. */
+table.pricing-table th:nth-child(1),
+table.pricing-table td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  width: 36px;
+  z-index: 2;
+  background: var(--card);
+}
+
+table.pricing-table th:nth-child(2),
+table.pricing-table td:nth-child(2) {
+  position: sticky;
+  left: 36px;
+  z-index: 2;
+  background: var(--card);
+  box-shadow: 2px 0 4px rgba(41, 47, 76, 0.06);
+}
+
+table.pricing-table th:nth-child(1),
+table.pricing-table th:nth-child(2) {
+  background: #f9fafc;
+  z-index: 3;
+}
+
+table.pricing-table tbody tr:hover td:nth-child(1),
+table.pricing-table tbody tr:hover td:nth-child(2) {
+  background: #fafbfd;
+}
+
+table.pricing-table th:last-child,
+table.pricing-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--card);
+  box-shadow: -2px 0 4px rgba(41, 47, 76, 0.06);
+}
+
+table.pricing-table th:last-child {
+  background: #f9fafc;
+  z-index: 3;
+}
+
+table.pricing-table tbody tr:hover td:last-child {
+  background: #fafbfd;
+}
+
 .product-cell {
   display: flex;
   align-items: center;

@@ -163,6 +163,7 @@ export interface PricingRow {
   barcode: string | null;
   imageUrl: string | null;
   tags: string[];
+  categoryIds: string[];
   discountTagged?: boolean;
   cost: number | null;
   ourPrice: number;
@@ -186,6 +187,7 @@ export interface PricingRow {
 
 export interface PricingTableResponse {
   sources: { id: string; label: string; active: boolean; degraded: boolean; lastRefreshedAt: string | null }[];
+  categories: { id: string; title: string }[];
   rows: PricingRow[];
   formula: CodFormulaInfo | null;
 }

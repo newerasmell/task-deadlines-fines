@@ -57,6 +57,7 @@ export function PricingTable() {
 
   const [flagFilter, setFlagFilter] = useState<RowFlag | "">("");
   const [vendorFilter, setVendorFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [search, setSearch] = useState("");
   const [minDeltaPct, setMinDeltaPct] = useState("");
   const [coverageFilter, setCoverageFilter] = useState<"" | "3" | "2" | "1" | "0">("");
@@ -120,6 +121,7 @@ export function PricingTable() {
     let rows = data.rows;
     if (flagFilter) rows = rows.filter((r) => r.flag === flagFilter);
     if (vendorFilter) rows = rows.filter((r) => r.vendor === vendorFilter);
+    if (categoryFilter) rows = rows.filter((r) => r.categoryIds.includes(categoryFilter));
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       rows = rows.filter(
@@ -146,7 +148,7 @@ export function PricingTable() {
       return ((av as number) - (bv as number)) * dir;
     });
     return sorted;
-  }, [data, flagFilter, vendorFilter, search, minDeltaPct, coverageFilter, markdownOnly, sortKey, sortDir]);
+  }, [data, flagFilter, vendorFilter, categoryFilter, search, minDeltaPct, coverageFilter, markdownOnly, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 1 ? -1 : 1));
@@ -345,6 +347,16 @@ export function PricingTable() {
             </option>
           ))}
         </select>
+        {data.categories.length > 0 && (
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+            <option value="">All categories</option>
+            {data.categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           type="number"
           placeholder="Δ% > "
