@@ -374,6 +374,8 @@ export const en: Record<string, string> = {
     "Tasks with a changed date/time will be reviewed by the Ultimate Admin, and if deemed unjustified, a manual fine will be issued!",
   "Причина за промяна на срока": "Reason for the deadline change",
   "Опиши защо се налага тази промяна…": "Describe why this change is needed…",
+  'Тази задача вече е просрочена — смяната на срока нулира текущото ѝ ескалиране на глобата. Ако новият срок пак бъде пропуснат, ще получи нова глоба от начало (пак "1 ден закъснение"), вместо да продължи да расте — затова смяна на срока не спира повтарящите се глоби, ако задачата не бъде реално завършена.':
+    'This task is already overdue — changing its deadline resets its current fine escalation. If the new deadline is also missed, it will get a fresh fine from scratch (back to "1 day late") instead of continuing to escalate — so changing the deadline does not stop repeat fines unless the task actually gets completed.',
   "Трябва да опишеш причина за промяната на срока.": "You must describe the reason for changing the deadline.",
 
   // Voice-to-tasks
