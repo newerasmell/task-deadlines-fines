@@ -26,13 +26,20 @@ export function getLastGoogleMeetSyncResult(): { result: GoogleMeetSyncResult | 
 }
 
 // A per-meeting Drive subfolder can hold several files (the raw recording,
-// plus Meet/Gemini's own auto-generated Docs) — only the raw recording is
+// plus Meet/Gemini's own auto-generated Docs) — only actual recordings are
 // used. Meet/Gemini's own transcription is unreliable for Bulgarian (it can
 // come back empty even when the recording has plenty of real speech in it),
 // so those Docs are never read at all; Whisper, run ourselves on the actual
-// recording, is what handles Bulgarian correctly.
-function pickRecordingFile(files: DriveFile[]): DriveFile | null {
-  return files.find((f) => f.mimeType.startsWith("audio/") || f.mimeType.startsWith("video/")) ?? null;
+// recording(s), is what handles Bulgarian correctly. A subfolder can also
+// hold MORE THAN ONE recording — Meet splits a session into separate files
+// when it's paused and resumed, e.g. "Recording" and "Recording 2" side by
+// side — so every one is returned, not just the first found. Confirmed
+// live as the actual reason a second recording from the same meeting never
+// got picked up no matter how many times "Sync now" ran: each is its own
+// Drive file id, deduped independently via VoiceTranscript.meetRecordingId,
+// so returning only one silently and permanently hid the rest.
+function pickRecordingFiles(files: DriveFile[]): DriveFile[] {
+  return files.filter((f) => f.mimeType.startsWith("audio/") || f.mimeType.startsWith("video/"));
 }
 
 /**
@@ -50,8 +57,7 @@ async function listCandidateRecordingFiles(maxCount: number): Promise<DriveFile[
   const files: DriveFile[] = [];
   for (const item of topLevel) {
     if (isFolder(item.mimeType)) {
-      const recording = pickRecordingFile(await listFilesInFolder(item.id, 20));
-      if (recording) files.push(recording);
+      files.push(...pickRecordingFiles(await listFilesInFolder(item.id, 20)));
     } else if (item.mimeType.startsWith("audio/") || item.mimeType.startsWith("video/")) {
       files.push(item);
     }
