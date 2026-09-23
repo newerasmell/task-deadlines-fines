@@ -596,7 +596,7 @@ export function PricingTable() {
 
       {viewMode === "table" ? (
         <div className="table-wrap">
-          <table className="pricing-table">
+          <table className="pricing-table pricing-table-compact">
             <thead>
               <tr>
                 <th>
