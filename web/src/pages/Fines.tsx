@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { Fine, FineStatus, User } from "../api/types";
 import { Avatar } from "../components/Avatar";
@@ -319,7 +320,11 @@ export function Fines() {
                         </div>
                       </td>
                       <td data-label={t("Задача")}>
-                        {f.task?.title ?? <span className="muted">{t("Ръчна глоба")}</span>}
+                        {f.task ? (
+                          <Link to={`/tasks?search=${encodeURIComponent(f.task.title)}`}>{f.task.title}</Link>
+                        ) : (
+                          <span className="muted">{t("Ръчна глоба")}</span>
+                        )}
                       </td>
                       <td data-label={t("Причина")}>
                         {f.reason}

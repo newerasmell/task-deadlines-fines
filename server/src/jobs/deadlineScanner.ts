@@ -176,10 +176,26 @@ async function handleOverdueTasks(now: Date): Promise<void> {
       status: { in: OPEN_STATUSES as unknown as string[] },
       deadline: { lt: now },
     },
-    include: { assignee: true },
+    include: { assignee: true, template: { select: { active: true } } },
   });
 
   for (const task of overdue) {
+    // Deactivating/deleting a recurring template cancels the OPEN
+    // occurrences it has at that moment (see taskTemplatesRouter), but a
+    // task can be reopened into an OPEN_STATUSES status again afterward
+    // through an unrelated path (e.g. a submitted-for-review occurrence
+    // whose review later gets rejected) with no re-check of whether its
+    // template is still around. Checked fresh on every scan instead of
+    // only at deactivate/delete time, so no matter which path reopened
+    // it, an orphaned occurrence self-heals to CANCELLED here instead of
+    // resuming its daily fine — confirmed live as the actual mechanism
+    // behind a fine that kept recurring on a task whose recurring series
+    // had already been stopped.
+    if (task.templateId && task.template && !task.template.active) {
+      await prisma.task.update({ where: { id: task.id }, data: { status: "CANCELLED" } });
+      continue;
+    }
+
     const rule = await pickRuleForUser(task.assigneeId);
     if (!rule) continue; // No fine rule configured for this account; still mark overdue below.
 
@@ -333,11 +349,20 @@ async function sendUpcomingReviewReminders(now: Date): Promise<void> {
 async function handleOverdueReviews(now: Date): Promise<void> {
   const pendingReviews = await prisma.taskSubmission.findMany({
     where: { reviewStatus: "PENDING", reviewDueAt: { lt: now }, task: { deletedAt: null, status: "PENDING_REVIEW" } },
-    include: { task: { include: { owner: true } } },
+    include: { task: { include: { owner: true, template: { select: { active: true } } } } },
   });
 
   for (const submission of pendingReviews) {
     const task = submission.task;
+
+    // Same self-heal as handleOverdueTasks — a review this late on an
+    // occurrence whose recurring series is already gone isn't a live
+    // obligation for the Owner anymore either.
+    if (task.templateId && task.template && !task.template.active) {
+      await prisma.task.update({ where: { id: task.id }, data: { status: "CANCELLED" } });
+      continue;
+    }
+
     if (!task.ownerId || !task.owner) continue; // No owner assigned; nothing to fine.
 
     const rule = await pickRuleForUser(task.ownerId);

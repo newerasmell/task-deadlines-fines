@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, apiUpload, attachmentUrl } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
 import type { GoogleCalendarStatus, Priority, Task, TaskSubmission, User } from "../api/types";
@@ -56,7 +57,11 @@ export function Tasks() {
   const [expanded, setExpanded] = useState<{ taskId: string; mode: ExpandedMode } | null>(null);
   const [tab, setTab] = useState<Tab>("active");
   const [view, setView] = useState<ViewMode>(isAdmin ? "board" : "list");
-  const [search, setSearch] = useState("");
+  const [searchParams] = useSearchParams();
+  // A link from Fines (a fine on a task stuck open — see the deadline scanner)
+  // deep-links here with ?search=<title> so it's found without hunting through
+  // every board column manually.
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [filterEmployee, setFilterEmployee] = useState("");
   const [filterPriority, setFilterPriority] = useState<Priority | "">("");
   const [filterStatus, setFilterStatus] = useState<Task["status"] | "">("");
