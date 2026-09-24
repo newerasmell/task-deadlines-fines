@@ -119,6 +119,9 @@ export const logsAndMatching: Record<string, string> = {
   "— избери колекция —": "— choose a collection —",
   'Дни от "active"': 'Days since "active"',
   "Таван над формулата, %": "Ceiling above the formula, %",
+  'Таг за "нов" (маха се при публикуване)': 'Tag for "new" (removed on publish)',
+  'Ако продуктът има този таг в Shopify, той се маха автоматично в момента, в който публикуваш намалената цена за ред, маркиран за намаляване по-горе — витрината спира да го показва като "нов", защото вече е реално намален.':
+    'If the product has this tag in Shopify, it\'s removed automatically the moment you publish the marked-down price for a row flagged for markdown above — the storefront stops showing it as "new" since it\'s now genuinely marked down.',
   "Продажби": "Sales",
   "Тази функция не е включена за {name}. Включи я от Stores → {name} → Connection & pricing rule.":
     "This feature isn't enabled for {name}. Turn it on from Stores → {name} → Connection & pricing rule.",

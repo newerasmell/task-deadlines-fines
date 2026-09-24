@@ -42,6 +42,7 @@ const createSchema = z.object({
   markdownCollectionId: z.string().nullable().optional(),
   markdownAfterDays: z.number().int().positive().default(8),
   markdownCeilingPct: z.number().nonnegative().default(12.5),
+  newArrivalTag: z.string().default("c_newcollection"),
 });
 
 storesRouter.post("/", async (req, res) => {

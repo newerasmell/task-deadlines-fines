@@ -115,6 +115,13 @@ model Store {
   markdownCollection  Category? @relation("MarkdownCollection", fields: [markdownCollectionId], references: [id], onDelete: SetNull)
   markdownAfterDays   Int      @default(8)
   markdownCeilingPct  Float    @default(12.5)
+  // Shopify tag (e.g. used by the storefront theme to badge a product
+  // "NEW") automatically removed from a product the moment a markdown-
+  // eligible row's suggested price is actually published through this app
+  // — the badge should disappear once the item's price has genuinely been
+  // marked down, not linger just because nobody remembered to clear it by
+  // hand. Empty/blank disables the removal (nothing to remove).
+  newArrivalTag       String   @default("c_newcollection")
 
   // GA4 property to pull page views from (e.g. "properties/123456789") —
   // null means the page-views/conv-rate columns stay blank even with

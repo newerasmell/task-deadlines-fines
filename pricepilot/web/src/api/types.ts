@@ -56,6 +56,7 @@ export interface Store {
   markdownCollectionId: string | null;
   markdownAfterDays: number;
   markdownCeilingPct: number;
+  newArrivalTag: string;
   createdAt: string;
   updatedAt: string;
 }

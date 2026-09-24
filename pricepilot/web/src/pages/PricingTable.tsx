@@ -348,7 +348,10 @@ export function PricingTable() {
     setSelected(select ? new Set(filteredSortedRows.map((r) => r.productId)) : new Set());
   }
 
-  async function doPublish(items: { productId: string; newPrice: number; newCompareAtPrice?: number | null }[], mode: "single" | "bulk") {
+  async function doPublish(
+    items: { productId: string; newPrice: number; newCompareAtPrice?: number | null; removeNewArrivalTag?: boolean }[],
+    mode: "single" | "bulk"
+  ) {
     if (!currentStore) return;
     setRowStatus((cur) => {
       const next = new Map(cur);
@@ -361,7 +364,13 @@ export function PricingTable() {
         body: JSON.stringify({
           storeId: currentStore.id,
           mode,
-          items: items.map((i) => ({ productId: i.productId, newPrice: i.newPrice, setCompareAt, newCompareAtPrice: i.newCompareAtPrice })),
+          items: items.map((i) => ({
+            productId: i.productId,
+            newPrice: i.newPrice,
+            setCompareAt,
+            newCompareAtPrice: i.newCompareAtPrice,
+            removeNewArrivalTag: i.removeNewArrivalTag,
+          })),
         }),
       });
       setRowStatus((cur) => {
@@ -390,14 +399,25 @@ export function PricingTable() {
       !window.confirm(t('Публикувай {price} {currency} за "{title}"?', { price: price.toFixed(2), currency: currentStore?.currency ?? "", title: row.title }))
     )
       return;
-    doPublish([{ productId: row.productId, newPrice: price, newCompareAtPrice: row.recommendedComparePrice }], "single");
+    doPublish(
+      [{ productId: row.productId, newPrice: price, newCompareAtPrice: row.recommendedComparePrice, removeNewArrivalTag: row.markdownEligible }],
+      "single"
+    );
   }
 
   async function publishSelected() {
     const items = filteredSortedRows
       .filter((r) => selected.has(r.productId))
-      .map((r) => ({ productId: r.productId, newPrice: suggestedFor(r), newCompareAtPrice: r.recommendedComparePrice }))
-      .filter((i): i is { productId: string; newPrice: number; newCompareAtPrice: number | null } => i.newPrice != null);
+      .map((r) => ({
+        productId: r.productId,
+        newPrice: suggestedFor(r),
+        newCompareAtPrice: r.recommendedComparePrice,
+        removeNewArrivalTag: r.markdownEligible,
+      }))
+      .filter(
+        (i): i is { productId: string; newPrice: number; newCompareAtPrice: number | null; removeNewArrivalTag: boolean | undefined } =>
+          i.newPrice != null
+      );
     if (items.length === 0) return;
     const total = items.reduce((s, i) => s + i.newPrice, 0);
     if (

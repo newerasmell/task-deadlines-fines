@@ -16,6 +16,7 @@ const publishSchema = z.object({
         newPrice: z.number().positive(),
         setCompareAt: z.boolean().default(false),
         newCompareAtPrice: z.number().positive().nullable().optional(),
+        removeNewArrivalTag: z.boolean().optional(),
       })
     )
     .min(1),

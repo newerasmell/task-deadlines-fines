@@ -12,6 +12,12 @@ export interface PublishRequestItem {
   // price) — takes priority over setCompareAt's "old price becomes
   // compare-at" behavior when present.
   newCompareAtPrice?: number | null;
+  // True for a row the Pricing table currently shows as markdown-eligible
+  // (COD stores only — see codPricingEngine.ts's computeMarkdown) at the
+  // moment Publish was clicked — same trust level as newPrice/
+  // newCompareAtPrice above, which the frontend already computes from the
+  // same row. Triggers store.newArrivalTag's removal below.
+  removeNewArrivalTag?: boolean;
 }
 
 export interface PublishResultItem {
@@ -35,6 +41,26 @@ interface BulkUpdateResponse {
     productVariants: { id: string; price: string; compareAtPrice: string | null }[];
     userErrors: { field: string[] | null; message: string }[];
   };
+}
+
+const TAGS_REMOVE_MUTATION = `
+  mutation RemoveTags($id: ID!, $tags: [String!]!) {
+    tagsRemove(id: $id, tags: $tags) {
+      userErrors { field message }
+    }
+  }
+`;
+
+interface TagsRemoveResponse {
+  tagsRemove: { userErrors: { field: string[] | null; message: string }[] };
+}
+
+function hasTag(tagsCsv: string | null, tag: string): boolean {
+  if (!tagsCsv) return false;
+  return tagsCsv
+    .split(",")
+    .map((t) => t.trim().toLowerCase())
+    .includes(tag.trim().toLowerCase());
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -72,6 +98,8 @@ export async function publishPrices(
   const results: PublishResultItem[] = [];
 
   for (const [shopifyProductId, group] of byShopifyProduct) {
+    let removeTagRequested = false;
+
     for (const batch of chunk(group, MAX_VARIANTS_PER_CALL)) {
       const variantsInput = batch.map(({ local, item }) => {
         const input: Record<string, unknown> = {
@@ -128,6 +156,7 @@ export async function publishPrices(
               compareAtPrice: newCompareAt,
             },
           });
+          if (item.removeNewArrivalTag) removeTagRequested = true;
         }
 
         results.push({
@@ -136,6 +165,35 @@ export async function publishPrices(
           status,
           errorMessage: batchFailed ? errorMessage : undefined,
         });
+      }
+    }
+
+    // Clears the storefront's own "new arrival" badge tag the moment a
+    // markdown-eligible price actually lands on Shopify — never before a
+    // successful price publish, and only if the product still carries the
+    // tag (skips a pointless call otherwise; also means a product whose
+    // price was manually fixed in Shopify itself, bypassing this app,
+    // keeps its badge until published here).
+    if (removeTagRequested && store.newArrivalTag.trim()) {
+      const representative = group[0].local;
+      if (hasTag(representative.tags, store.newArrivalTag)) {
+        try {
+          await shopifyGraphQL<TagsRemoveResponse>(store, TAGS_REMOVE_MUTATION, {
+            id: shopifyProductId,
+            tags: [store.newArrivalTag],
+          });
+          const remainingTags = (representative.tags ?? "")
+            .split(",")
+            .filter((t) => t.trim().toLowerCase() !== store.newArrivalTag.trim().toLowerCase())
+            .join(",");
+          await prisma.product.updateMany({ where: { storeId: store.id, shopifyProductId }, data: { tags: remainingTags } });
+        } catch (err) {
+          // A failed tag removal never fails the price publish itself — the
+          // price is already live on Shopify by this point regardless, and
+          // the next catalog sync will pick the tag's true current state
+          // back up anyway.
+          console.error(`[publishEngine] failed to remove newArrivalTag for ${shopifyProductId}`, err);
+        }
       }
     }
   }

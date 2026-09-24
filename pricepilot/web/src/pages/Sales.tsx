@@ -156,6 +156,7 @@ function MarkdownSettingsPanel({
   const [collectionId, setCollectionId] = useState(store.markdownCollectionId ?? "");
   const [afterDays, setAfterDays] = useState(String(store.markdownAfterDays));
   const [ceilingPct, setCeilingPct] = useState(String(store.markdownCeilingPct));
+  const [newArrivalTag, setNewArrivalTag] = useState(store.newArrivalTag);
   const [saving, setSaving] = useState(false);
 
   async function save(patch: Record<string, unknown>) {
@@ -237,7 +238,24 @@ function MarkdownSettingsPanel({
             }}
           />
         </label>
+        <label>
+          {t('Таг за "нов" (маха се при публикуване)')}
+          <input
+            value={newArrivalTag}
+            disabled={saving}
+            placeholder="c_newcollection"
+            onChange={(e) => setNewArrivalTag(e.target.value)}
+            onBlur={(e) => {
+              if (e.target.value !== store.newArrivalTag) save({ newArrivalTag: e.target.value });
+            }}
+          />
+        </label>
       </div>
+      <p className="muted small" style={{ marginTop: 8, marginBottom: 0 }}>
+        {t(
+          'Ако продуктът има този таг в Shopify, той се маха автоматично в момента, в който публикуваш намалената цена за ред, маркиран за намаляване по-горе — витрината спира да го показва като "нов", защото вече е реално намален.'
+        )}
+      </p>
     </div>
   );
 }
