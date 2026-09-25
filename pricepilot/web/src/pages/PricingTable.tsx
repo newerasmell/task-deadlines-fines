@@ -1324,6 +1324,15 @@ function CodFormulaPanel({
         </button>
       </div>
 
+      {formula && formula.config.mode !== "cost" && currency.trim().toUpperCase() !== "EUR" && (
+        <div className="currency-warning-banner">
+          {t(
+            "⚠ Този магазин е във валута {currency}, не EUR — провери дали сумите F, A и S във формулата по-долу също са нанесени в {currency}, а не в евро еквивалент, иначе препоръчаните цени излизат грешни.",
+            { currency }
+          )}
+        </div>
+      )}
+
       {expanded && (
         <form className="form" onSubmit={handleSubmit}>
           <div className="form-row">
@@ -1419,12 +1428,12 @@ function CodFormulaPanel({
           {mode !== "cost" && (
             <div>
               <p className="muted small" style={{ margin: "8px 0 4px" }}>
-                {t("Сценарии (A = реклама/поръчка, d = delivery success rate %, S = доставка)")}
+                {t("Сценарии (A = реклама/поръчка, d = delivery success rate %, S = доставка) — A и S се въвеждат в реалната валута на магазина ({currency}), не в евро.", { currency })}
               </p>
               {scenarios.map((s) => (
                 <div className="form-row" key={s.key}>
                   <label>
-                    {t(SCENARIO_KEY_LABELS[s.key] ?? s.label)} — A
+                    {t(SCENARIO_KEY_LABELS[s.key] ?? s.label)} — A ({currency})
                     <input type="number" step="0.5" value={s.A} onChange={(e) => updateScenario(s.key, "A", e.target.value)} />
                   </label>
                   <label>
@@ -1432,7 +1441,7 @@ function CodFormulaPanel({
                     <input type="number" step="0.5" value={s.d} onChange={(e) => updateScenario(s.key, "d", e.target.value)} />
                   </label>
                   <label>
-                    S
+                    S ({currency})
                     <input type="number" step="0.5" value={s.S} onChange={(e) => updateScenario(s.key, "S", e.target.value)} />
                   </label>
                 </div>

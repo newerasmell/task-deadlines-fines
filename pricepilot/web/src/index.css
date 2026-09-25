@@ -286,6 +286,16 @@ button.small-btn {
   font-size: 0.85rem;
 }
 
+.currency-warning-banner {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid var(--amber);
+  background: var(--amber-bg);
+  color: var(--amber);
+  font-size: 0.85rem;
+}
+
 .filters-bar {
   display: flex;
   gap: 10px;

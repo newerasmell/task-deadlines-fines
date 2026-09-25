@@ -118,7 +118,10 @@ export const pricingTable: Record<string, string> = {
   "SALE отстъпка — макс. %": "SALE discount — max %",
   "SALE-таг-нат продукт взима допълнителна отстъпка между мин. и макс. % от вече изчислената Recommended цена, на база коефициента на марката (по-висок коефициент → по-близо до макс. %).":
     "A SALE-tagged product gets an extra discount between the min. and max. % off the already-computed Recommended price, based on the brand's coefficient (higher coefficient → closer to max. %).",
-  "Сценарии (A = реклама/поръчка, d = delivery success rate %, S = доставка)": "Scenarios (A = ad spend/order, d = delivery success rate %, S = shipping)",
+  "Сценарии (A = реклама/поръчка, d = delivery success rate %, S = доставка) — A и S се въвеждат в реалната валута на магазина ({currency}), не в евро.":
+    "Scenarios (A = ad spend/order, d = delivery success rate %, S = shipping) — A and S are entered in the store's real currency ({currency}), not in euros.",
+  "⚠ Този магазин е във валута {currency}, не EUR — провери дали сумите F, A и S във формулата по-долу също са нанесени в {currency}, а не в евро еквивалент, иначе препоръчаните цени излизат грешни.":
+    "⚠ This store's currency is {currency}, not EUR — check that the F, A and S amounts in the formula below are also entered in {currency}, not their euro equivalent, or the recommended prices will come out wrong.",
   "Агентска такса — прогресивна, по прагове на оборота": "Agency fee — progressive, by revenue threshold",
   "над 0": "over 0",
   "над {upper}": "over {upper}",
