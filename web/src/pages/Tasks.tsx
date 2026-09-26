@@ -165,6 +165,19 @@ export function Tasks() {
     refresh();
   }
 
+  async function reopenTask(tk: Task) {
+    const reason = window.prompt(
+      t('Причина за връщане на "{title}" обратно в работа (задължително):', { title: tk.title })
+    );
+    if (reason === null) return; // cancelled
+    if (!reason.trim()) {
+      window.alert(t("Трябва да опишеш причина."));
+      return;
+    }
+    await api(`/tasks/${tk.id}/reopen`, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) });
+    refresh();
+  }
+
   function isLockedTask(tk: Task) {
     return tk.createdBy.isSuperAdmin && !user?.isSuperAdmin;
   }
@@ -265,6 +278,7 @@ export function Tasks() {
             tasks={tasks}
             currentUserId={user?.id}
             isAdmin={isAdmin}
+            isSuperAdmin={Boolean(user?.isSuperAdmin)}
             onEdit={(taskId) => toggleExpanded(taskId, "edit")}
             onInfo={(taskId) => toggleExpanded(taskId, "info")}
             onStart={startWork}
@@ -272,6 +286,7 @@ export function Tasks() {
             onReview={(taskId) => toggleExpanded(taskId, "review")}
             onStatusChange={handleBoardStatusChange}
             onComplete={completeTask}
+            onReopen={reopenTask}
             isLockedTask={isLockedTask}
             googleConnected={googleConnected}
             onTaskUpdated={updateTaskInPlace}
@@ -503,6 +518,9 @@ export function Tasks() {
                         {isAdmin && !locked && tk.status !== "DONE" && tk.status !== "CANCELLED" && (
                           <RowMenuItem onClick={() => completeTask(tk)}>{t("Затвори като готова")}</RowMenuItem>
                         )}
+                        {user?.isSuperAdmin && (tk.status === "DONE" || tk.status === "CANCELLED") && (
+                          <RowMenuItem onClick={() => reopenTask(tk)}>{t("Върни в работа")}</RowMenuItem>
+                        )}
                         {isAdmin && !locked && <RowMenuItem onClick={() => deleteTask(tk)}>{t("Изтрий")}</RowMenuItem>}
                       </RowMenu>
                     </div>
@@ -588,6 +606,7 @@ function TaskBoard({
   tasks,
   currentUserId,
   isAdmin,
+  isSuperAdmin,
   onEdit,
   onInfo,
   onStart,
@@ -595,6 +614,7 @@ function TaskBoard({
   onReview,
   onStatusChange,
   onComplete,
+  onReopen,
   isLockedTask,
   googleConnected,
   onTaskUpdated,
@@ -602,6 +622,7 @@ function TaskBoard({
   tasks: Task[];
   currentUserId: string | undefined;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   onEdit: (taskId: string) => void;
   onInfo: (taskId: string) => void;
   onStart: (taskId: string) => void;
@@ -609,6 +630,7 @@ function TaskBoard({
   onReview: (taskId: string) => void;
   onStatusChange: (taskId: string, status: Task["status"]) => void;
   onComplete: (tk: Task) => void;
+  onReopen: (tk: Task) => void;
   isLockedTask: (tk: Task) => boolean;
   googleConnected: boolean;
   onTaskUpdated: (task: Task) => void;
@@ -730,6 +752,7 @@ function TaskBoard({
                         const canSubmitCard = isAssignee && (tk.status === "PENDING" || tk.status === "IN_PROGRESS" || tk.status === "OVERDUE");
                         const canReviewCard = (isOwner || isAdmin) && tk.status === "PENDING_REVIEW";
                         const canComplete = isAdmin && !locked && tk.status !== "DONE" && tk.status !== "CANCELLED";
+                        const canReopen = isSuperAdmin && (tk.status === "DONE" || tk.status === "CANCELLED");
                         const canClickToEdit = isAdmin && !locked;
                         const canDrag = isAdmin ? !locked : canStart;
                         return (
@@ -800,7 +823,7 @@ function TaskBoard({
                                 <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={onTaskUpdated} />
                               </div>
                             )}
-                            {(canStart || canSubmitCard || canReviewCard || canComplete) && (
+                            {(canStart || canSubmitCard || canReviewCard || canComplete || canReopen) && (
                               <div className="board-card-actions">
                                 {canStart && (
                                   <button
@@ -844,6 +867,17 @@ function TaskBoard({
                                     }}
                                   >
                                     {t("Затвори като готова")}
+                                  </button>
+                                )}
+                                {canReopen && (
+                                  <button
+                                    className="small-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onReopen(tk);
+                                    }}
+                                  >
+                                    {t("Върни в работа")}
                                   </button>
                                 )}
                               </div>

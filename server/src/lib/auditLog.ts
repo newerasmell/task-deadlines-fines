@@ -4,6 +4,7 @@ export type AdminAction =
   | "TASK_CREATED"
   | "TASK_UPDATED"
   | "TASK_DELETED"
+  | "TASK_REOPENED"
   | "FINE_CREATED"
   | "FINE_WAIVED"
   | "FINE_AMOUNT_EDITED"

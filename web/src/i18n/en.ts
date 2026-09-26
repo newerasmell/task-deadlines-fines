@@ -56,6 +56,7 @@ export const en: Record<string, string> = {
   "Създадена задача": "Task created",
   "Редактирана задача": "Task updated",
   "Изтрита задача": "Task deleted",
+  "Върната задача": "Task reopened",
   "Наложена глоба": "Fine issued",
   "Анулирана глоба": "Fine waived",
 
@@ -79,11 +80,15 @@ export const en: Record<string, string> = {
   "Редактирай": "Edit",
   "Изтрий": "Delete",
   "Затвори като готова": "Close as done",
+  "Върни в работа": "Reopen",
   "Действия": "Actions",
   'Наистина ли да изтрия "{title}"? Действието се записва в дневника.':
     'Delete "{title}"? This action is recorded in the audit log.',
   'Да маркирам "{title}" като завършена? Прескача се преглед от Owner.':
     'Mark "{title}" as done? This skips the Owner\'s review.',
+  'Причина за връщане на "{title}" обратно в работа (задължително):':
+    'Reason for reopening "{title}" (required):',
+  "Трябва да опишеш причина.": "You must describe a reason.",
   "Няма завършени задачи.": "No completed tasks.",
   "Няма активни задачи.": "No active tasks.",
   "Няма задачи.": "No tasks.",
@@ -403,6 +408,12 @@ export const en: Record<string, string> = {
   "Одобри всички": "Approve all",
   "Покажи транскрипта": "Show transcript",
   "Скрий транскрипта": "Hide transcript",
+  "Преизвлечи задачите": "Retry extraction",
+  "Преизвличам…": "Retrying…",
+  "Пуска Claude отново върху вече записания транскрипт — не пипа звука, само търси задачи наново.":
+    "Runs Claude again over the already-stored transcript — doesn't touch the audio, just looks for tasks again.",
+  "Намерени {n} задачи.": "Found {n} tasks.",
+  "Грешка при преизвличането.": "Error while retrying extraction.",
   "Покажи последните разговори (вкл. без намерени задачи)": "Show recent recordings (including ones with no tasks found)",
   "Скрий последните разговори": "Hide recent recordings",
   "Няма разговори още.": "No recordings yet.",

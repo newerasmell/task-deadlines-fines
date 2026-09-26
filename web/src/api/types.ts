@@ -219,7 +219,7 @@ export interface ChannelStatus {
   configured: boolean;
 }
 
-export type AdminAction = "TASK_CREATED" | "TASK_UPDATED" | "TASK_DELETED" | "FINE_CREATED" | "FINE_WAIVED";
+export type AdminAction = "TASK_CREATED" | "TASK_UPDATED" | "TASK_DELETED" | "TASK_REOPENED" | "FINE_CREATED" | "FINE_WAIVED";
 
 export interface AuditLogEntry {
   id: string;
@@ -236,6 +236,7 @@ export const ADMIN_ACTION_LABELS: Record<AdminAction, string> = {
   TASK_CREATED: "Създадена задача",
   TASK_UPDATED: "Редактирана задача",
   TASK_DELETED: "Изтрита задача",
+  TASK_REOPENED: "Върната задача",
   FINE_CREATED: "Наложена глоба",
   FINE_WAIVED: "Анулирана глоба",
 };

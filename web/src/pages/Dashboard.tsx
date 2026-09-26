@@ -10,6 +10,7 @@ const actionBadgeClass: Record<AuditLogEntry["action"], string> = {
   TASK_CREATED: "badge badge-success",
   TASK_UPDATED: "badge badge-info",
   TASK_DELETED: "badge badge-danger",
+  TASK_REOPENED: "badge badge-info",
   FINE_CREATED: "badge badge-danger",
   FINE_WAIVED: "badge",
 };

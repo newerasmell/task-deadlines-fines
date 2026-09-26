@@ -8,7 +8,7 @@ import { addBusinessHours } from "../lib/businessHours";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
 import { absoluteUploadPath, uploadAttachments } from "../lib/uploads";
-import { requireAdmin, requireAuth } from "../middleware/auth";
+import { requireAdmin, requireAuth, requireSuperAdmin } from "../middleware/auth";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
 import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
 import { spawnRecurringOccurrencesThrottled } from "../jobs/recurringTasks";
@@ -449,6 +449,70 @@ tasksRouter.post("/:id/complete", async (req, res) => {
   await activateNextChainStep(task, now);
 
   res.json({ ok: true });
+});
+
+const reopenSchema = z.object({ reason: z.string().min(1) });
+
+// Undoes a mistaken "done"/"cancelled" close — e.g. an admin fat-fingered
+// the wrong row. Ultimate Admin only (not a regular Admin, even one who
+// isn't locked out of the task otherwise): closing a task is a one-way door
+// for everyone else, on purpose, so reopening it needs the same top-level
+// authority and always leaves a paper trail of WHY. The reason is mandatory
+// and goes straight into the audit log entry, never silently dropped.
+tasksRouter.post("/:id/reopen", requireSuperAdmin, async (req, res) => {
+  const task = await prisma.task.findFirst({
+    where: { id: req.params.id, deletedAt: null },
+    include: { assignee: true, owner: true },
+  });
+  if (!task) return res.status(404).json({ error: "Not found" });
+
+  if (task.status !== "DONE" && task.status !== "CANCELLED") {
+    return res.status(400).json({ error: "Задачата не е приключена или отменена." });
+  }
+
+  const parsed = reopenSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Трябва да опишеш причина за връщането на задачата." });
+  }
+  const reason = parsed.data.reason.trim();
+  if (!reason) {
+    return res.status(400).json({ error: "Трябва да опишеш причина за връщането на задачата." });
+  }
+
+  const previousStatus = task.status;
+  const updated = await prisma.task.update({
+    where: { id: task.id },
+    data: { status: "PENDING", completedAt: null },
+    include: taskInclude,
+  });
+
+  await logAction(
+    req.user!.sub,
+    "TASK_REOPENED",
+    "Task",
+    task.id,
+    `Върната обратно задача "${task.title}" (беше ${previousStatus}). Причина: ${reason}`,
+    { previousStatus, reason }
+  );
+
+  await dispatchToAllChannels(toNotificationTarget(task.assignee), {
+    subject: `Задачата е върната обратно: ${task.title}`,
+    body: `Задача "${task.title}" беше върната обратно в работа от ${req.user!.email}.\nПричина: ${reason}`,
+    deadline: task.deadline,
+  });
+  if (task.owner && task.owner.id !== task.assignee.id) {
+    await dispatchToAllChannels(toNotificationTarget(task.owner), {
+      subject: `Задачата е върната обратно: ${task.title}`,
+      body: `Задача "${task.title}" (изпълнител: ${task.assignee.name}) беше върната обратно в работа от ${req.user!.email}.\nПричина: ${reason}`,
+      deadline: task.deadline,
+    });
+  }
+  await broadcastToAdmins({
+    subject: "Задача върната обратно",
+    body: `"${task.title}" (${task.assignee.name}) беше върната обратно от ${req.user!.email}.\nПричина: ${reason}`,
+  });
+
+  res.json(updated);
 });
 
 // --- Submit for review ---
