@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { DateTime } from "luxon";
 import { z } from "zod";
 import { addWorkingDays } from "./bulgarianDeadlines";
@@ -152,55 +153,55 @@ ${globalRules ? `\nОбщи правила за разпределяне (важ
 Върни САМО валиден JSON масив от такива обекти (обикновени "extracted" задачи и евентуални "ai_opportunity" предложения, смесени в един масив) — без markdown code fences (без \`\`\`), без обяснителен текст преди или след него. Ако в транскрипта няма никакви конкретни задачи, върни празен масив [].`;
 }
 
+// Constructed lazily (not at module load) so a missing key surfaces as the
+// Bulgarian error below instead of an SDK-thrown one the moment this file
+// is imported.
+let anthropicClient: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  if (!env.anthropicApiKey) {
+    throw new Error("ANTHROPIC_API_KEY не е зададен на сървъра — извличането на задачи изисква го.");
+  }
+  if (!anthropicClient) {
+    anthropicClient = new Anthropic({ apiKey: env.anthropicApiKey, baseURL: env.anthropicApiBaseUrl });
+  }
+  return anthropicClient;
+}
+
 async function callClaude(
   systemPrompt: string,
   userMessage: string
 ): Promise<{ text: string; inputTokens: number; outputTokens: number; stopReason: string | null }> {
-  if (!env.anthropicApiKey) {
-    throw new Error("ANTHROPIC_API_KEY не е зададен на сървъра — извличането на задачи изисква го.");
-  }
+  const client = getAnthropicClient();
 
-  const res = await fetch(`${env.anthropicApiBaseUrl}/v1/messages`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": env.anthropicApiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
-      // A long meeting (40+ minutes) can genuinely produce a dozen-plus
-      // tasks, each with a title/description/definition_of_done/quote — the
-      // old 4096 cap was silently truncating the JSON array mid-object on
-      // exactly those, which then failed to parse (surfaced as "Claude did
-      // not return valid JSON" with no hint that it was actually a length
-      // cutoff). Non-streaming, so kept well under the point token volumes
-      // this large would need streaming to avoid an HTTP timeout.
-      max_tokens: 16000,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    }),
+  // A long meeting (40+ minutes, easily a dozen-plus tasks) can genuinely
+  // need well more JSON than fits in a few thousand output tokens — each
+  // task's title/description/definition_of_done/source_quote alone can run
+  // several hundred tokens apiece. A lower non-streaming cap here was
+  // silently truncating the JSON array mid-object on exactly those meetings
+  // (confirmed live: a task-dense recording still got cut off, and the
+  // one retry, at the same cap, hit the identical wall) — surfaced as
+  // "Claude did not return valid JSON" with no hint it was actually a
+  // length cutoff. Streaming (required by the SDK for a max_tokens this
+  // large, to avoid the request timing out before the full response
+  // arrives) plus a much higher cap removes that ceiling for all but the
+  // most extreme recordings.
+  const stream = client.messages.stream({
+    model: process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
+    max_tokens: 64000,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userMessage }],
   });
+  const message = await stream.finalMessage();
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Claude API HTTP ${res.status}: ${body.slice(0, 500)}`);
-  }
-
-  const data = (await res.json()) as {
-    content: { type: string; text?: string }[];
-    usage?: { input_tokens: number; output_tokens: number };
-    stop_reason?: string;
-  };
-  const text = data.content
-    .filter((b) => b.type === "text" && b.text)
+  const text = message.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("");
   return {
     text,
-    inputTokens: data.usage?.input_tokens ?? 0,
-    outputTokens: data.usage?.output_tokens ?? 0,
-    stopReason: data.stop_reason ?? null,
+    inputTokens: message.usage.input_tokens,
+    outputTokens: message.usage.output_tokens,
+    stopReason: message.stop_reason,
   };
 }
 
