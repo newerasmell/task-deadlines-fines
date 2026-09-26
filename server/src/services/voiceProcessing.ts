@@ -19,30 +19,125 @@ export interface TranscribeInput {
   // Multi-segment in-app meeting recording (see Meeting.tsx): a long
   // recording is rotated client-side into sub-25MB chunks sharing this id,
   // each uploaded as its own request rather than one file that would blow
-  // past Whisper's hard 25MB cap. isFinalSegment marks the last one, which
-  // is when extraction actually runs (see POST /voice/transcribe).
+  // past Whisper's hard 25MB cap. segmentIndex is this chunk's own 0-based
+  // position in that recording; isFinalSegment marks the one the client
+  // stopped on, which is when it tells the server the true total segment
+  // count (segmentIndex + 1) — see storeSegment's own comment on why that
+  // request is NOT necessarily also the one that ends up running
+  // extraction.
   meetingSessionId?: string | null;
+  segmentIndex?: number | null;
   isFinalSegment?: boolean;
 }
 
-export async function transcribeAndStore(input: TranscribeInput): Promise<string> {
+export interface TranscribeStoreResult {
+  transcriptId: string;
+  // True once every expected segment (0..expectedSegmentCount-1) of a
+  // meetingSessionId recording has actually landed and been assembled into
+  // transcriptText in the right order — or immediately true for a plain
+  // one-shot upload/dictation/pregiven transcript, which is always
+  // "complete" the moment it's stored. The caller (POST /voice/transcribe,
+  // processJobInBackground) runs extraction if and only if this is true,
+  // instead of the old "this request happens to carry final:true" check.
+  readyForExtraction: boolean;
+}
+
+// Segment uploads fire back-to-back from the client without waiting for the
+// previous one's request to finish (see Meeting.tsx), and each segment's
+// own Whisper transcription call can take a meaningfully different amount
+// of time — a longer segment's audio simply takes Whisper longer to
+// transcribe. Nothing guarantees the request for the LAST-recorded segment
+// (the one carrying isFinalSegment) is also the LAST one to actually land
+// on the server; a shorter final segment's request can easily resolve
+// before an earlier, longer segment's does. Confirmed live: a 20+ minute
+// recording full of explicit task instructions came back with 0 extracted
+// tasks because the final segment's own (short) text was all that had
+// landed by the moment its request ran extraction — the earlier segments'
+// text arrived moments later, too late to matter.
+//
+// Fixed by storing each segment under its own segmentIndex (never blindly
+// string-concatenating whichever request happens to arrive next) and only
+// assembling+extracting once every expected index has actually landed —
+// whichever request happens to be the true last arrival is the one that
+// does it, not necessarily the one flagged final. extractionTriggeredAt is
+// an atomic claim (a single guarded UPDATE) so that if two segments'
+// requests both observe "we're complete" around the same moment, only one
+// of them actually wins the right to run extraction.
+async function storeSegment(
+  input: TranscribeInput,
+  result: { text: string; durationSeconds?: number }
+): Promise<TranscribeStoreResult> {
+  const sessionId = input.meetingSessionId!;
+  const segmentIndex = input.segmentIndex ?? 0;
+
+  let transcript = await prisma.voiceTranscript.findUnique({ where: { meetingSessionId: sessionId } });
+  if (!transcript) {
+    try {
+      transcript = await prisma.voiceTranscript.create({
+        data: {
+          source: input.source,
+          originalFilename: input.filename,
+          meetingSessionId: sessionId,
+          // Assembled from VoiceTranscriptSegment once every expected
+          // segment has landed — see below.
+          transcriptText: "",
+          createdById: input.createdById,
+        },
+      });
+    } catch {
+      // Lost the create race to another segment's request for the same
+      // session — it exists now, use that row instead of failing.
+      transcript = await prisma.voiceTranscript.findUniqueOrThrow({ where: { meetingSessionId: sessionId } });
+    }
+  }
+
+  // A retried segment (see Meeting.tsx's retrySegment) can resend the same
+  // index — upsert rather than create so that never fails on the unique
+  // constraint, it just overwrites with the fresher transcription.
+  await prisma.voiceTranscriptSegment.upsert({
+    where: { transcriptId_segmentIndex: { transcriptId: transcript.id, segmentIndex } },
+    create: { transcriptId: transcript.id, segmentIndex, text: result.text },
+    update: { text: result.text },
+  });
+
+  const data: { durationSeconds: number; whisperCostUsd: number; expectedSegmentCount?: number } = {
+    durationSeconds: (transcript.durationSeconds ?? 0) + (result.durationSeconds ?? 0),
+    whisperCostUsd: (transcript.whisperCostUsd ?? 0) + (input.pregivenTranscriptText ? 0 : estimateWhisperCostUsd(result.durationSeconds) ?? 0),
+  };
+  // Only the segment the client actually stopped recording on knows the
+  // true total (its own index + 1) — every other segment leaves this null.
+  if (input.isFinalSegment) data.expectedSegmentCount = segmentIndex + 1;
+  transcript = await prisma.voiceTranscript.update({ where: { id: transcript.id }, data });
+
+  if (transcript.expectedSegmentCount == null) return { transcriptId: transcript.id, readyForExtraction: false };
+
+  const segments = await prisma.voiceTranscriptSegment.findMany({
+    where: { transcriptId: transcript.id },
+    orderBy: { segmentIndex: "asc" },
+  });
+  if (segments.length < transcript.expectedSegmentCount) return { transcriptId: transcript.id, readyForExtraction: false };
+
+  // Every expected segment has landed — atomically claim the right to
+  // assemble+extract so a near-simultaneous arrival of two segments can
+  // never both trigger extraction for the same recording.
+  const claim = await prisma.voiceTranscript.updateMany({
+    where: { id: transcript.id, extractionTriggeredAt: null },
+    data: { extractionTriggeredAt: new Date() },
+  });
+  if (claim.count === 0) return { transcriptId: transcript.id, readyForExtraction: false };
+
+  const assembledText = segments.map((s) => s.text).join("\n");
+  await prisma.voiceTranscript.update({ where: { id: transcript.id }, data: { transcriptText: assembledText } });
+  return { transcriptId: transcript.id, readyForExtraction: true };
+}
+
+export async function transcribeAndStore(input: TranscribeInput): Promise<TranscribeStoreResult> {
   const result = input.pregivenTranscriptText
     ? { text: input.pregivenTranscriptText, language: undefined, durationSeconds: undefined }
     : await transcribeAudio(input.buffer, input.filename, input.mimeType);
 
   if (input.meetingSessionId) {
-    const existing = await prisma.voiceTranscript.findUnique({ where: { meetingSessionId: input.meetingSessionId } });
-    if (existing) {
-      const updated = await prisma.voiceTranscript.update({
-        where: { id: existing.id },
-        data: {
-          transcriptText: `${existing.transcriptText}\n${result.text}`,
-          durationSeconds: (existing.durationSeconds ?? 0) + (result.durationSeconds ?? 0),
-          whisperCostUsd: (existing.whisperCostUsd ?? 0) + (estimateWhisperCostUsd(result.durationSeconds) ?? 0),
-        },
-      });
-      return updated.id;
-    }
+    return storeSegment(input, result);
   }
 
   const transcript = await prisma.voiceTranscript.create({
@@ -50,7 +145,6 @@ export async function transcribeAndStore(input: TranscribeInput): Promise<string
       source: input.source,
       originalFilename: input.filename,
       meetRecordingId: input.meetRecordingId ?? null,
-      meetingSessionId: input.meetingSessionId ?? null,
       transcriptText: result.text,
       durationSeconds: result.durationSeconds ?? null,
       languageDetected: result.language ?? null,
@@ -58,7 +152,7 @@ export async function transcribeAndStore(input: TranscribeInput): Promise<string
       whisperCostUsd: input.pregivenTranscriptText ? null : estimateWhisperCostUsd(result.durationSeconds),
     },
   });
-  return transcript.id;
+  return { transcriptId: transcript.id, readyForExtraction: true };
 }
 
 interface ChainAssignment {
@@ -217,12 +311,13 @@ function errorMessageFor(err: unknown): string {
 export async function processJobInBackground(jobId: string, input: TranscribeInput): Promise<void> {
   try {
     await prisma.voiceProcessingJob.update({ where: { id: jobId }, data: { status: "TRANSCRIBING" } });
-    const transcriptId = await transcribeAndStore(input);
+    const { transcriptId, readyForExtraction } = await transcribeAndStore(input);
     await prisma.voiceProcessingJob.update({ where: { id: jobId }, data: { status: "EXTRACTING", transcriptId } });
-    // A non-final segment of a multi-part meeting recording is transcribed
-    // and appended, but extraction only runs once, on the final segment —
-    // Claude needs the whole conversation, not a fragment of it.
-    if (!input.meetingSessionId || input.isFinalSegment) {
+    // A segment of a multi-part meeting recording that isn't the true last
+    // arrival yet (see storeSegment) is transcribed and stored, but
+    // extraction only runs once every segment is actually in — Claude
+    // needs the whole conversation, not a fragment of it.
+    if (readyForExtraction) {
       await extractAndCreateDrafts(transcriptId);
     }
     await prisma.voiceProcessingJob.update({ where: { id: jobId }, data: { status: "DONE" } });

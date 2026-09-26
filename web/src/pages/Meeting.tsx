@@ -293,7 +293,7 @@ export function Meeting() {
 
   async function uploadSegment(segment: RecordedSegment) {
     const file = new File([segment.blob], segment.filename, { type: segment.mimeType });
-    const result = await submit(file, "meet", { sessionId: segment.sessionId, final: segment.isFinal });
+    const result = await submit(file, "meet", { sessionId: segment.sessionId, segmentIndex: segment.index, final: segment.isFinal });
     setSegments((prev) => prev.map((s) => (s.index === segment.index ? { ...s, status: result.ok ? "done" : "error" } : s)));
   }
 

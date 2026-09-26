@@ -496,6 +496,21 @@ model VoiceTranscript {
   // creating their own row. Null for a plain one-shot upload/dictation.
   meetingSessionId   String?  @unique
   transcriptText     String
+  // Set only once the FINAL segment's own upload has landed and told the
+  // server how many segments the recording actually had (segmentIndex + 1
+  // — the client only knows this once recording stops). Null for a
+  // plain one-shot upload/dictation and while the segmented recording is
+  // still mid-flight. Compared against VoiceTranscriptSegment's count for
+  // this transcript to decide when it's safe to assemble transcriptText
+  // and run extraction — see transcribeAndStore's own comment on why this
+  // can't just be "whichever request happens to carry `final: true`".
+  expectedSegmentCount Int?
+  // Atomic claim so exactly one segment's request ever triggers extraction
+  // — two segments can, in rare timing, both observe "all expected segments
+  // have landed" around the same moment; only the request whose updateMany
+  // actually flips this from null wins the right to assemble+extract, so
+  // extraction never runs twice for the same recording.
+  extractionTriggeredAt DateTime?
   durationSeconds    Int?
   languageDetected   String?
   createdById        String?
@@ -510,6 +525,36 @@ model VoiceTranscript {
 
   drafts         VoiceTaskDraft[]
   processingJobs VoiceProcessingJob[]
+  segments       VoiceTranscriptSegment[]
+}
+
+// One row per uploaded audio segment of a multi-part in-app meeting
+// recording (see Meeting.tsx's SEGMENT_ROTATE_MS rotation), keyed by its
+// own segmentIndex rather than appended in arrival order — segment uploads
+// fire back-to-back without waiting for the previous one's request to
+// finish, and each segment's own Whisper transcription call can take a
+// meaningfully different amount of time (a longer segment's audio takes
+// Whisper longer to transcribe), so nothing guarantees the LAST-recorded
+// segment's HTTP request is also the LAST to actually land on the server.
+// Storing each segment under its real index — instead of blindly
+// string-concatenating whichever request happens to arrive next — is what
+// lets transcribeAndStore assemble the final transcript in the conversation's
+// real chronological order once every segment (0..expectedSegmentCount-1)
+// is actually in, rather than running Claude extraction the moment the
+// `final: true` request happens to land, which used to fire on whatever
+// partial (sometimes near-empty) text had arrived by that random moment —
+// confirmed live: a 20+ minute recording full of explicit task instructions
+// came back with 0 extracted tasks because the short final segment's
+// request resolved before the earlier, longer segments' Whisper calls had.
+model VoiceTranscriptSegment {
+  id           String          @id @default(cuid())
+  transcriptId String
+  transcript   VoiceTranscript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  segmentIndex Int
+  text         String
+  createdAt    DateTime        @default(now())
+
+  @@unique([transcriptId, segmentIndex])
 }
 
 // One AI-extracted (or manually added) candidate task, staged for admin

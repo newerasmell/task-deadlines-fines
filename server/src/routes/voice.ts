@@ -58,10 +58,14 @@ voiceRouter.post("/transcribe", handleAudioUpload, async (req, res) => {
   // A long in-app meeting recording is rotated client-side into several
   // sub-25MB segments sharing one sessionId (see Meeting.tsx) rather than
   // uploaded as one file that would exceed Whisper's hard cap — every
-  // segment is transcribed and appended, but extraction only runs once,
-  // on the segment the client marks final.
+  // segment is transcribed and stored under its own segmentIndex, but
+  // extraction only runs once every segment has actually landed (see
+  // transcribeAndStore's readyForExtraction) — NOT simply whichever request
+  // happens to carry `final: true`, since segment uploads race each other
+  // and the final one isn't guaranteed to be the last to actually arrive.
   const sessionId = typeof req.body.sessionId === "string" && req.body.sessionId ? req.body.sessionId : null;
   const isFinalSegment = req.body.final !== "false";
+  const segmentIndex = typeof req.body.segmentIndex === "string" ? Number(req.body.segmentIndex) : null;
 
   const input = {
     buffer: req.file.buffer,
@@ -70,6 +74,7 @@ voiceRouter.post("/transcribe", handleAudioUpload, async (req, res) => {
     source,
     createdById: req.user!.sub,
     meetingSessionId: sessionId,
+    segmentIndex,
     isFinalSegment,
   };
 
@@ -79,8 +84,8 @@ voiceRouter.post("/transcribe", handleAudioUpload, async (req, res) => {
   // GET /voice/jobs/:id) so the request doesn't sit open for minutes.
   if (req.file.size <= env.voiceSyncMaxBytes) {
     try {
-      const transcriptId = await transcribeAndStore(input);
-      if (sessionId && !isFinalSegment) {
+      const { transcriptId, readyForExtraction } = await transcribeAndStore(input);
+      if (!readyForExtraction) {
         return res.json({ ok: true, sync: true, transcriptId, draftsCreated: 0, segment: true, final: false });
       }
       const draftsCreated = await extractAndCreateDrafts(transcriptId);

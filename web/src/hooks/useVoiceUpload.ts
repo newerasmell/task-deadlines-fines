@@ -42,14 +42,19 @@ export function useVoiceUpload() {
   }
 
   // segment is set only for one chunk of a rotated, multi-part meeting
-  // recording (see Meeting.tsx) — a non-final segment is transcribed and
-  // appended server-side but doesn't run extraction or touch `outcome`
+  // recording (see Meeting.tsx) — a segment whose upload doesn't complete
+  // the recording yet (server says so via `segment: true, final: false` in
+  // the response — never trust the caller's OWN `final` flag for this: a
+  // segment sent as final can still be told to wait if an earlier segment's
+  // request hasn't landed yet, see transcribeAndStore's readyForExtraction)
+  // is transcribed and stored server-side but doesn't touch `outcome`
   // (nothing new to show yet), so the caller can silently upload segments
-  // in the background and only surface a result once the final one lands.
+  // in the background and only surface a result once the recording is
+  // actually complete.
   async function submit(
     file: File,
     source: "upload" | "dictation" | "meet" = "upload",
-    segment?: { sessionId: string; final: boolean }
+    segment?: { sessionId: string; segmentIndex: number; final: boolean }
   ): Promise<{ ok: boolean }> {
     setBusy(true);
     if (!segment || segment.final) setOutcome(null);
@@ -59,18 +64,25 @@ export function useVoiceUpload() {
       form.append("source", source);
       if (segment) {
         form.append("sessionId", segment.sessionId);
+        form.append("segmentIndex", String(segment.segmentIndex));
         form.append("final", segment.final ? "true" : "false");
       }
       const res = await apiUpload<
         | { ok: true; sync: true; transcriptId: string; draftsCreated: number }
+        | { ok: true; sync: true; transcriptId: string; draftsCreated: 0; segment: true; final: false }
         | { ok: true; sync: false; jobId: string }
       >("/voice/transcribe", form);
 
-      if (segment && !segment.final) return { ok: true };
+      if (res.sync && "segment" in res && res.segment) return { ok: true };
 
       if (res.sync) {
         setOutcome({ kind: "sync", transcriptId: res.transcriptId, draftsCreated: res.draftsCreated });
-      } else {
+      } else if (!segment || segment.final) {
+        // A non-final segment that overflows onto the background-job path
+        // is intentionally not polled here — see this file's note above;
+        // whichever segment turns out to complete the recording still runs
+        // extraction and creates real drafts server-side either way, just
+        // without a live toast for that specific request.
         setOutcome({ kind: "job", status: "PENDING", errorMessage: null });
         pollJob(res.jobId);
       }

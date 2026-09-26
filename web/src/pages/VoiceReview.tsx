@@ -107,6 +107,21 @@ export function VoiceReview() {
     return Array.from(byTranscript.entries());
   }, [drafts]);
 
+  const [reextracting, setReextracting] = useState<string | null>(null);
+
+  async function reextractTranscript(id: string) {
+    setReextracting(id);
+    try {
+      const res = await api<{ ok: true; draftsCreated: number }>(`/voice/transcripts/${id}/reextract`, { method: "POST" });
+      window.alert(t("Намерени {n} задачи.", { n: String(res.draftsCreated) }));
+      await Promise.all([refresh(), refreshRecentTranscripts()]);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : t("Грешка при преизвличането."));
+    } finally {
+      setReextracting(null);
+    }
+  }
+
   async function approveAll(transcriptId: string) {
     const res = await api<{ approved: number; skipped: { title: string; reason: string }[] }>(
       `/voice/transcripts/${transcriptId}/approve-all`,
@@ -155,6 +170,14 @@ export function VoiceReview() {
                   </span>
                   <button className="small-btn secondary" onClick={() => toggleTranscript(tr.id)}>
                     {expandedTranscript === tr.id ? t("Скрий транскрипта") : t("Покажи транскрипта")}
+                  </button>
+                  <button
+                    className="small-btn secondary"
+                    disabled={reextracting === tr.id}
+                    onClick={() => reextractTranscript(tr.id)}
+                    title={t("Пуска Claude отново върху вече записания транскрипт — не пипа звука, само търси задачи наново.")}
+                  >
+                    {reextracting === tr.id ? t("Преизвличам…") : t("Преизвлечи задачите")}
                   </button>
                   {tr.source === "MEET" && (
                     <button className="small-btn secondary" onClick={() => deleteTranscript(tr.id)} title={t("Изтрий, за да се обработи наново при следваща синхронизация")}>
