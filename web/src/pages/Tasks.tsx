@@ -106,6 +106,16 @@ function TaggedTextarea({
   const [tagQuery, setTagQuery] = useState<string | null>(null);
   const [tagStart, setTagStart] = useState(0);
 
+  // Grows the box to fit whatever's typed instead of clipping it behind a
+  // manual drag handle — reset to "auto" first so it can shrink back down
+  // too (e.g. after deleting a paragraph), not just ever grow.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
   const suggestions = useMemo(() => {
     if (tagQuery === null) return [];
     const q = tagQuery.trim().toLowerCase();

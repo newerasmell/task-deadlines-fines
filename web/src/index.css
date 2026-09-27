@@ -1417,6 +1417,14 @@ button.task-tag-chip:hover {
   position: relative;
 }
 
+.tagged-textarea textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+}
+
 .tag-suggestions {
   position: absolute;
   z-index: 20;
