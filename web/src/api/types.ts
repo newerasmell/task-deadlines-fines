@@ -56,6 +56,14 @@ export interface TaskSubmission {
 
 export type DodSource = "stated" | "ai_suggested" | "admin";
 
+export interface ChainStepRef {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  chainOrder: number | null;
+  assignee: { id: string; name: string };
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -79,10 +87,16 @@ export interface Task {
   // Multi-step chain ("сложна задача") linkage — projectId is set on every
   // step; chainOrder/delayDaysAfterPrevious/previousStepId only on steps
   // past the first (null for a standalone task or the chain's first step).
+  // project/previousStep/nextStep are only populated by GET /tasks/:id (the
+  // single-task detail fetch), never by the list endpoint — see
+  // TaskInfoPanel, which fetches the detail view specifically to show them.
   projectId?: string | null;
+  project?: { id: string; title: string } | null;
   chainOrder?: number | null;
   delayDaysAfterPrevious?: number | null;
   previousStepId?: string | null;
+  previousStep?: ChainStepRef | null;
+  nextStep?: ChainStepRef | null;
   // "Push to Calendar" — set once this task has been pushed to whoever
   // pushed it's own Google Calendar; null/null/null means never pushed.
   googleEventId?: string | null;

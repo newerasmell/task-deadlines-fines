@@ -23,6 +23,18 @@ export const statusBadgeClass: Record<Task["status"], string> = {
   BLOCKED: "badge",
 };
 
+const REVIEW_STATUS_LABELS: Record<TaskSubmission["reviewStatus"], string> = {
+  PENDING: "Чака преглед",
+  APPROVED: "Одобрено",
+  REJECTED: "Отхвърлено",
+};
+
+const reviewStatusBadgeClass: Record<TaskSubmission["reviewStatus"], string> = {
+  PENDING: "badge badge-info",
+  APPROVED: "badge badge-success",
+  REJECTED: "badge badge-danger",
+};
+
 const BOARD_COLUMNS: { status: Task["status"]; label: string; color: string; droppable: boolean }[] = [
   { status: "BLOCKED", label: "Чака проект", color: "#c4c4c4", droppable: false },
   { status: "PENDING", label: "Чакаща", color: "#9d99b9", droppable: true },
@@ -326,28 +338,6 @@ export function Tasks() {
               />
             </Modal>
           )}
-          {expanded && expandedTask && expanded.mode === "info" && (
-            <Modal title={expandedTask.title} onClose={() => setExpanded(null)}>
-              <TaskInfoPanel
-                task={expandedTask}
-                isAdmin={isAdmin}
-                currentUserId={user?.id}
-                locked={isLockedTask(expandedTask)}
-                locale={locale}
-                onStart={(id) => {
-                  startWork(id);
-                  setExpanded(null);
-                }}
-                onSubmit={(id) => toggleExpanded(id, "submit")}
-                onReview={(id) => toggleExpanded(id, "review")}
-                onComplete={(tk) => {
-                  completeTask(tk);
-                  setExpanded(null);
-                }}
-                onEdit={(id) => toggleExpanded(id, "edit")}
-              />
-            </Modal>
-          )}
         </>
       ) : (
         <>
@@ -497,6 +487,7 @@ export function Tasks() {
                         <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={updateTaskInPlace} compact />
                       )}
                       <RowMenu label={t("Действия")}>
+                        <RowMenuItem onClick={() => toggleExpanded(tk.id, "info")}>{t("Детайли и история")}</RowMenuItem>
                         {isAssignee && tk.status === "PENDING" && (
                           <RowMenuItem onClick={() => startWork(tk.id)}>{t("Започни")}</RowMenuItem>
                         )}
@@ -597,6 +588,30 @@ export function Tasks() {
             </div>
           )}
         </>
+      )}
+      {expanded && expandedTask && expanded.mode === "info" && (
+        <Modal title={expandedTask.title} onClose={() => setExpanded(null)}>
+          <TaskInfoPanel
+            key={expanded.taskId}
+            taskId={expanded.taskId}
+            isAdmin={isAdmin}
+            currentUserId={user?.id}
+            locked={isLockedTask(expandedTask)}
+            locale={locale}
+            onStart={(id) => {
+              startWork(id);
+              setExpanded(null);
+            }}
+            onSubmit={(id) => toggleExpanded(id, "submit")}
+            onReview={(id) => toggleExpanded(id, "review")}
+            onComplete={(tk) => {
+              completeTask(tk);
+              setExpanded(null);
+            }}
+            onEdit={(id) => toggleExpanded(id, "edit")}
+            onNavigateToTask={(id) => toggleExpanded(id, "info")}
+          />
+        </Modal>
       )}
     </div>
   );
@@ -929,7 +944,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 function TaskInfoPanel({
-  task,
+  taskId,
   isAdmin,
   currentUserId,
   locked,
@@ -939,8 +954,9 @@ function TaskInfoPanel({
   onReview,
   onComplete,
   onEdit,
+  onNavigateToTask,
 }: {
-  task: Task;
+  taskId: string;
   isAdmin: boolean;
   currentUserId: string | undefined;
   locked: boolean;
@@ -950,8 +966,20 @@ function TaskInfoPanel({
   onReview: (taskId: string) => void;
   onComplete: (tk: Task) => void;
   onEdit: (taskId: string) => void;
+  onNavigateToTask: (taskId: string) => void;
 }) {
   const { t } = useI18n();
+  // The task list (GET /tasks) never carries submission history or chain
+  // neighbors — see the Task type's own comment — so this fetches the full
+  // single-task detail itself, the same way ReviewPanel does, rather than
+  // trusting whatever's already in the page's in-memory list.
+  const [task, setTask] = useState<Task | null>(null);
+  useEffect(() => {
+    api<Task>(`/tasks/${taskId}`).then(setTask);
+  }, [taskId]);
+
+  if (!task) return <p className="muted">{t("Зареждане…")}</p>;
+
   const isAssignee = task.assigneeId === currentUserId;
   const isOwner = task.ownerId === currentUserId;
   const canStart = isAssignee && task.status === "PENDING";
@@ -992,6 +1020,78 @@ function TaskInfoPanel({
         )}
       </dl>
       {task.description && <p className="task-info-description">{task.description}</p>}
+
+      {task.projectId && (
+        <div className="task-info-chain">
+          <h4>
+            {t("Сложна задача")}
+            {task.project ? ` — ${task.project.title}` : ""}
+            {task.chainOrder != null ? ` · ${t("стъпка {n}", { n: String(task.chainOrder) })}` : ""}
+          </h4>
+          {task.previousStep && (
+            <p className="muted small">
+              {t("Предходна стъпка:")}{" "}
+              <button type="button" className="link-button" onClick={() => onNavigateToTask(task.previousStep!.id)}>
+                {task.previousStep.title}
+              </button>{" "}
+              — {task.previousStep.assignee.name}{" "}
+              <span className={statusBadgeClass[task.previousStep.status]}>{t(STATUS_LABELS[task.previousStep.status])}</span>
+            </p>
+          )}
+          {task.nextStep && (
+            <p className="muted small">
+              {t("Следваща стъпка:")}{" "}
+              <button type="button" className="link-button" onClick={() => onNavigateToTask(task.nextStep!.id)}>
+                {task.nextStep.title}
+              </button>{" "}
+              — {task.nextStep.assignee.name}{" "}
+              <span className={statusBadgeClass[task.nextStep.status]}>{t(STATUS_LABELS[task.nextStep.status])}</span>
+            </p>
+          )}
+          {!task.previousStep && !task.nextStep && <p className="muted small">{t("Няма други стъпки в тази верига все още.")}</p>}
+        </div>
+      )}
+
+      {task.submissions && task.submissions.length > 0 && (
+        <div className="task-info-submissions">
+          <h4>{t("История на подаванията")}</h4>
+          {task.submissions.map((s) => (
+            <div key={s.id} className="task-submission-entry">
+              <p>
+                <strong>{s.submittedBy.name}</strong> {t("подаде на")} {new Date(s.createdAt).toLocaleString(locale)}{" "}
+                <span className={reviewStatusBadgeClass[s.reviewStatus]}>{t(REVIEW_STATUS_LABELS[s.reviewStatus])}</span>
+              </p>
+              {s.note && <p>{s.note}</p>}
+              {s.attachments.length > 0 && (
+                <div className="attachment-grid">
+                  {s.attachments.map((a) => {
+                    const url = attachmentUrl(task.id, s.id, a.id);
+                    const isImage = a.mimeType.startsWith("image/");
+                    return isImage ? (
+                      <a key={a.id} href={url} target="_blank" rel="noreferrer">
+                        <img src={url} alt={a.originalName} className="attachment-thumb" />
+                      </a>
+                    ) : (
+                      <a key={a.id} href={url} target="_blank" rel="noreferrer" className="attachment-file">
+                        📄 {a.originalName}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+              {s.reviewedBy && (
+                <p className="muted small">
+                  {s.reviewedAt
+                    ? t("Прегледано от {name} на {date}", { name: s.reviewedBy.name, date: new Date(s.reviewedAt).toLocaleString(locale) })
+                    : t("Прегледано от {name}", { name: s.reviewedBy.name })}
+                  {s.reviewNote ? `: ${s.reviewNote}` : ""}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="task-info-actions">
         {canStart && <button onClick={() => onStart(task.id)}>{t("Започни")}</button>}
         {canSubmitCard && <button onClick={() => onSubmit(task.id)}>{t("Подай за преглед")}</button>}

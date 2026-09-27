@@ -123,6 +123,17 @@ tasksRouter.get("/:id", async (req, res) => {
           attachments: true,
         },
       },
+      // The chain a "сложна задача" step belongs to — just enough of the
+      // one-hop-each neighbors for the info panel to show "what came before
+      // this / what comes after it" without fetching every step in the
+      // project. See ChainCard/TaskInfoPanel for how it's rendered.
+      project: { select: { id: true, title: true } },
+      previousStep: {
+        select: { id: true, title: true, status: true, chainOrder: true, assignee: { select: { id: true, name: true } } },
+      },
+      nextStep: {
+        select: { id: true, title: true, status: true, chainOrder: true, assignee: { select: { id: true, name: true } } },
+      },
     },
   });
   if (!task) return res.status(404).json({ error: "Not found" });
