@@ -37,7 +37,21 @@ const createSchema = z.object({
   pricingProfile: z.enum(["competitor", "cod_formula"]).default("competitor"),
   groupId: z.string().nullable().optional(),
   salesAnalyticsEnabled: z.boolean().default(false),
-  ga4PropertyId: z.string().nullable().optional(),
+  // GA4's own admin panel shows the bare numeric property id (e.g.
+  // "550942906") with no "properties/" prefix anywhere on that screen, but
+  // the Data API call in ga4Client.ts needs that exact prefix — pasting the
+  // number as shown silently 404s against the wrong resource path. Accept
+  // either form and always store the one the API actually needs.
+  ga4PropertyId: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => {
+      if (v == null) return v;
+      const trimmed = v.trim();
+      if (!trimmed) return null;
+      return trimmed.startsWith("properties/") ? trimmed : `properties/${trimmed}`;
+    }),
   markdownEnabled: z.boolean().default(false),
   markdownCollectionId: z.string().nullable().optional(),
   markdownAfterDays: z.number().int().positive().default(8),

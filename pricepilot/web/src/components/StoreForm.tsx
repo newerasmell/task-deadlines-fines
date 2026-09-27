@@ -193,9 +193,12 @@ export function StoreForm({
             <input
               value={ga4PropertyId}
               onChange={(e) => setGa4PropertyId(e.target.value)}
-              placeholder="properties/123456789"
+              placeholder="550942906"
             />
           </label>
+          <p className="muted small" style={{ margin: "-6px 0 8px" }}>
+            {t('Само номера от GA4 (Admin → Property details → "PROPERTY ID") — не е нужно да пишеш "properties/" отпред, добавя се автоматично.')}
+          </p>
         </>
       )}
       {error && <div className="error-text">{error}</div>}

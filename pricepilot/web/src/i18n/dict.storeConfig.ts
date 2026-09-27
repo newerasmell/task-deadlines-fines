@@ -117,5 +117,7 @@ export const storeConfig: Record<string, string> = {
     "scope granted to this store's Shopify app — add it under dev.shopify.com → your app → Configuration, then reinstall to the store.",
   "GA4 property (незадължително, за прегледи на страници/конверсия)":
     "GA4 property (optional, for page views/conversion rate)",
+  'Само номера от GA4 (Admin → Property details → "PROPERTY ID") — не е нужно да пишеш "properties/" отпред, добавя се автоматично.':
+    'Just the number from GA4 (Admin → Property details → "PROPERTY ID") — no need to type "properties/" in front, it\'s added automatically.',
   "Добави магазин": "Add store",
 };
