@@ -54,7 +54,7 @@ function sanitizeTagTitle(title: string): string {
 // inline clickable chips — used wherever free text a task's own tag can
 // appear is displayed, so "click on it and find what was written" actually
 // works instead of showing the raw markup.
-function DescriptionText({ text, onNavigateToTask }: { text: string; onNavigateToTask: (taskId: string) => void }) {
+export function DescriptionText({ text, onNavigateToTask }: { text: string; onNavigateToTask: (taskId: string) => void }) {
   const parts: ReactNode[] = [];
   let lastIndex = 0;
   let key = 0;
@@ -1065,7 +1065,7 @@ function TaskBoard({
   );
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -1089,7 +1089,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function TaskInfoPanel({
+export function TaskInfoPanel({
   taskId,
   isAdmin,
   currentUserId,
@@ -1111,7 +1111,7 @@ function TaskInfoPanel({
   onSubmit: (taskId: string) => void;
   onReview: (taskId: string) => void;
   onComplete: (tk: Task) => void;
-  onEdit: (taskId: string) => void;
+  onEdit?: (taskId: string) => void;
   onNavigateToTask: (taskId: string) => void;
 }) {
   const { t } = useI18n();
@@ -1247,7 +1247,7 @@ function TaskInfoPanel({
         {canSubmitCard && <button onClick={() => onSubmit(task.id)}>{t("Подай за преглед")}</button>}
         {canReviewCard && <button onClick={() => onReview(task.id)}>{t("Прегледай")}</button>}
         {canComplete && <button onClick={() => onComplete(task)}>{t("Затвори като готова")}</button>}
-        {isAdmin && !locked && (
+        {isAdmin && !locked && onEdit && (
           <button className="secondary" onClick={() => onEdit(task.id)}>
             {t("Редактирай")}
           </button>

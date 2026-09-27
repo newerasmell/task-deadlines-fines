@@ -49,6 +49,28 @@ function visibleToUser(
   return isAdmin || task.assigneeId === userId || task.ownerId === userId || task.createdById === userId;
 }
 
+// A task the user can't otherwise see (not assignee/owner/creator/admin) is
+// still readable if it's reachable from a task they CAN see — either as the
+// chain predecessor/successor of a "сложна задача" step, or via a
+// #[...](task:ID) reference in that visible task's description. Without
+// this, clicking a chain link or task-tag chip 403s the moment the linked
+// task belongs to someone else — exactly the case those features exist for.
+async function visibleViaLink(task: { id: string; previousStepId: string | null }, userId: string) {
+  const linkOr: Array<Record<string, unknown>> = [
+    { previousStepId: task.id },
+    { description: { contains: `(task:${task.id})` } },
+  ];
+  if (task.previousStepId) linkOr.push({ id: task.previousStepId });
+  const bridge = await prisma.task.findFirst({
+    where: {
+      deletedAt: null,
+      AND: [{ OR: [{ assigneeId: userId }, { ownerId: userId }, { createdById: userId }] }, { OR: linkOr }],
+    },
+    select: { id: true },
+  });
+  return !!bridge;
+}
+
 // Accepts a Bearer header (normal API calls) OR a `?token=` query param, since
 // an <img src> tag can't set request headers — used only for the attachment
 // download route below, which is registered before the router-wide requireAuth.
@@ -138,7 +160,9 @@ tasksRouter.get("/:id", async (req, res) => {
   });
   if (!task) return res.status(404).json({ error: "Not found" });
   if (!visibleToUser(task, req.user!.sub, req.user!.role === "ADMIN")) {
-    return res.status(403).json({ error: "Not allowed" });
+    if (!(await visibleViaLink(task, req.user!.sub))) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
   }
   res.json(task);
 });

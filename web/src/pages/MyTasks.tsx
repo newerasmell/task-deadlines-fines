@@ -7,7 +7,7 @@ import { PushToCalendarButton } from "../components/PushToCalendarButton";
 import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
-import { ReviewPanel, SubmitForm, statusBadgeClass } from "./Tasks";
+import { DescriptionText, Modal, ReviewPanel, SubmitForm, TaskInfoPanel, statusBadgeClass } from "./Tasks";
 
 type Tab = "active" | "review" | "completed";
 
@@ -22,6 +22,7 @@ export function MyTasks() {
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
+  const [infoTaskId, setInfoTaskId] = useState<string | null>(null);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [completedLimit, setCompletedLimit] = useState(20);
 
@@ -81,6 +82,8 @@ export function MyTasks() {
   });
   const visible = tab === "completed" ? allVisible.slice(0, completedLimit) : allVisible;
   const hasMoreCompleted = tab === "completed" && allVisible.length > completedLimit;
+  const infoTask = infoTaskId ? tasks.find((tk) => tk.id === infoTaskId) : null;
+  const infoTaskLocked = infoTask ? isLockedTask(infoTask) : false;
 
   return (
     <div>
@@ -160,7 +163,7 @@ export function MyTasks() {
                         )}
                       </div>
                       <div className={`muted small cell-description${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
-                        {tk.description}
+                        {tk.description && <DescriptionText text={tk.description} onNavigateToTask={setInfoTaskId} />}
                       </div>
                     </div>
                   </div>
@@ -192,6 +195,7 @@ export function MyTasks() {
                       <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={updateTaskInPlace} compact />
                     )}
                     <RowMenu label={t("Действия")}>
+                      <RowMenuItem onClick={() => setInfoTaskId(tk.id)}>{t("Детайли и история")}</RowMenuItem>
                       {isAssignee && tk.status === "PENDING" && (
                         <RowMenuItem onClick={() => startWork(tk.id)}>{t("Започни")}</RowMenuItem>
                       )}
@@ -254,6 +258,35 @@ export function MyTasks() {
           </div>
         )}
       </div>
+      {infoTaskId && (
+        <Modal title={t("Детайли и история")} onClose={() => setInfoTaskId(null)}>
+          <TaskInfoPanel
+            key={infoTaskId}
+            taskId={infoTaskId}
+            isAdmin={isAdmin}
+            currentUserId={user?.id}
+            locked={infoTaskLocked}
+            locale={locale}
+            onStart={(id) => {
+              startWork(id);
+              setInfoTaskId(null);
+            }}
+            onSubmit={(id) => {
+              setSubmittingId(id);
+              setInfoTaskId(null);
+            }}
+            onReview={(id) => {
+              setReviewingId(id);
+              setInfoTaskId(null);
+            }}
+            onComplete={(tk) => {
+              completeTask(tk);
+              setInfoTaskId(null);
+            }}
+            onNavigateToTask={(id) => setInfoTaskId(id)}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
