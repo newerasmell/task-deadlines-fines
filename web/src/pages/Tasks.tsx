@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, apiUpload, attachmentUrl } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
@@ -34,6 +34,149 @@ const reviewStatusBadgeClass: Record<TaskSubmission["reviewStatus"], string> = {
   APPROVED: "badge badge-success",
   REJECTED: "badge badge-danger",
 };
+
+// Inline "tag" syntax for referencing another task from free text (a
+// description, for now) — typed as `#` + a live search in TaggedTextarea,
+// stored as `#[Title](task:ID)` so the raw text stays readable even before
+// it's rendered (e.g. reopening the edit form). The title is a snapshot
+// taken at insert time (purely cosmetic, can go stale if the target is
+// later renamed) — DescriptionText always resolves the click by ID, never
+// by the stored title.
+const TASK_TAG_REGEX = /#\[([^\]]+)\]\(task:([a-zA-Z0-9_-]+)\)/g;
+
+// `[`, `]`, `(`, `)` in a title would break the token's own delimiters —
+// stripped rather than escaped, since this is a display snapshot anyway.
+function sanitizeTagTitle(title: string): string {
+  return title.replace(/[[\]()]/g, " ").trim();
+}
+
+// Renders a description/note that may contain `#[Title](task:ID)` tags as
+// inline clickable chips — used wherever free text a task's own tag can
+// appear is displayed, so "click on it and find what was written" actually
+// works instead of showing the raw markup.
+function DescriptionText({ text, onNavigateToTask }: { text: string; onNavigateToTask: (taskId: string) => void }) {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let key = 0;
+  const regex = new RegExp(TASK_TAG_REGEX);
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text))) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    const [full, title, taskId] = match;
+    parts.push(
+      <button
+        key={`tag-${key++}`}
+        type="button"
+        className="task-tag-chip"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNavigateToTask(taskId);
+        }}
+      >
+        🔗 {title}
+      </button>
+    );
+    lastIndex = match.index + full.length;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return <>{parts}</>;
+}
+
+// A plain textarea plus a "#" mention-style autocomplete for inserting task
+// tags — typing "#" opens a live-filtered list of tasks (by title); picking
+// one inserts the tag token at the cursor. excludeId keeps a task from
+// tagging itself while being edited.
+function TaggedTextarea({
+  value,
+  onChange,
+  tasks,
+  excludeId,
+  rows = 2,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  tasks: Task[];
+  excludeId?: string;
+  rows?: number;
+  placeholder?: string;
+}) {
+  const { t } = useI18n();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [tagQuery, setTagQuery] = useState<string | null>(null);
+  const [tagStart, setTagStart] = useState(0);
+
+  const suggestions = useMemo(() => {
+    if (tagQuery === null) return [];
+    const q = tagQuery.trim().toLowerCase();
+    const pool = tasks.filter((tk) => tk.id !== excludeId && (!q || tk.title.toLowerCase().includes(q)));
+    return pool.slice(0, 8);
+  }, [tagQuery, tasks, excludeId]);
+
+  function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
+    const next = e.target.value;
+    onChange(next);
+    const caret = e.target.selectionStart ?? next.length;
+    const match = next.slice(0, caret).match(/#([^\s#]*)$/);
+    if (match) {
+      setTagQuery(match[1]);
+      setTagStart(caret - match[0].length);
+    } else {
+      setTagQuery(null);
+    }
+  }
+
+  function insertTag(tk: Task) {
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    const token = `#[${sanitizeTagTitle(tk.title)}](task:${tk.id}) `;
+    const next = value.slice(0, tagStart) + token + value.slice(caret);
+    onChange(next);
+    setTagQuery(null);
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) return;
+      const pos = tagStart + token.length;
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(pos, pos);
+    });
+  }
+
+  return (
+    <div className="tagged-textarea">
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={handleChange}
+        onBlur={() => setTagQuery(null)}
+        rows={rows}
+        placeholder={placeholder}
+      />
+      {tagQuery !== null && (
+        <div className="tag-suggestions">
+          {suggestions.length > 0 ? (
+            suggestions.map((tk) => (
+              <button
+                type="button"
+                key={tk.id}
+                className="tag-suggestion-item"
+                // mousedown (not click) + preventDefault so the textarea
+                // never loses focus/fires onBlur before the pick registers.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  insertTag(tk);
+                }}
+              >
+                {tk.title}
+              </button>
+            ))
+          ) : (
+            <div className="tag-suggestion-empty muted small">{t("Няма съвпадения")}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const BOARD_COLUMNS: { status: Task["status"]; label: string; color: string; droppable: boolean }[] = [
   { status: "BLOCKED", label: "Чака проект", color: "#c4c4c4", droppable: false },
@@ -252,6 +395,7 @@ export function Tasks() {
       {showForm && (
         <TaskForm
           employees={employees}
+          tasks={tasks}
           onSaved={() => {
             setShowForm(false);
             refresh();
@@ -308,6 +452,7 @@ export function Tasks() {
               <TaskForm
                 task={expandedTask}
                 employees={employees}
+                tasks={tasks}
                 onSaved={() => {
                   setExpanded(null);
                   refresh();
@@ -455,7 +600,7 @@ export function Tasks() {
                           )}
                         </div>
                         <div className={`muted small cell-description${expandedDescIds.has(tk.id) ? " expanded" : ""}`}>
-                          {tk.description}
+                          {tk.description && <DescriptionText text={tk.description} onNavigateToTask={(id) => toggleExpanded(id, "info")} />}
                         </div>
                       </div>
                     </div>
@@ -543,6 +688,7 @@ export function Tasks() {
                       <TaskForm
                         task={tk}
                         employees={employees}
+                        tasks={tasks}
                         onSaved={() => {
                           setExpanded(null);
                           refresh();
@@ -1019,7 +1165,11 @@ function TaskInfoPanel({
           </>
         )}
       </dl>
-      {task.description && <p className="task-info-description">{task.description}</p>}
+      {task.description && (
+        <p className="task-info-description">
+          <DescriptionText text={task.description} onNavigateToTask={onNavigateToTask} />
+        </p>
+      )}
 
       {task.projectId && (
         <div className="task-info-chain">
@@ -1257,11 +1407,13 @@ function toLocalInputValue(iso: string): string {
 function TaskForm({
   task,
   employees,
+  tasks,
   onSaved,
   onCancel,
 }: {
   task?: Task;
   employees: User[];
+  tasks: Task[];
   onSaved: () => void;
   onCancel?: () => void;
 }) {
@@ -1362,7 +1514,14 @@ function TaskForm({
       </label>
       <label>
         {t("Описание")}
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+        <TaggedTextarea
+          value={description}
+          onChange={setDescription}
+          tasks={tasks}
+          excludeId={task?.id}
+          rows={2}
+          placeholder={t("Пиши # за да маркираш друга задача (напр. вече готова, с нужните стъпки)")}
+        />
       </label>
       <label>
         {t("Определение за завършена задача")}

@@ -127,6 +127,9 @@ export const en: Record<string, string> = {
   "Прегледано от {name}": "Reviewed by {name}",
   "Заглавие": "Title",
   "Описание": "Description",
+  "Пиши # за да маркираш друга задача (напр. вече готова, с нужните стъпки)":
+    "Type # to tag another task (e.g. one already done, with the needed steps)",
+  "Няма съвпадения": "No matches",
   "Избери…": "Select…",
   "Owner (проверява изпълнението)": "Owner (reviews the work)",
   "Без — admin преглежда": "None — admin reviews",
