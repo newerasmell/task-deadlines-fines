@@ -1,7 +1,7 @@
 import { formatDateTime } from "../lib/dateFormat";
 import { isOnLeave } from "../lib/leave";
 import { prisma } from "../lib/prisma";
-import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { dispatchRespectingBusinessHours, toNotificationTarget } from "../notifications/dispatcher";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -10,7 +10,18 @@ function sameCalendarDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-type Recipient = { id: string; name: string; email: string; phone: string | null; telegramChatId: string | null; slackMemberId: string | null; whatsappPhone: string | null; viberUserId: string | null; googleCalendarId: string | null };
+type Recipient = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  telegramChatId: string | null;
+  slackMemberId: string | null;
+  whatsappPhone: string | null;
+  viberUserId: string | null;
+  googleCalendarId: string | null;
+  businessHoursOnly: boolean;
+};
 
 function dedupeRecipients(users: (Recipient | null)[]): Recipient[] {
   const byId = new Map<string, Recipient>();
@@ -87,6 +98,6 @@ async function notify(recipients: Recipient[], subject: string, body: string, no
     // Skip just this recipient, not the whole reminder — an assignee and
     // owner on leave at different times shouldn't block each other's copy.
     if (await isOnLeave(recipient.id, now)) continue;
-    await dispatchToAllChannels(toNotificationTarget(recipient), { subject, body });
+    await dispatchRespectingBusinessHours(toNotificationTarget(recipient), { subject, body });
   }
 }

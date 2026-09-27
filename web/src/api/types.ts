@@ -21,6 +21,11 @@ export interface User {
   isSuperAdmin: boolean;
   canAssignTasks: boolean;
   canAccessSubscriptions: boolean;
+  // Ultimate-Admin-only, off by default. On: notifications to this account
+  // hold until the team's next 9-18 business window instead of landing the
+  // instant they fire — assigning them a task is never blocked by it, any
+  // time works. Off (default): unaffected, exactly as before.
+  businessHoursOnly: boolean;
   phone: string | null;
   telegramChatId: string | null;
   slackMemberId: string | null;

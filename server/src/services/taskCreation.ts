@@ -2,7 +2,7 @@ import { logAction } from "../lib/auditLog";
 import { formatDateTime } from "../lib/dateFormat";
 import { prisma } from "../lib/prisma";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
-import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { dispatchRespectingBusinessHours, toNotificationTarget } from "../notifications/dispatcher";
 
 const notifiableUserSelect = {
   id: true,
@@ -14,6 +14,7 @@ const notifiableUserSelect = {
   whatsappPhone: true,
   viberUserId: true,
   googleCalendarId: true,
+  businessHoursOnly: true,
 } as const;
 
 export interface CreateTaskInput {
@@ -63,7 +64,7 @@ export async function createTaskAndNotify(input: CreateTaskInput) {
     include: { assignee: { select: notifiableUserSelect }, owner: { select: notifiableUserSelect } },
   });
 
-  await dispatchToAllChannels(
+  await dispatchRespectingBusinessHours(
     toNotificationTarget(assignee),
     {
       subject: `Нова задача: ${task.title}`,
@@ -73,7 +74,7 @@ export async function createTaskAndNotify(input: CreateTaskInput) {
     { taskId: task.id }
   );
   if (task.owner) {
-    await dispatchToAllChannels(
+    await dispatchRespectingBusinessHours(
       toNotificationTarget(task.owner),
       {
         subject: `Назначен си като преглеждащ: ${task.title}`,

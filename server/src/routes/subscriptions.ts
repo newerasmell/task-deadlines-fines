@@ -3,7 +3,7 @@ import { z } from "zod";
 import { formatDateTime } from "../lib/dateFormat";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
-import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { dispatchRespectingBusinessHours, toNotificationTarget } from "../notifications/dispatcher";
 
 export const subscriptionsRouter = Router();
 
@@ -72,12 +72,12 @@ subscriptionsRouter.post("/", async (req, res) => {
 
   const body = `Краен срок: ${formatDateTime(item.dueDate)}${item.amount ? `\nСума: ${item.amount} ${item.currency ?? "EUR"}` : ""}${item.description ? `\n\n${item.description}` : ""}`;
 
-  await dispatchToAllChannels(toNotificationTarget(assignee), {
+  await dispatchRespectingBusinessHours(toNotificationTarget(assignee), {
     subject: `Създаден елемент за проследяване: ${item.title}`,
     body,
   });
   if (owner && owner.id !== assigneeId) {
-    await dispatchToAllChannels(toNotificationTarget(owner), {
+    await dispatchRespectingBusinessHours(toNotificationTarget(owner), {
       subject: `Ти си Owner на: ${item.title}`,
       body,
     });

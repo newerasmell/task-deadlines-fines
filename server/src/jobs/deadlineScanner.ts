@@ -5,7 +5,7 @@ import { env } from "../lib/env";
 import { isOnLeave } from "../lib/leave";
 import { prisma } from "../lib/prisma";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
-import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { dispatchRespectingBusinessHours, toNotificationTarget } from "../notifications/dispatcher";
 import { calculateFine, hoursBetween } from "../services/fineCalculator";
 import { spawnRecurringOccurrences } from "./recurringTasks";
 
@@ -124,7 +124,7 @@ async function sendUpcomingReminders(now: Date): Promise<void> {
     const target = toNotificationTarget(task.assignee);
 
     if (!task.reminder4hSentAt && timeToDeadlineMs <= finalMs) {
-      await dispatchToAllChannels(
+      await dispatchRespectingBusinessHours(
         target,
         {
           subject: `Последно напомняне: ${task.title}`,
@@ -138,7 +138,7 @@ async function sendUpcomingReminders(now: Date): Promise<void> {
     }
 
     if (!task.reminder24hSentAt && timeToDeadlineMs <= standardMs) {
-      await dispatchToAllChannels(
+      await dispatchRespectingBusinessHours(
         target,
         {
           subject: `Наближава срок: ${task.title}`,
@@ -154,7 +154,7 @@ async function sendUpcomingReminders(now: Date): Promise<void> {
     if (totalDurationMs > periodicMs && timeToDeadlineMs > standardMs) {
       const lastPeriodic = (task.lastPeriodicReminderAt ?? task.createdAt).getTime();
       if (now.getTime() - lastPeriodic >= periodicMs) {
-        await dispatchToAllChannels(
+        await dispatchRespectingBusinessHours(
           target,
           {
             subject: `Все още незавършена: ${task.title}`,
@@ -244,7 +244,7 @@ async function handleOverdueTasks(now: Date): Promise<void> {
       // ping is held back while they're away; admins still hear about it.
       if (!(await isOnLeave(task.assigneeId, now))) {
         const target = toNotificationTarget(task.assignee);
-        await dispatchToAllChannels(
+        await dispatchRespectingBusinessHours(
           target,
           {
             subject: `Просрочена задача и наложена глоба`,
@@ -304,7 +304,7 @@ async function sendUpcomingReviewReminders(now: Date): Promise<void> {
     const target = toNotificationTarget(task.owner);
 
     if (!submission.reviewFinalReminderSentAt && timeToReviewDueMs <= finalMs) {
-      await dispatchToAllChannels(
+      await dispatchRespectingBusinessHours(
         target,
         {
           subject: `Последно напомняне за преглед: ${task.title}`,
@@ -319,7 +319,7 @@ async function sendUpcomingReviewReminders(now: Date): Promise<void> {
 
     const lastPeriodic = (submission.lastPeriodicReviewReminderAt ?? submission.createdAt).getTime();
     if (now.getTime() - lastPeriodic >= periodicMs) {
-      await dispatchToAllChannels(
+      await dispatchRespectingBusinessHours(
         target,
         {
           subject: `Чака преглед: ${task.title}`,
@@ -400,7 +400,7 @@ async function handleOverdueReviews(now: Date): Promise<void> {
     // above already excluded real leave time), only the personal ping to
     // the Owner is held back while they're away.
     if (!(await isOnLeave(task.ownerId, now))) {
-      await dispatchToAllChannels(toNotificationTarget(task.owner), {
+      await dispatchRespectingBusinessHours(toNotificationTarget(task.owner), {
         subject: "Забавен преглед и наложена глоба",
         body: `Все още не си прегледал подадената задача "${task.title}". Просрочие на прегледа: ${daysLate} ${daysLate === 1 ? "ден" : "дни"}. Наложена глоба: ${fine.amount} ${fine.currency}.`,
       });

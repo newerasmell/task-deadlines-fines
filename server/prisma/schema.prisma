@@ -65,7 +65,7 @@ model User {
   // pick the best-fit assignee for a task that doesn't name anyone
   // explicitly (see src/lib/taskExtraction.ts). Purely descriptive, not a
   // permission; any Admin can edit it, not just a super admin.
-  voiceAssignmentNotes String?
+  voiceAssignmentNotes     String?
   // When true, Claude is told never to infer this person as an assignee
   // from context alone — only ever use them when the transcript names them
   // explicitly. For an owner/leadership account whose "responsibilities"
@@ -74,6 +74,17 @@ model User {
   // defined yet, this stops a task from silently landing on them just
   // because their description sounds like a plausible fit.
   voiceAssignOnlyWhenNamed Boolean @default(false)
+
+  // Ultimate-Admin-only. Off (default) = this account gets every
+  // notification the instant it fires, any time of day, same as before this
+  // field existed. On = notifications to this person hold until the next
+  // team business window (env.reviewBusinessStartHour/EndHour, Mon-Fri,
+  // minus BG holidays — see lib/businessHours.ts) instead of landing at
+  // 3am or over the weekend; see ScheduledNotification and
+  // dispatchRespectingBusinessHours. Assigning them a task is never blocked
+  // by this — an admin can still create/reassign one any time, including a
+  // weekend; only the "you got a new task" notice waits for the window.
+  businessHoursOnly Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -109,6 +120,7 @@ model User {
   voiceJobsCreated            VoiceProcessingJob[]    @relation("VoiceJobCreatedBy")
   voiceDraftsResolvedAssignee VoiceTaskDraft[]        @relation("VoiceDraftResolvedAssignee")
   voiceDraftsResolvedOwner    VoiceTaskDraft[]        @relation("VoiceDraftResolvedOwner")
+  scheduledNotifications      ScheduledNotification[]
 }
 
 // A tracked recurring cost with its own due date — a domain, phone number,
@@ -293,18 +305,19 @@ model Task {
   // for this task (created via their OAuth connection — see User's
   // googleRefreshToken). Set together, cleared together; googleEventId is
   // what a PATCH turns into an events.update instead of events.insert.
-  googleEventId            String?
-  pushedStart              DateTime?
-  pushedDurationMinutes    Int?
+  googleEventId         String?
+  pushedStart           DateTime?
+  pushedDurationMinutes Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  fines              Fine[]
-  notificationLogs   NotificationLog[]
-  submissions        TaskSubmission[]
-  rescheduleRequests RescheduleRequest[]
-  voiceDraftSource   VoiceTaskDraft?
+  fines                  Fine[]
+  notificationLogs       NotificationLog[]
+  scheduledNotifications ScheduledNotification[]
+  submissions            TaskSubmission[]
+  rescheduleRequests     RescheduleRequest[]
+  voiceDraftSource       VoiceTaskDraft?
 }
 
 model TaskSubmission {
@@ -478,24 +491,47 @@ model NotificationLog {
   createdAt DateTime @default(now())
 }
 
+// A notification held back for a User.businessHoursOnly recipient because it
+// fired outside the team's business window — sendAfter is that window's next
+// opening (see lib/businessHours.ts's nextBusinessWindowStart), and the
+// scheduler's periodic tick (runScheduledNotificationDelivery) actually
+// dispatches it once sendAfter has passed, stamping sentAt. Never created
+// for a recipient without the flag — see dispatchRespectingBusinessHours,
+// the only place that writes here.
+model ScheduledNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  taskId    String?
+  task      Task?     @relation(fields: [taskId], references: [id])
+  subject   String
+  body      String
+  deadline  DateTime?
+  sendAfter DateTime
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([sentAt, sendAfter])
+}
+
 // A transcribed audio recording — the shared input to every voice-to-tasks
 // pipeline (manual upload/recording, a quick admin dictation, or an
 // auto-pulled Google Meet recording via Drive). One transcript can yield
 // many VoiceTaskDraft rows (a meeting is rarely just one task).
 model VoiceTranscript {
-  id                 String   @id @default(cuid())
-  source             String // UPLOAD | MEET | DICTATION
-  originalFilename   String?
+  id                    String    @id @default(cuid())
+  source                String // UPLOAD | MEET | DICTATION
+  originalFilename      String?
   // Google Drive file id for a Meet recording — unique so the same
   // recording is never processed twice across polling cycles (Phase 4).
-  meetRecordingId    String?  @unique
+  meetRecordingId       String?   @unique
   // Client-generated id shared by every audio segment of one continuous
   // in-app meeting recording rotated into sub-25MB chunks (see
   // Meeting.tsx / transcribeAndStore) — one row per session; segments
   // after the first are appended into transcriptText instead of each
   // creating their own row. Null for a plain one-shot upload/dictation.
-  meetingSessionId   String?  @unique
-  transcriptText     String
+  meetingSessionId      String?   @unique
+  transcriptText        String
   // Set only once the FINAL segment's own upload has landed and told the
   // server how many segments the recording actually had (segmentIndex + 1
   // — the client only knows this once recording stops). Null for a
@@ -504,24 +540,24 @@ model VoiceTranscript {
   // this transcript to decide when it's safe to assemble transcriptText
   // and run extraction — see transcribeAndStore's own comment on why this
   // can't just be "whichever request happens to carry `final: true`".
-  expectedSegmentCount Int?
+  expectedSegmentCount  Int?
   // Atomic claim so exactly one segment's request ever triggers extraction
   // — two segments can, in rare timing, both observe "all expected segments
   // have landed" around the same moment; only the request whose updateMany
   // actually flips this from null wins the right to assemble+extract, so
   // extraction never runs twice for the same recording.
   extractionTriggeredAt DateTime?
-  durationSeconds    Int?
-  languageDetected   String?
-  createdById        String?
-  createdBy          User?    @relation("VoiceTranscriptCreatedBy", fields: [createdById], references: [id])
+  durationSeconds       Int?
+  languageDetected      String?
+  createdById           String?
+  createdBy             User?     @relation("VoiceTranscriptCreatedBy", fields: [createdById], references: [id])
   // Cost tracking (see the brief's "log token/API costs" requirement) so
   // spend is visible per transcript rather than only in the provider's
   // own dashboard.
-  whisperCostUsd     Float?
-  claudeInputTokens  Int?
-  claudeOutputTokens Int?
-  createdAt          DateTime @default(now())
+  whisperCostUsd        Float?
+  claudeInputTokens     Int?
+  claudeOutputTokens    Int?
+  createdAt             DateTime  @default(now())
 
   drafts         VoiceTaskDraft[]
   processingJobs VoiceProcessingJob[]
@@ -604,7 +640,7 @@ model VoiceTaskDraft {
   // "ai_opportunity" (Claude noticed a problem/gap discussed but never
   // phrased as an assignment) — see the "ПРЕДЛОЖЕНИЯ" prompt section.
   // Drives which section of the review screen a draft renders in.
-  taskType String @default("extracted")
+  taskType           String  @default("extracted")
   // Only ever set when assigneeKey came back "unassigned" — Claude's best
   // guess(es) at who this should go to, each with why, so the admin sees a
   // pre-filled (but clearly marked "AI предложение", never silently
@@ -614,19 +650,19 @@ model VoiceTaskDraft {
   // queried, only round-tripped to the review screen.
   suggestedAssignees String?
 
-  deadline    DateTime
+  deadline            DateTime
   // true when nobody actually said a time in the conversation and the
   // hour/minute is just resolveDeadline's own default — the review screen
   // uses this to flag "check/adjust the time" instead of presenting a
   // made-up hour as if it were stated. Cleared (false) the moment an admin
   // touches the deadline on the review screen (see PATCH/approve).
-  deadlineTimeAssumed Boolean @default(true)
-  priority    String   @default("MEDIUM")
-  status      String   @default("DRAFT")
+  deadlineTimeAssumed Boolean  @default(true)
+  priority            String   @default("MEDIUM")
+  status              String   @default("DRAFT")
   // The exact transcript sentence(s) this task was derived from — mandatory
   // so the admin can verify the AI understood correctly before approving.
-  sourceQuote String
-  createdByAi Boolean  @default(true)
+  sourceQuote         String
+  createdByAi         Boolean  @default(true)
 
   // When Claude detects an explicit dependency in the conversation ("first
   // X, then Y after 3 days"), every draft in that chain shares this id

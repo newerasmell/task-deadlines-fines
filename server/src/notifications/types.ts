@@ -8,6 +8,9 @@ export interface NotificationTarget {
   whatsappPhone: string | null;
   viberUserId: string | null;
   googleCalendarId: string | null;
+  // See User.businessHoursOnly — gates dispatchRespectingBusinessHours, not
+  // any single channel adapter.
+  businessHoursOnly: boolean;
 }
 
 export interface NotificationMessage {

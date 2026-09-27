@@ -17,6 +17,7 @@ const publicUser = {
   isSuperAdmin: true,
   canAssignTasks: true,
   canAccessSubscriptions: true,
+  businessHoursOnly: true,
   phone: true,
   telegramChatId: true,
   slackMemberId: true,
@@ -73,6 +74,7 @@ const createSchema = z.object({
   isSuperAdmin: z.boolean().optional(),
   canAssignTasks: z.boolean().optional(),
   canAccessSubscriptions: z.boolean().optional(),
+  businessHoursOnly: z.boolean().optional(),
   phone: z.string().optional(),
   telegramChatId: z.string().optional(),
   slackMemberId: z.string().optional(),
@@ -93,11 +95,12 @@ usersRouter.post("/", requireAdmin, async (req, res) => {
   const { password, ...rest } = parsed.data;
   if (!req.user!.isSuperAdmin) {
     // Only a super admin may hand out ADMIN role, Lead permission, super-admin
-    // status, or access to the Subscriptions page.
+    // status, access to the Subscriptions page, or the business-hours-only flag.
     rest.role = "EMPLOYEE";
     delete rest.isSuperAdmin;
     delete rest.canAssignTasks;
     delete rest.canAccessSubscriptions;
+    delete rest.businessHoursOnly;
   }
   const passwordHash = await hashPassword(password);
   const user = await prisma.user.create({
@@ -115,6 +118,7 @@ const updateSchema = z.object({
   isSuperAdmin: z.boolean().optional(),
   canAssignTasks: z.boolean().optional(),
   canAccessSubscriptions: z.boolean().optional(),
+  businessHoursOnly: z.boolean().optional(),
   password: z.string().min(6).optional(),
   phone: z.string().nullable().optional(),
   telegramChatId: z.string().nullable().optional(),
@@ -148,10 +152,20 @@ usersRouter.patch("/:id", async (req, res) => {
   const data: Record<string, unknown> = { ...parsed.data };
   if (req.user!.role !== "ADMIN") {
     // Employees may only touch their own notification identities, plus their own email/password.
-    for (const key of ["name", "role", "active", "isSuperAdmin", "canAssignTasks", "canAccessSubscriptions", "voiceAssignmentNotes", "voiceAssignOnlyWhenNamed"])
+    for (const key of [
+      "name",
+      "role",
+      "active",
+      "isSuperAdmin",
+      "canAssignTasks",
+      "canAccessSubscriptions",
+      "businessHoursOnly",
+      "voiceAssignmentNotes",
+      "voiceAssignOnlyWhenNamed",
+    ])
       delete data[key];
   } else if (!req.user!.isSuperAdmin) {
-    for (const key of ["role", "isSuperAdmin", "canAssignTasks", "canAccessSubscriptions"]) delete data[key];
+    for (const key of ["role", "isSuperAdmin", "canAssignTasks", "canAccessSubscriptions", "businessHoursOnly"]) delete data[key];
   }
   if (parsed.data.password) {
     data.passwordHash = await hashPassword(parsed.data.password);

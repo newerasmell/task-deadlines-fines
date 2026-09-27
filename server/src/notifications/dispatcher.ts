@@ -1,3 +1,4 @@
+import { isWithinBusinessHours, nextBusinessWindowStart } from "../lib/businessHours";
 import { prisma } from "../lib/prisma";
 import { EmailAdapter } from "./email";
 import { GoogleCalendarAdapter } from "./googleCalendar";
@@ -67,6 +68,7 @@ export function toNotificationTarget(user: {
   whatsappPhone: string | null;
   viberUserId: string | null;
   googleCalendarId: string | null;
+  businessHoursOnly: boolean;
 }): NotificationTarget {
   return {
     userId: user.id,
@@ -78,5 +80,38 @@ export function toNotificationTarget(user: {
     whatsappPhone: user.whatsappPhone,
     viberUserId: user.viberUserId,
     googleCalendarId: user.googleCalendarId,
+    businessHoursOnly: user.businessHoursOnly,
   };
+}
+
+/**
+ * The gate every real "notify this person" call site should go through
+ * (dispatchToAllChannels itself stays a plain, immediate send — it's also
+ * what the scheduler uses to actually deliver a held notification once its
+ * window opens, so it can't defer to itself). A target without
+ * businessHoursOnly sends exactly as before; one with it set gets sent now
+ * if we're already inside the team's business window, or held in
+ * ScheduledNotification for the next window's opening otherwise — see
+ * runScheduledNotificationDelivery for the other half of this.
+ */
+export async function dispatchRespectingBusinessHours(
+  target: NotificationTarget,
+  message: NotificationMessage,
+  options: DispatchOptions = {}
+): Promise<ChannelSendResult[]> {
+  const now = new Date();
+  if (target.businessHoursOnly && !isWithinBusinessHours(now)) {
+    await prisma.scheduledNotification.create({
+      data: {
+        userId: target.userId,
+        taskId: options.taskId,
+        subject: message.subject,
+        body: message.body,
+        deadline: message.deadline,
+        sendAfter: nextBusinessWindowStart(now),
+      },
+    });
+    return [];
+  }
+  return dispatchToAllChannels(target, message, options);
 }

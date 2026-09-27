@@ -5,7 +5,7 @@ import { logAction } from "../lib/auditLog";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
-import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { dispatchRespectingBusinessHours, toNotificationTarget } from "../notifications/dispatcher";
 import { OPEN_STATUSES } from "../jobs/deadlineScanner";
 
 export const leavesRouter = Router();
@@ -105,7 +105,7 @@ leavesRouter.post("/", async (req, res) => {
     filed.push({ title: task.title, proposedDeadline });
 
     if (task.owner) {
-      await dispatchToAllChannels(toNotificationTarget(task.owner), {
+      await dispatchRespectingBusinessHours(toNotificationTarget(task.owner), {
         subject: `Заявка за нов срок: ${task.title}`,
         body: `${task.assignee.name} е в отпуск ${formatDateOnly(startDate)} – ${formatDateOnly(endDate)} и има засегната задача "${task.title}" (текущ срок ${formatDateTime(task.deadline)}). Предложен нов срок: ${formatDateTime(proposedDeadline)}. Одобри или отхвърли заявката в системата.`,
       });
@@ -117,7 +117,7 @@ leavesRouter.post("/", async (req, res) => {
   }
 
   if (filed.length > 0) {
-    await dispatchToAllChannels(toNotificationTarget(target), {
+    await dispatchRespectingBusinessHours(toNotificationTarget(target), {
       subject: "Отпуската ти засяга задачи",
       body: `Имаш ${filed.length} ${filed.length === 1 ? "задача, засегната" : "задачи, засегнати"} от отпуската ти ${formatDateOnly(startDate)} – ${formatDateOnly(endDate)}:\n${filed
         .map((f) => `• "${f.title}" → предложен нов срок ${formatDateTime(f.proposedDeadline)}`)
@@ -194,7 +194,7 @@ rescheduleRequestsRouter.post("/:id/approve", async (req, res) => {
     data: { status: "APPROVED", decidedById: req.user!.sub, decidedAt: now },
   });
 
-  await dispatchToAllChannels(toNotificationTarget(request.task.assignee), {
+  await dispatchRespectingBusinessHours(toNotificationTarget(request.task.assignee), {
     subject: `Одобрен нов срок: ${request.task.title}`,
     body: `Новият срок за "${request.task.title}" е ${formatDateTime(request.proposedDeadline)}.`,
   });
@@ -232,7 +232,7 @@ rescheduleRequestsRouter.post("/:id/reject", async (req, res) => {
     data: { status: "REJECTED", decidedById: req.user!.sub, decidedAt: new Date(), decisionNote: parsed.data.decisionNote },
   });
 
-  await dispatchToAllChannels(toNotificationTarget(request.task.assignee), {
+  await dispatchRespectingBusinessHours(toNotificationTarget(request.task.assignee), {
     subject: `Отхвърлена заявка за нов срок: ${request.task.title}`,
     body: `Заявката за нов срок на "${request.task.title}" беше отхвърлена. Причина: ${parsed.data.decisionNote}\nТекущият срок остава ${formatDateTime(request.currentDeadline)}.`,
   });

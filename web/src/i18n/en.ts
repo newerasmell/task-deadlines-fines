@@ -374,6 +374,9 @@ export const en: Record<string, string> = {
   "Платено": "Paid",
   'Наистина ли да изтрия "{title}"?': 'Delete "{title}"?',
   "Достъп до „Абонаменти“ — изтичащи домейни, номера и абонаменти": "Access to “Subscriptions” — expiring domains, numbers and subscriptions",
+  "Известия само в работно време (9-18, делнични дни) — задачи може да му се задават по всяко време, но известието изчаква до следващия работен ден":
+    "Notifications only during business hours (9-18, weekdays) — tasks can be assigned anytime, but the notice waits for the next working day",
+  "9-18": "9-18",
   "Платен/подновен": "Paid/renewed",
   "Отменен": "Cancelled",
   "Домейн": "Domain",

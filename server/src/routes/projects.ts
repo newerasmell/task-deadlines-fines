@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
+import { checkDeadlineForBusinessHoursAssignee } from "../lib/deadlineBusinessHours";
+import { formatDateTime } from "../lib/dateFormat";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { createProjectAndNotify } from "../services/projectCreation";
@@ -69,6 +71,21 @@ projectsRouter.post("/", async (req, res) => {
         });
         if (!inScope) {
           return res.status(403).json({ error: `Нямаш право да задаваш задачи на ${assignee.name}` });
+        }
+      }
+    }
+    // Only the first step has an explicit, admin-picked deadline (later
+    // steps get theirs computed dynamically once their predecessor is
+    // approved — see activateNextChainStep — so there's nothing to validate
+    // against a live pick for those).
+    if (step.deadline) {
+      const assignee = await prisma.user.findUnique({ where: { id: step.assigneeId } });
+      if (assignee?.businessHoursOnly) {
+        const violation = await checkDeadlineForBusinessHoursAssignee(assignee.id, step.deadline);
+        if (violation) {
+          return res.status(400).json({
+            error: `Не може да зададеш този срок на ${assignee.name} — ${violation.reason}. Следващият момент, в който е на работа, е ${formatDateTime(violation.nextAvailable)}.`,
+          });
         }
       }
     }

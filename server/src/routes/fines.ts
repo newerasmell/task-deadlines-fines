@@ -4,7 +4,7 @@ import { logAction } from "../lib/auditLog";
 import { prisma } from "../lib/prisma";
 import { requireAdmin, requireAuth, requireSuperAdmin } from "../middleware/auth";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
-import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { dispatchRespectingBusinessHours, toNotificationTarget } from "../notifications/dispatcher";
 
 export const finesRouter = Router();
 
@@ -64,7 +64,7 @@ finesRouter.post("/", requireAdmin, async (req, res) => {
 
   const fine = await prisma.fine.create({ data: parsed.data });
 
-  await dispatchToAllChannels(toNotificationTarget(user), {
+  await dispatchRespectingBusinessHours(toNotificationTarget(user), {
     subject: `Наложена глоба: ${fine.amount} ${fine.currency}`,
     body: `Причина: ${fine.reason}`,
   });
@@ -104,7 +104,7 @@ finesRouter.post("/:id/waive", requireAdmin, async (req, res) => {
       include: { user: true, task: { select: { title: true } } },
     });
 
-    await dispatchToAllChannels(toNotificationTarget(fine.user), {
+    await dispatchRespectingBusinessHours(toNotificationTarget(fine.user), {
       subject: `Глобата е анулирана`,
       body: `Глоба от ${fine.amount} ${fine.currency} беше анулирана. Причина: ${parsed.data.reason}`,
     });
@@ -161,7 +161,7 @@ finesRouter.patch("/:id/amount", requireSuperAdmin, async (req, res) => {
     { oldAmount: existing.amount, newAmount: fine.amount, reason: parsed.data.reason }
   );
 
-  await dispatchToAllChannels(toNotificationTarget(fine.user), {
+  await dispatchRespectingBusinessHours(toNotificationTarget(fine.user), {
     subject: "Коригирана сума на глоба",
     body: `Сумата на глоба${fine.task ? ` за задача "${fine.task.title}"` : ""} беше коригирана от ${existing.amount} ${existing.currency} на ${fine.amount} ${fine.currency}.\nПричина: ${parsed.data.reason}`,
   });

@@ -47,6 +47,28 @@ export function isWithinBusinessHours(date: Date): boolean {
 }
 
 /**
+ * Whether `date`'s time-of-day alone (ignoring which day it is — see
+ * describeNonWorkingDay for that half) falls inside the daily business
+ * window. Split out from isWithinBusinessHours so a caller can report
+ * *which* rule a deadline broke (wrong day vs. wrong hour) instead of just
+ * a single yes/no.
+ */
+export function isWithinDailyWindow(date: Date): boolean {
+  const dt = toZoned(date);
+  return dt >= windowStart(dt) && dt < windowEnd(dt);
+}
+
+/**
+ * The next instant at or after `date` that a business window opens — later
+ * today if today's window hasn't opened yet, otherwise 9:00 on the next
+ * working day. Used to schedule a User.businessHoursOnly recipient's held
+ * notification for the moment it's allowed to actually go out.
+ */
+export function nextBusinessWindowStart(date: Date): Date {
+  return nextWindowStartAtOrAfter(toZoned(date)).toJSDate();
+}
+
+/**
  * Adds `hours` of business time to `from`. If `from` itself is outside the
  * business window (evening, night, weekend, holiday), the clock starts at
  * the next window's opening instead of ticking through the gap; otherwise

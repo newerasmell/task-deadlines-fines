@@ -34,28 +34,58 @@ function dateKey(y: number, m: number, d: number): string {
 // Holidays are calendar dates, not instants, so they're kept and compared
 // as plain "YYYY-MM-DD" keys throughout — sidesteps timezone entirely
 // instead of round-tripping through a Date that would need one.
-function bulgarianHolidayKeys(year: number): string[] {
+function bulgarianHolidayEntries(year: number): Array<{ key: string; name: string }> {
   const easter = orthodoxEaster(year).getTime();
   const easterOffset = (days: number) => {
     const d = new Date(easter + days * DAY_MS);
     return dateKey(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   };
   return [
-    dateKey(year, 0, 1), // Нова година
-    dateKey(year, 2, 3), // Ден на Освобождението
-    easterOffset(-2), // Велики петък
-    easterOffset(-1), // Велика събота
-    easterOffset(0), // Великден
-    easterOffset(1), // Велики понеделник
-    dateKey(year, 4, 1), // Ден на труда
-    dateKey(year, 4, 6), // Гергьовден
-    dateKey(year, 4, 24), // Ден на българската просвета и култура
-    dateKey(year, 8, 6), // Ден на Съединението
-    dateKey(year, 8, 22), // Ден на независимостта
-    dateKey(year, 11, 24), // Бъдни вечер
-    dateKey(year, 11, 25), // Рождество Христово
-    dateKey(year, 11, 26), // Рождество Христово (втори ден)
+    { key: dateKey(year, 0, 1), name: "Нова година" },
+    { key: dateKey(year, 2, 3), name: "Ден на Освобождението" },
+    { key: easterOffset(-2), name: "Велики петък" },
+    { key: easterOffset(-1), name: "Велика събота" },
+    { key: easterOffset(0), name: "Великден" },
+    { key: easterOffset(1), name: "Велики понеделник" },
+    { key: dateKey(year, 4, 1), name: "Ден на труда" },
+    { key: dateKey(year, 4, 6), name: "Гергьовден" },
+    { key: dateKey(year, 4, 24), name: "Ден на българската просвета и култура" },
+    { key: dateKey(year, 8, 6), name: "Ден на Съединението" },
+    { key: dateKey(year, 8, 22), name: "Ден на независимостта" },
+    { key: dateKey(year, 11, 24), name: "Бъдни вечер" },
+    { key: dateKey(year, 11, 25), name: "Рождество Христово" },
+    { key: dateKey(year, 11, 26), name: "Рождество Христово (втори ден)" },
   ];
+}
+
+function bulgarianHolidayKeys(year: number): string[] {
+  return bulgarianHolidayEntries(year).map((e) => e.key);
+}
+
+// The named holiday `date` falls on (team-local calendar day), if any — null
+// for a plain working day AND for a plain weekend with no named holiday.
+// See describeNonWorkingDay below for the combined "why isn't this a
+// working day" label a deadline-validation error message actually wants.
+function bulgarianHolidayName(date: Date): string | null {
+  const local = DateTime.fromJSDate(date, { zone: env.timezone });
+  const key = local.toFormat("yyyy-MM-dd");
+  for (const y of [local.year - 1, local.year, local.year + 1]) {
+    const entry = bulgarianHolidayEntries(y).find((e) => e.key === key);
+    if (entry) return entry.name;
+  }
+  return null;
+}
+
+// Human label for why `date` isn't a working day (team-local calendar day)
+// — the specific holiday's name, a generic weekend label, or null if it's
+// an ordinary working day. Used to explain a rejected deadline to whoever
+// picked it, e.g. "Гергьовден (официален празник)".
+export function describeNonWorkingDay(date: Date): string | null {
+  const holiday = bulgarianHolidayName(date);
+  if (holiday) return `${holiday} (официален празник)`;
+  const local = DateTime.fromJSDate(date, { zone: env.timezone });
+  if (local.weekday === 6 || local.weekday === 7) return "почивен ден (събота/неделя)";
+  return null;
 }
 
 // Everything below resolves "which calendar day" via the team's own zone

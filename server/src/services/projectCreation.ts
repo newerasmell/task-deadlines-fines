@@ -3,7 +3,7 @@ import { formatDateTime } from "../lib/dateFormat";
 import { logAction } from "../lib/auditLog";
 import { prisma } from "../lib/prisma";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
-import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { dispatchRespectingBusinessHours, toNotificationTarget } from "../notifications/dispatcher";
 
 // A step past the first has no real deadline yet — this placeholder is never
 // acted on by the scanner (status stays "BLOCKED", which isn't in any status
@@ -23,6 +23,7 @@ const stepInclude = {
       whatsappPhone: true,
       viberUserId: true,
       googleCalendarId: true,
+      businessHoursOnly: true,
     },
   },
   owner: {
@@ -36,6 +37,7 @@ const stepInclude = {
       whatsappPhone: true,
       viberUserId: true,
       googleCalendarId: true,
+      businessHoursOnly: true,
     },
   },
 } satisfies Prisma.TaskInclude;
@@ -142,13 +144,13 @@ export async function createProjectAndNotify(input: CreateProjectInput): Promise
     const assigneeBody = isFirst
       ? `Част си от проект "${project.title}". Твоята стъпка "${task.title}" е активна веднага — срок ${formatDateTime(task.deadline)}.\n\n${task.description ?? ""}`
       : `Част си от проект "${project.title}". След като задача "${prevTitle}" бъде изпълнена (одобрена), ще трябва да изпълниш "${task.title}" — срок ${delayText} от този момент.\n\n${task.description ?? ""}`;
-    await dispatchToAllChannels(toNotificationTarget(task.assignee), { subject: `Проект: ${project.title}`, body: assigneeBody }, { taskId: task.id });
+    await dispatchRespectingBusinessHours(toNotificationTarget(task.assignee), { subject: `Проект: ${project.title}`, body: assigneeBody }, { taskId: task.id });
 
     if (task.owner) {
       const ownerBody = isFirst
         ? `Ти си Owner на стъпка "${task.title}" от проект "${project.title}" (изпълнител: ${task.assignee.name}) — срок ${formatDateTime(task.deadline)}.`
         : `Ти си Owner на стъпка "${task.title}" от проект "${project.title}" (изпълнител: ${task.assignee.name}). Ще стане активна след като "${prevTitle}" бъде изпълнена, със срок ${delayText} след това.`;
-      await dispatchToAllChannels(toNotificationTarget(task.owner), { subject: `Проект: ${project.title}`, body: ownerBody }, { taskId: task.id });
+      await dispatchRespectingBusinessHours(toNotificationTarget(task.owner), { subject: `Проект: ${project.title}`, body: ownerBody }, { taskId: task.id });
     }
   }
 

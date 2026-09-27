@@ -3,7 +3,7 @@ import { formatDateTime } from "../lib/dateFormat";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
-import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { dispatchRespectingBusinessHours, toNotificationTarget } from "../notifications/dispatcher";
 
 const WEEKDAY_CODES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 
@@ -109,7 +109,7 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
         },
       });
 
-      await dispatchToAllChannels(
+      await dispatchRespectingBusinessHours(
         toNotificationTarget(template.assignee),
         {
           subject: `Нова задача: ${task.title}`,
@@ -119,7 +119,7 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
         { taskId: task.id }
       );
       if (template.owner) {
-        await dispatchToAllChannels(
+        await dispatchRespectingBusinessHours(
           toNotificationTarget(template.owner),
           {
             subject: `Назначен си като преглеждащ: ${task.title}`,

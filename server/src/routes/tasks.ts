@@ -5,12 +5,13 @@ import { formatDateTime } from "../lib/dateFormat";
 import { logAction } from "../lib/auditLog";
 import { verifyToken } from "../lib/auth";
 import { addBusinessHours } from "../lib/businessHours";
+import { checkDeadlineForBusinessHoursAssignee } from "../lib/deadlineBusinessHours";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
 import { absoluteUploadPath, uploadAttachments } from "../lib/uploads";
 import { requireAdmin, requireAuth, requireSuperAdmin } from "../middleware/auth";
 import { broadcastToAdmins } from "../notifications/adminBroadcast";
-import { dispatchToAllChannels, toNotificationTarget } from "../notifications/dispatcher";
+import { dispatchRespectingBusinessHours, toNotificationTarget } from "../notifications/dispatcher";
 import { spawnRecurringOccurrencesThrottled } from "../jobs/recurringTasks";
 import { createTaskAndNotify } from "../services/taskCreation";
 import { deadlineFieldSchema } from "../lib/deadlineInput";
@@ -47,6 +48,10 @@ function visibleToUser(
   isAdmin: boolean
 ) {
   return isAdmin || task.assigneeId === userId || task.ownerId === userId || task.createdById === userId;
+}
+
+function deadlineViolationMessage(assigneeName: string, violation: { reason: string; nextAvailable: Date }): string {
+  return `Не може да зададеш този срок на ${assigneeName} — ${violation.reason}. Следващият момент, в който е на работа, е ${formatDateTime(violation.nextAvailable)}.`;
 }
 
 // A task the user can't otherwise see (not assignee/owner/creator/admin) is
@@ -188,6 +193,10 @@ tasksRouter.post("/", async (req, res) => {
 
   const assignee = await prisma.user.findUnique({ where: { id: parsed.data.assigneeId } });
   if (!assignee) return res.status(400).json({ error: "Assignee not found" });
+  if (assignee.businessHoursOnly) {
+    const violation = await checkDeadlineForBusinessHoursAssignee(assignee.id, parsed.data.deadline);
+    if (violation) return res.status(400).json({ error: deadlineViolationMessage(assignee.name, violation) });
+  }
 
   if (!isAdmin && !isSelfAssign) {
     const actor = await prisma.user.findUnique({ where: { id: req.user!.sub } });
@@ -278,6 +287,11 @@ tasksRouter.patch("/:id", async (req, res) => {
   if (parsed.data.status === "DONE" && existing.status !== "DONE") {
     data.completedAt = new Date();
   }
+  let effectiveAssignee: { id: string; name: string; businessHoursOnly: boolean } | null = null;
+  if (typeof data.assigneeId === "string" && data.assigneeId !== existing.assigneeId) {
+    effectiveAssignee = await prisma.user.findUnique({ where: { id: data.assigneeId } });
+    if (!effectiveAssignee) return res.status(400).json({ error: "Assignee not found" });
+  }
   // Edited by a human after the fact → same "admin" source rule as at
   // approval time, whatever it was before (stated/ai_suggested/admin).
   if (parsed.data.definitionOfDone !== undefined && parsed.data.definitionOfDone !== existing.definitionOfDone) {
@@ -300,6 +314,11 @@ tasksRouter.patch("/:id", async (req, res) => {
   if (isDeadlineChange && newDeadline) {
     if (!deadlineChangeReason) {
       return res.status(400).json({ error: "Трябва да опишеш причина за промяната на срока." });
+    }
+    const deadlineAssignee = effectiveAssignee ?? (await prisma.user.findUnique({ where: { id: existing.assigneeId } }));
+    if (deadlineAssignee?.businessHoursOnly) {
+      const violation = await checkDeadlineForBusinessHoursAssignee(deadlineAssignee.id, newDeadline);
+      if (violation) return res.status(400).json({ error: deadlineViolationMessage(deadlineAssignee.name, violation) });
     }
     data.reminder24hSentAt = null;
     data.reminder4hSentAt = null;
@@ -359,7 +378,7 @@ tasksRouter.patch("/:id", async (req, res) => {
       where: { isSuperAdmin: true, active: true, id: { not: req.user!.sub } },
     });
     for (const superAdmin of superAdmins) {
-      await dispatchToAllChannels(toNotificationTarget(superAdmin), {
+      await dispatchRespectingBusinessHours(toNotificationTarget(superAdmin), {
         subject: `Променен срок на задача: ${task.title}`,
         body: `${actor?.name ?? req.user!.email} промени срока на задача "${task.title}" от ${formatDateTime(existing.deadline)} на ${formatDateTime(task.deadline)}.\nПричина: ${deadlineChangeReason}`,
       });
@@ -370,7 +389,7 @@ tasksRouter.patch("/:id", async (req, res) => {
     const newOwner = await prisma.user.findUnique({ where: { id: data.ownerId as string } });
     const assignee = await prisma.user.findUnique({ where: { id: task.assigneeId } });
     if (newOwner && assignee) {
-      await dispatchToAllChannels(
+      await dispatchRespectingBusinessHours(
         toNotificationTarget(newOwner),
         {
           subject: `Назначен си като преглеждащ: ${task.title}`,
@@ -471,7 +490,7 @@ tasksRouter.post("/:id/complete", async (req, res) => {
 
   await prisma.task.update({ where: { id: task.id }, data: { status: "DONE", completedAt: now } });
 
-  await dispatchToAllChannels(toNotificationTarget(task.assignee), {
+  await dispatchRespectingBusinessHours(toNotificationTarget(task.assignee), {
     subject: `Задачата е приключена: ${task.title}`,
     body: `Задачата "${task.title}" беше маркирана като завършена от ${req.user!.email}.${note ? `\n${note}` : ""}`,
   });
@@ -530,13 +549,13 @@ tasksRouter.post("/:id/reopen", requireSuperAdmin, async (req, res) => {
     { previousStatus, reason }
   );
 
-  await dispatchToAllChannels(toNotificationTarget(task.assignee), {
+  await dispatchRespectingBusinessHours(toNotificationTarget(task.assignee), {
     subject: `Задачата е върната обратно: ${task.title}`,
     body: `Задача "${task.title}" беше върната обратно в работа от ${req.user!.email}.\nПричина: ${reason}`,
     deadline: task.deadline,
   });
   if (task.owner && task.owner.id !== task.assignee.id) {
-    await dispatchToAllChannels(toNotificationTarget(task.owner), {
+    await dispatchRespectingBusinessHours(toNotificationTarget(task.owner), {
       subject: `Задачата е върната обратно: ${task.title}`,
       body: `Задача "${task.title}" (изпълнител: ${task.assignee.name}) беше върната обратно в работа от ${req.user!.email}.\nПричина: ${reason}`,
       deadline: task.deadline,
@@ -594,7 +613,7 @@ tasksRouter.post("/:id/submit", uploadAttachments.array("attachments", 5), async
   const attachmentsText = files.length > 0 ? `\nПриложени файлове: ${files.length}` : "";
 
   if (task.owner) {
-    await dispatchToAllChannels(toNotificationTarget(task.owner), {
+    await dispatchRespectingBusinessHours(toNotificationTarget(task.owner), {
       subject: `За преглед: ${task.title}`,
       body: `${task.assignee.name} подаде задачата за твой преглед.${noteText}${attachmentsText}`,
     });
@@ -639,7 +658,7 @@ tasksRouter.post("/:id/submissions/:submissionId/approve", uploadAttachments.arr
   });
   await prisma.task.update({ where: { id: task.id }, data: { status: "DONE", completedAt: now } });
 
-  await dispatchToAllChannels(toNotificationTarget(task.assignee), {
+  await dispatchRespectingBusinessHours(toNotificationTarget(task.assignee), {
     subject: `Одобрена задача: ${task.title}`,
     body: `Твоята работа по "${task.title}" беше одобрена.${reviewNote ? `\n${reviewNote}` : ""}`,
   });
@@ -670,7 +689,7 @@ async function activateNextChainStep(completedTask: { id: string; title: string;
   const newDeadline = new Date(now.getTime() + nextStep.delayDaysAfterPrevious * 24 * 60 * 60 * 1000);
   await prisma.task.update({ where: { id: nextStep.id }, data: { deadline: newDeadline, status: "PENDING" } });
 
-  await dispatchToAllChannels(
+  await dispatchRespectingBusinessHours(
     toNotificationTarget(nextStep.assignee),
     {
       subject: `Твой ред е: ${nextStep.title}`,
@@ -680,7 +699,7 @@ async function activateNextChainStep(completedTask: { id: string; title: string;
     { taskId: nextStep.id }
   );
   if (nextStep.owner) {
-    await dispatchToAllChannels(
+    await dispatchRespectingBusinessHours(
       toNotificationTarget(nextStep.owner),
       {
         subject: `Активна стъпка за преглед: ${nextStep.title}`,
@@ -726,7 +745,7 @@ tasksRouter.post("/:id/submissions/:submissionId/reject", uploadAttachments.arra
   const newStatus = now > task.deadline ? "OVERDUE" : "IN_PROGRESS";
   await prisma.task.update({ where: { id: task.id }, data: { status: newStatus } });
 
-  await dispatchToAllChannels(toNotificationTarget(task.assignee), {
+  await dispatchRespectingBusinessHours(toNotificationTarget(task.assignee), {
     subject: `Върната за доработка: ${task.title}`,
     body: `Подадената работа по "${task.title}" не беше одобрена.\nПричина: ${parsed.data.reviewNote}`,
   });

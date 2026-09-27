@@ -141,6 +141,15 @@ export function Employees() {
                     {t("Абонаменти")}
                   </span>
                 )}
+                {u.businessHoursOnly && (
+                  <span
+                    className="badge"
+                    style={{ marginLeft: 6 }}
+                    title={t("Известия само в работно време (9-18, делнични дни) — задачи може да му се задават по всяко време, но известието изчаква до следващия работен ден")}
+                  >
+                    {t("9-18")}
+                  </span>
+                )}
               </td>
               <td className="small" data-label={t("Канали")}>
                 {[
@@ -208,6 +217,7 @@ function EmployeeForm({
   const [canAssignTasks, setCanAssignTasks] = useState(user?.canAssignTasks ?? false);
   const [isSuperAdminFlag, setIsSuperAdminFlag] = useState(user?.isSuperAdmin ?? false);
   const [canAccessSubscriptions, setCanAccessSubscriptions] = useState(user?.canAccessSubscriptions ?? false);
+  const [businessHoursOnly, setBusinessHoursOnly] = useState(user?.businessHoursOnly ?? false);
   const [scopeIds, setScopeIds] = useState<string[]>([]);
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState(user?.phone ?? "");
@@ -236,7 +246,9 @@ function EmployeeForm({
     setSubmitting(true);
     try {
       const channels = { phone, telegramChatId, slackMemberId, whatsappPhone, viberUserId };
-      const permissions = isSuperAdmin ? { role, canAssignTasks, isSuperAdmin: isSuperAdminFlag, canAccessSubscriptions } : {};
+      const permissions = isSuperAdmin
+        ? { role, canAssignTasks, isSuperAdmin: isSuperAdminFlag, canAccessSubscriptions, businessHoursOnly }
+        : {};
       let savedId = user?.id;
       if (isEdit && user) {
         await api(`/users/${user.id}`, {
@@ -360,6 +372,14 @@ function EmployeeForm({
                 onChange={(e) => setCanAccessSubscriptions(e.target.checked)}
               />
               {t("Достъп до „Абонаменти“ — изтичащи домейни, номера и абонаменти")}
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={businessHoursOnly}
+                onChange={(e) => setBusinessHoursOnly(e.target.checked)}
+              />
+              {t("Известия само в работно време (9-18, делнични дни) — задачи може да му се задават по всяко време, но известието изчаква до следващия работен ден")}
             </label>
           </div>
           {canAssignTasks && (
