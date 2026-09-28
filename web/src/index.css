@@ -267,6 +267,19 @@ button.secondary:hover {
   margin-right: 6px;
 }
 
+/* "Lights up" (colored + soft glow) only once a Google Meet link is set —
+   :disabled already gets the dimmed look from the base `button:disabled`
+   rule, so the un-set state needs no extra styling of its own. */
+button.meet-link-btn-active {
+  background: #1e8e5a;
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(30, 142, 90, 0.25);
+}
+
+button.meet-link-btn-active:hover {
+  background: #197a4d;
+}
+
 .chip {
   border: 1px solid var(--border);
   background: #fff;

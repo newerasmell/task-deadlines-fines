@@ -242,6 +242,11 @@ model Task {
   id          String  @id @default(cuid())
   title       String
   description String?
+  // Optional video-call link for this task (Google Meet or any other
+  // http(s) URL) — sent along in the "you got a new task" notification and
+  // shown as a lit-up icon button on the task row/card so it's a one-click
+  // open. See lib/meetLink.ts for the shared validation.
+  meetLink    String?
   assigneeId  String
   assignee    User    @relation("AssignedTasks", fields: [assigneeId], references: [id])
   createdById String

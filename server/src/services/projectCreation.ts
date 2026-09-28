@@ -56,6 +56,7 @@ export interface ProjectStepInput {
   deadline?: Date;
   // Steps 2+ only — how many days after the previous step is approved this one's deadline lands.
   delayDays?: number;
+  meetLink?: string | null;
 }
 
 export interface CreateProjectInput {
@@ -123,6 +124,7 @@ export async function createProjectAndNotify(input: CreateProjectInput): Promise
         chainOrder: i + 1,
         delayDaysAfterPrevious: isFirst ? null : step.delayDays,
         previousStepId: isFirst ? null : previousStepId,
+        meetLink: step.meetLink ?? null,
       },
       include: stepInclude,
     });
@@ -141,15 +143,17 @@ export async function createProjectAndNotify(input: CreateProjectInput): Promise
       ? `${task.delayDaysAfterPrevious} ${task.delayDaysAfterPrevious === 1 ? "ден" : "дни"}`
       : "";
 
+    const meetLine = task.meetLink ? `\n\nGoogle Meet: ${task.meetLink}` : "";
+
     const assigneeBody = isFirst
-      ? `Част си от проект "${project.title}". Твоята стъпка "${task.title}" е активна веднага — срок ${formatDateTime(task.deadline)}.\n\n${task.description ?? ""}`
-      : `Част си от проект "${project.title}". След като задача "${prevTitle}" бъде изпълнена (одобрена), ще трябва да изпълниш "${task.title}" — срок ${delayText} от този момент.\n\n${task.description ?? ""}`;
+      ? `Част си от проект "${project.title}". Твоята стъпка "${task.title}" е активна веднага — срок ${formatDateTime(task.deadline)}.\n\n${task.description ?? ""}${meetLine}`
+      : `Част си от проект "${project.title}". След като задача "${prevTitle}" бъде изпълнена (одобрена), ще трябва да изпълниш "${task.title}" — срок ${delayText} от този момент.\n\n${task.description ?? ""}${meetLine}`;
     await dispatchRespectingBusinessHours(toNotificationTarget(task.assignee), { subject: `Проект: ${project.title}`, body: assigneeBody }, { taskId: task.id });
 
     if (task.owner) {
       const ownerBody = isFirst
-        ? `Ти си Owner на стъпка "${task.title}" от проект "${project.title}" (изпълнител: ${task.assignee.name}) — срок ${formatDateTime(task.deadline)}.`
-        : `Ти си Owner на стъпка "${task.title}" от проект "${project.title}" (изпълнител: ${task.assignee.name}). Ще стане активна след като "${prevTitle}" бъде изпълнена, със срок ${delayText} след това.`;
+        ? `Ти си Owner на стъпка "${task.title}" от проект "${project.title}" (изпълнител: ${task.assignee.name}) — срок ${formatDateTime(task.deadline)}.${meetLine}`
+        : `Ти си Owner на стъпка "${task.title}" от проект "${project.title}" (изпълнител: ${task.assignee.name}). Ще стане активна след като "${prevTitle}" бъде изпълнена, със срок ${delayText} след това.${meetLine}`;
       await dispatchRespectingBusinessHours(toNotificationTarget(task.owner), { subject: `Проект: ${project.title}`, body: ownerBody }, { taskId: task.id });
     }
   }

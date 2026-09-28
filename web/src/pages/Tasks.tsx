@@ -6,6 +6,7 @@ import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
 import type { GoogleCalendarStatus, Priority, Task, TaskSubmission, User } from "../api/types";
 import { Avatar } from "../components/Avatar";
 import { IconInfo, IconSearch, IconX } from "../components/icons";
+import { MeetLinkButton } from "../components/MeetLinkButton";
 import { PushToCalendarButton } from "../components/PushToCalendarButton";
 import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
@@ -543,7 +544,7 @@ export function Tasks() {
           <div className="table-wrap">
           <div
             className="grid-table"
-            style={{ gridTemplateColumns: "minmax(220px, 2fr) 150px 120px 160px 100px 110px 90px 88px" }}
+            style={{ gridTemplateColumns: "minmax(220px, 2fr) 150px 120px 160px 100px 110px 90px 128px" }}
           >
             <div className="grid-table-header">{t("Задача")}</div>
             <div className="grid-table-header">{t("Служител")}</div>
@@ -638,6 +639,7 @@ export function Tasks() {
                       {fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}
                     </div>
                     <div className="grid-cell grid-cell-actions">
+                      <MeetLinkButton meetLink={tk.meetLink} />
                       {tk.status !== "BLOCKED" && (
                         <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={updateTaskInPlace} compact />
                       )}
@@ -989,11 +991,12 @@ function TaskBoard({
                                 {fineTotal.toFixed(2)} {activeFines[0].currency}
                               </span>
                             )}
-                            {tk.status !== "BLOCKED" && (
-                              <div className="board-card-actions" onClick={(e) => e.stopPropagation()}>
+                            <div className="board-card-actions" onClick={(e) => e.stopPropagation()}>
+                              <MeetLinkButton meetLink={tk.meetLink} />
+                              {tk.status !== "BLOCKED" && (
                                 <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={onTaskUpdated} />
-                              </div>
-                            )}
+                              )}
+                            </div>
                             {(canStart || canSubmitCard || canReviewCard || canComplete || canReopen) && (
                               <div className="board-card-actions">
                                 {canStart && (
@@ -1172,6 +1175,14 @@ export function TaskInfoPanel({
           <>
             <dt>Definition of Done</dt>
             <dd>{task.definitionOfDone}</dd>
+          </>
+        )}
+        {task.meetLink && (
+          <>
+            <dt>Google Meet</dt>
+            <dd>
+              <MeetLinkButton meetLink={task.meetLink} compact={false} />
+            </dd>
           </>
         )}
       </dl>
@@ -1441,6 +1452,7 @@ function TaskForm({
   const originalDeadline = task ? toLocalInputValue(task.deadline) : "";
   const [deadlineChangeReason, setDeadlineChangeReason] = useState("");
   const [priority, setPriority] = useState<Priority>(task?.priority ?? "MEDIUM");
+  const [meetLink, setMeetLink] = useState(task?.meetLink ?? "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -1501,6 +1513,7 @@ function TaskForm({
         ownerId: ownerId || null,
         deadline: new Date(deadline).toISOString(),
         priority,
+        meetLink: meetLink.trim() || "",
       };
       if (isDeadlineChanged) body.deadlineChangeReason = deadlineChangeReason.trim();
       if (isEdit) {
@@ -1593,6 +1606,15 @@ function TaskForm({
           </select>
         </label>
       </div>
+      <label>
+        {t("Google Meet линк (по избор)")}
+        <input
+          type="url"
+          value={meetLink}
+          onChange={(e) => setMeetLink(e.target.value)}
+          placeholder="https://meet.google.com/xxx-xxxx-xxx"
+        />
+      </label>
       {isDeadlineChanged && (
         <div className="deadline-change-warning">
           <p>
@@ -1642,6 +1664,7 @@ interface ComplexStepDraft {
   priority: Priority;
   deadline: string; // datetime-local string — step 0 only
   delayDays: string; // step 1+ only
+  meetLink: string;
 }
 
 function emptyComplexStep(defaultAssigneeId: string): ComplexStepDraft {
@@ -1654,6 +1677,7 @@ function emptyComplexStep(defaultAssigneeId: string): ComplexStepDraft {
     priority: "MEDIUM",
     deadline: "",
     delayDays: "",
+    meetLink: "",
   };
 }
 
@@ -1748,6 +1772,7 @@ function ComplexTaskForm({
           priority: step.priority,
           deadline: i === 0 ? new Date(step.deadline).toISOString() : undefined,
           delayDays: i > 0 ? Number(step.delayDays) : undefined,
+          meetLink: step.meetLink.trim() || "",
         })),
       };
       await api("/projects", { method: "POST", body: JSON.stringify(body) });
@@ -1862,6 +1887,15 @@ function ComplexTaskForm({
                 </label>
               )}
             </div>
+            <label>
+              {t("Google Meet линк (по избор)")}
+              <input
+                type="url"
+                value={step.meetLink}
+                onChange={(e) => updateStep(i, { meetLink: e.target.value })}
+                placeholder="https://meet.google.com/xxx-xxxx-xxx"
+              />
+            </label>
           </div>
         );
       })}

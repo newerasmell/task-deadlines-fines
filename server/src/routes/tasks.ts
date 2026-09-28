@@ -7,6 +7,7 @@ import { verifyToken } from "../lib/auth";
 import { addBusinessHours } from "../lib/businessHours";
 import { checkDeadlineForBusinessHoursAssignee } from "../lib/deadlineBusinessHours";
 import { env } from "../lib/env";
+import { meetLinkField } from "../lib/meetLink";
 import { prisma } from "../lib/prisma";
 import { absoluteUploadPath, uploadAttachments } from "../lib/uploads";
 import { requireAdmin, requireAuth, requireSuperAdmin } from "../middleware/auth";
@@ -182,6 +183,7 @@ const createSchema = z.object({
   ownerId: z.string().min(1).optional(),
   deadline: deadlineFieldSchema,
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
+  meetLink: meetLinkField,
 });
 
 tasksRouter.post("/", async (req, res) => {
@@ -251,6 +253,7 @@ const updateSchema = z.object({
   deadlineChangeReason: z.string().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   status: z.enum(["PENDING", "IN_PROGRESS", "DONE", "OVERDUE", "CANCELLED"]).optional(),
+  meetLink: meetLinkField,
 });
 
 tasksRouter.patch("/:id", async (req, res) => {
@@ -279,7 +282,7 @@ tasksRouter.patch("/:id", async (req, res) => {
   if (!isAdmin || locked) {
     // Employees (and a locked Admin acting only as assignee) can only start
     // work; completion goes through /submit for owner review.
-    for (const key of ["title", "description", "definitionOfDone", "assigneeId", "ownerId", "deadline", "priority"]) delete data[key];
+    for (const key of ["title", "description", "definitionOfDone", "assigneeId", "ownerId", "deadline", "priority", "meetLink"]) delete data[key];
     if (parsed.data.status && parsed.data.status !== "IN_PROGRESS") {
       return res.status(400).json({ error: "Use POST /tasks/:id/submit to complete a task" });
     }

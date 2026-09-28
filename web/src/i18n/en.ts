@@ -563,4 +563,8 @@ export const en: Record<string, string> = {
   "В календара: {date}": "In calendar: {date}",
   "Премахни от календара": "Remove from calendar",
   "Свържи Google Calendar от профила си": "Connect Google Calendar from your profile",
+  "Google Meet линк (по избор)": "Google Meet link (optional)",
+  "Отвори Google Meet": "Open Google Meet",
+  "Няма зададен Google Meet линк": "No Google Meet link set",
+  "Google Meet": "Google Meet",
 };

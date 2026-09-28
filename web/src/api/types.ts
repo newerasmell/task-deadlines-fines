@@ -83,6 +83,9 @@ export interface Task {
   templateId: string | null;
   template?: { id: string; title: string; active: boolean } | null;
   deadline: string;
+  // Optional video-call link (Google Meet or any http(s) URL) — shown as a
+  // lit-up icon button that opens it in a new tab; unset means no call.
+  meetLink: string | null;
   priority: Priority;
   status: TaskStatus;
   completedAt: string | null;

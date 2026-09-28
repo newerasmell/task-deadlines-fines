@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { checkDeadlineForBusinessHoursAssignee } from "../lib/deadlineBusinessHours";
 import { formatDateTime } from "../lib/dateFormat";
+import { meetLinkField } from "../lib/meetLink";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { createProjectAndNotify } from "../services/projectCreation";
@@ -21,6 +22,7 @@ const stepSchema = z.object({
   deadline: z.coerce.date().optional(),
   // Steps 2-4 only — how many days after the previous step is approved this one's deadline lands.
   delayDays: z.number().int().min(1).max(90).optional(),
+  meetLink: meetLinkField,
 });
 
 const createProjectSchema = z

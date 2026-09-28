@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
 import type { GoogleCalendarStatus, Task } from "../api/types";
 import { Avatar } from "../components/Avatar";
+import { MeetLinkButton } from "../components/MeetLinkButton";
 import { PushToCalendarButton } from "../components/PushToCalendarButton";
 import { RowMenu, RowMenuItem } from "../components/RowMenu";
 import { useAuth } from "../context/AuthContext";
@@ -110,7 +111,7 @@ export function MyTasks() {
       <div className="table-wrap">
         <div
           className="grid-table"
-          style={{ gridTemplateColumns: "minmax(220px, 2fr) 150px 120px 160px 100px 110px 90px 88px" }}
+          style={{ gridTemplateColumns: "minmax(220px, 2fr) 150px 120px 160px 100px 110px 90px 128px" }}
         >
           <div className="grid-table-header">{t("Задача")}</div>
           <div className="grid-table-header">{t("Служител")}</div>
@@ -191,6 +192,7 @@ export function MyTasks() {
                     {fineTotal > 0 ? `${fineTotal.toFixed(2)} ${activeFines[0].currency}` : "—"}
                   </div>
                   <div className="grid-cell grid-cell-actions">
+                    <MeetLinkButton meetLink={tk.meetLink} />
                     {tk.status !== "BLOCKED" && (
                       <PushToCalendarButton task={tk} googleConnected={googleConnected} onUpdated={updateTaskInPlace} compact />
                     )}

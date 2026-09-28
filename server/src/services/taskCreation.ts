@@ -29,6 +29,7 @@ export interface CreateTaskInput {
   deadline: Date;
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   createdById: string;
+  meetLink?: string | null;
 }
 
 /**
@@ -60,15 +61,17 @@ export async function createTaskAndNotify(input: CreateTaskInput) {
       deadline: input.deadline,
       priority: input.priority,
       createdById: input.createdById,
+      meetLink: input.meetLink ?? null,
     },
     include: { assignee: { select: notifiableUserSelect }, owner: { select: notifiableUserSelect } },
   });
+  const meetLine = task.meetLink ? `\n\nGoogle Meet: ${task.meetLink}` : "";
 
   await dispatchRespectingBusinessHours(
     toNotificationTarget(assignee),
     {
       subject: `Нова задача: ${task.title}`,
-      body: `Получи нова задача със срок ${formatDateTime(task.deadline)}.\n\n${task.description ?? ""}\n\nЗакъснението без основателна причина води до автоматична глоба.`,
+      body: `Получи нова задача със срок ${formatDateTime(task.deadline)}.\n\n${task.description ?? ""}\n\nЗакъснението без основателна причина води до автоматична глоба.${meetLine}`,
       deadline: task.deadline,
     },
     { taskId: task.id }
@@ -78,7 +81,7 @@ export async function createTaskAndNotify(input: CreateTaskInput) {
       toNotificationTarget(task.owner),
       {
         subject: `Назначен си като преглеждащ: ${task.title}`,
-        body: `Ти си Owner (преглеждащ) на задача "${task.title}" (изпълнител: ${assignee.name}, срок ${formatDateTime(task.deadline)}). Ще трябва да прегледаш работата, след като бъде подадена.`,
+        body: `Ти си Owner (преглеждащ) на задача "${task.title}" (изпълнител: ${assignee.name}, срок ${formatDateTime(task.deadline)}). Ще трябва да прегледаш работата, след като бъде подадена.${meetLine}`,
         deadline: task.deadline,
       },
       { taskId: task.id }
