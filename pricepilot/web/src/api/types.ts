@@ -153,10 +153,10 @@ export interface AmbiguousMatch {
 export interface SourcePriceCell {
   price: number;
   currency: string;
-  // Reference-only conversion into the store's own currency, when this
-  // source's currency differs — null if same currency, or the rate lookup
-  // wasn't available.
-  convertedPrice: number | null;
+  // Reference-only conversion into EUR (the team's fixed reference
+  // currency), when this source isn't already in EUR — null if it's
+  // already EUR, or the rate lookup wasn't available.
+  eurPrice: number | null;
   url: string | null;
   fetchedAt: string;
   stale: boolean;
@@ -212,6 +212,10 @@ export interface PricingTableResponse {
   categories: { id: string; title: string }[];
   rows: PricingRow[];
   formula: CodFormulaInfo | null;
+  // Multiply a store.currency amount by this to get its EUR equivalent —
+  // null when the store's own currency already is EUR, or the rate lookup
+  // wasn't available.
+  storeCurrencyEurRate: number | null;
 }
 
 export interface PublishResultItem {

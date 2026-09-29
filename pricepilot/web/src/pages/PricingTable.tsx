@@ -44,10 +44,55 @@ function summarizeNumbers(values: (number | null)[]): { allSame: boolean; min: n
   return { allSame: min === max && nonNull.length === values.length, min, max };
 }
 
-function fmtMoneyRange(values: (number | null)[], currency: string): string {
+// EUR is the team's fixed reference currency — every sum shown for a store
+// whose own currency isn't EUR (or a competitor price in a third currency)
+// gets a small "≈ X EUR" alongside it. `eurRate` converts ONE UNIT of the
+// value's own currency into EUR; null means "already EUR" or "rate not
+// available", either way nothing extra is shown.
+function eurEquivalent(value: number, currency: string, eurRate: number | null): number | null {
+  return currency !== "EUR" && eurRate != null ? value * eurRate : null;
+}
+
+// For amounts embedded in a flowing text note (a "·"-separated summary line,
+// a translated sentence) rather than their own line — the EUR equivalent
+// stays inline as "(≈ X EUR)" instead of Money/MoneyRange's own block line.
+function fmtMoneyEurInline(value: number | null, currency: string, eurRate: number | null): string {
+  if (value == null) return "—";
+  const eur = eurEquivalent(value, currency, eurRate);
+  return eur != null ? `${fmtMoney(value, currency)} (≈ ${fmtMoney(eur, "EUR")})` : fmtMoney(value, currency);
+}
+
+// The EUR line is a <span style="display:block"> rather than a <div> so it
+// nests validly wherever Money/MoneyRange get used — inside a <span> (the
+// price-compare value), an <a> (the source cell link), or a <td> alike.
+function EurNote({ text }: { text: string }) {
+  return <span className="small muted money-eur-equiv">≈ {text}</span>;
+}
+
+function Money({ value, currency, eurRate }: { value: number | null; currency: string; eurRate: number | null }) {
+  if (value == null) return <>—</>;
+  const eur = eurEquivalent(value, currency, eurRate);
+  return (
+    <>
+      {eur != null && <EurNote text={fmtMoney(eur, "EUR")} />}
+      {fmtMoney(value, currency)}
+    </>
+  );
+}
+
+function MoneyRange({ values, currency, eurRate }: { values: (number | null)[]; currency: string; eurRate: number | null }) {
   const { allSame, min, max } = summarizeNumbers(values);
-  if (min == null) return "—";
-  return allSame ? fmtMoney(min, currency) : `${fmtMoney(min, currency)} – ${fmtMoney(max, currency)}`;
+  if (min == null) return <>—</>;
+  const eurMin = eurEquivalent(min, currency, eurRate);
+  const eurMax = max != null ? eurEquivalent(max, currency, eurRate) : null;
+  return (
+    <>
+      {eurMin != null && (
+        <EurNote text={allSame || eurMax == null ? fmtMoney(eurMin, "EUR") : `${fmtMoney(eurMin, "EUR")} – ${fmtMoney(eurMax, "EUR")}`} />
+      )}
+      {allSame ? fmtMoney(min, currency) : `${fmtMoney(min, currency)} – ${fmtMoney(max, currency)}`}
+    </>
+  );
 }
 
 function fmtPctRange(values: (number | null)[]): string {
@@ -102,22 +147,27 @@ type ViewMode = "table" | "cards";
 function PriceCompare({
   row,
   currency,
+  eurRate,
   isCod,
   suggestedValue,
   onSuggestedChange,
 }: {
   row: PricingRow;
   currency: string;
+  eurRate: number | null;
   isCod: boolean;
   suggestedValue: number | null;
   onSuggestedChange: (value: string) => void;
 }) {
   const t = useT();
+  const suggestedEur = suggestedValue != null ? eurEquivalent(suggestedValue, currency, eurRate) : null;
   return (
     <div className="price-compare">
       <div className="price-compare-current">
         <span className="field-label">{t("Нашата цена")}</span>
-        <span className="price-compare-value">{fmtMoney(row.ourPrice, currency)}</span>
+        <span className="price-compare-value">
+          <Money value={row.ourPrice} currency={currency} eurRate={eurRate} />
+        </span>
       </div>
       <span className="price-compare-arrow">→</span>
       <div className={`price-compare-suggested flag-${row.flag}`}>
@@ -130,10 +180,14 @@ function PriceCompare({
           onChange={(e) => onSuggestedChange(e.target.value)}
           placeholder="—"
         />
+        {suggestedEur != null && <EurNote text={fmtMoney(suggestedEur, "EUR")} />}
         <span className={`badge flag-${row.flag}`}>{t(FLAG_LABELS[row.flag])}</span>
         {row.saleDiscountApplied && (
           <span className="price-compare-note">
-            {t("SALE -{pct}% от {price}", { pct: row.saleDiscountPct?.toFixed(0) ?? "", price: fmtMoney(row.salePreDiscountPrice ?? null, currency) })}
+            {t("SALE -{pct}% от {price}", {
+              pct: row.saleDiscountPct?.toFixed(0) ?? "",
+              price: fmtMoneyEurInline(row.salePreDiscountPrice ?? null, currency, eurRate),
+            })}
           </span>
         )}
       </div>
@@ -649,15 +703,11 @@ export function PricingTable() {
       );
     }
     if (cell) {
-      const showConverted = cell.currency !== currentStore!.currency && cell.convertedPrice != null;
+      const showConverted = cell.currency !== "EUR" && cell.eurPrice != null;
       return (
         <>
           <a href={cell.url ?? undefined} target="_blank" rel="noreferrer" title={cell.url ?? undefined}>
-            {showConverted && (
-              <div className="small muted source-cell-converted">
-                ≈ {fmtMoney(cell.convertedPrice, currentStore!.currency)}
-              </div>
-            )}
+            {showConverted && <EurNote text={fmtMoney(cell.eurPrice, "EUR")} />}
             {fmtMoney(cell.price, cell.currency)}
             <div className="small">
               {fmtFreshness(cell.fetchedAt, t)} {cell.stale && "⚠️"}
@@ -725,12 +775,15 @@ export function PricingTable() {
           <PriceCompare
             row={row}
             currency={currentStore!.currency}
+            eurRate={data!.storeCurrencyEurRate}
             isCod={isCod}
             suggestedValue={suggestedValue}
             onSuggestedChange={(v) => setSuggestedValue(row.productId, v)}
           />
         </td>
-        <td>{fmtMoney(row.compareAtPrice, currentStore!.currency)}</td>
+        <td>
+          <Money value={row.compareAtPrice} currency={currentStore!.currency} eurRate={data!.storeCurrencyEurRate} />
+        </td>
         <td className="small">{fmtActivatedAt(row.activatedAt)}</td>
         {isCod && <td>{renderCostInput(row)}</td>}
         {data!.sources.map((s) => (
@@ -738,11 +791,15 @@ export function PricingTable() {
             {renderSourceCell(row, s)}
           </td>
         ))}
-        {!isCod && <td>{fmtMoney(row.minComp, currentStore!.currency)}</td>}
+        {!isCod && (
+          <td>
+            <Money value={row.minComp} currency={currentStore!.currency} eurRate={data!.storeCurrencyEurRate} />
+          </td>
+        )}
         <td>{row.deltaPct != null ? `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%` : "—"}</td>
         {isCod && (
           <td title={row.recommendedComparePrice == null ? row.recommendedComparePriceReason ?? undefined : undefined}>
-            {fmtMoney(row.recommendedComparePrice, currentStore!.currency)}
+            <Money value={row.recommendedComparePrice} currency={currentStore!.currency} eurRate={data!.storeCurrencyEurRate} />
           </td>
         )}
         <td>
@@ -769,7 +826,15 @@ export function PricingTable() {
         </h1>
       </div>
 
-      {isCod && <CodFormulaPanel storeId={currentStore.id} formula={data.formula} currency={currentStore.currency} onSaved={refresh} />}
+      {isCod && (
+        <CodFormulaPanel
+          storeId={currentStore.id}
+          formula={data.formula}
+          currency={currentStore.currency}
+          eurRate={data.storeCurrencyEurRate}
+          onSaved={refresh}
+        />
+      )}
 
       <div className="filters-bar">
         <input placeholder={t("Търсене по име / SKU / EAN")} value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -969,10 +1034,11 @@ export function PricingTable() {
                           <div className="price-compare-current">
                             <span className="field-label">{t("Нашата цена")}</span>
                             <span className="price-compare-value">
-                              {fmtMoneyRange(
-                                group.rows.map((r) => r.ourPrice),
-                                currentStore!.currency
-                              )}
+                              <MoneyRange
+                                values={group.rows.map((r) => r.ourPrice)}
+                                currency={currentStore!.currency}
+                                eurRate={data!.storeCurrencyEurRate}
+                              />
                             </span>
                           </div>
                           <span className="price-compare-arrow">→</span>
@@ -994,17 +1060,20 @@ export function PricingTable() {
                             </span>
                             {compareAtWillChange && (
                               <span className="price-compare-note">
-                                {t("Стара цена → {price}", { price: fmtMoney(recommendedCompareAtSummary.min, currentStore!.currency) })}
+                                {t("Стара цена → {price}", {
+                                  price: fmtMoneyEurInline(recommendedCompareAtSummary.min, currentStore!.currency, data!.storeCurrencyEurRate),
+                                })}
                               </span>
                             )}
                           </div>
                         </div>
                       </td>
                       <td>
-                        {fmtMoneyRange(
-                          group.rows.map((r) => r.compareAtPrice),
-                          currentStore!.currency
-                        )}
+                        <MoneyRange
+                          values={group.rows.map((r) => r.compareAtPrice)}
+                          currency={currentStore!.currency}
+                          eurRate={data!.storeCurrencyEurRate}
+                        />
                       </td>
                       <td className="small">{fmtActivatedAtIfUniform(group.rows.map((r) => r.activatedAt))}</td>
                       {isCod && <td>{fmtNumberRange(group.rows.map((r) => r.cost))}</td>}
@@ -1015,19 +1084,21 @@ export function PricingTable() {
                       ))}
                       {!isCod && (
                         <td>
-                          {fmtMoneyRange(
-                            group.rows.map((r) => r.minComp),
-                            currentStore!.currency
-                          )}
+                          <MoneyRange
+                            values={group.rows.map((r) => r.minComp)}
+                            currency={currentStore!.currency}
+                            eurRate={data!.storeCurrencyEurRate}
+                          />
                         </td>
                       )}
                       <td>{fmtPctRange(group.rows.map((r) => r.deltaPct))}</td>
                       {isCod && (
                         <td>
-                          {fmtMoneyRange(
-                            group.rows.map((r) => r.recommendedComparePrice),
-                            currentStore!.currency
-                          )}
+                          <MoneyRange
+                            values={group.rows.map((r) => r.recommendedComparePrice)}
+                            currency={currentStore!.currency}
+                            eurRate={data!.storeCurrencyEurRate}
+                          />
                         </td>
                       )}
                       <td></td>
@@ -1062,6 +1133,7 @@ export function PricingTable() {
                 <PriceCompare
                   row={row}
                   currency={currentStore.currency}
+                  eurRate={data.storeCurrencyEurRate}
                   isCod={isCod}
                   suggestedValue={suggestedValue}
                   onSuggestedChange={(v) => setSuggestedValue(row.productId, v)}
@@ -1070,7 +1142,9 @@ export function PricingTable() {
                 <div className="pricing-card-fields">
                   <div className="field">
                     <span className="field-label">{t("Стара цена")}</span>
-                    <span className="field-value">{fmtMoney(row.compareAtPrice, currentStore.currency)}</span>
+                    <span className="field-value">
+                      <Money value={row.compareAtPrice} currency={currentStore.currency} eurRate={data.storeCurrencyEurRate} />
+                    </span>
                   </div>
                   <div className="field">
                     <span className="field-label">{t("Активен от")}</span>
@@ -1085,7 +1159,9 @@ export function PricingTable() {
                   {!isCod && (
                     <div className="field">
                       <span className="field-label">{t("Мин.")}</span>
-                      <span className="field-value">{fmtMoney(row.minComp, currentStore.currency)}</span>
+                      <span className="field-value">
+                        <Money value={row.minComp} currency={currentStore.currency} eurRate={data.storeCurrencyEurRate} />
+                      </span>
                     </div>
                   )}
                   <div className="field">
@@ -1095,7 +1171,9 @@ export function PricingTable() {
                   {isCod && (
                     <div className="field" title={row.recommendedComparePrice == null ? row.recommendedComparePriceReason ?? undefined : undefined}>
                       <span className="field-label">{t("Препоръчана стара цена")}</span>
-                      <span className="field-value">{fmtMoney(row.recommendedComparePrice, currentStore.currency)}</span>
+                      <span className="field-value">
+                        <Money value={row.recommendedComparePrice} currency={currentStore.currency} eurRate={data.storeCurrencyEurRate} />
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1208,11 +1286,13 @@ function CodFormulaPanel({
   storeId,
   formula,
   currency,
+  eurRate,
   onSaved,
 }: {
   storeId: string;
   formula: CodFormulaInfo | null;
   currency: string;
+  eurRate: number | null;
   onSaved: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -1318,7 +1398,7 @@ function CodFormulaPanel({
           <strong>{t("Формула за ценообразуване (COD)")}</strong>{" "}
           {formula && (
             <span className="muted small">
-              k = {fmtK(formula.k)} · {t("средна себестойност")} {fmtMoney(formula.avgCost || null, currency)} · {t("режим")}{" "}
+              k = {fmtK(formula.k)} · {t("средна себестойност")} {fmtMoneyEurInline(formula.avgCost || null, currency, eurRate)} · {t("режим")}{" "}
               {t(MODE_LABELS[formula.config.mode])}
               {formula.config.mode !== "cost" && ` · ${t("база")} ${t(SCENARIO_KEY_LABELS[formula.scenario] ?? formula.scenario)}`}
             </span>

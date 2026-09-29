@@ -42,6 +42,10 @@ pricingRouter.get("/:storeId", async (req, res) => {
     return sendCodPricingTable(res, store);
   }
 
+  // EUR is the team's fixed reference currency — every sum shown for a
+  // store whose own currency isn't EUR gets a small "≈ X EUR" alongside it,
+  // regardless of which currency it's natively in (store or competitor).
+
   const [products, sources, costs, productCategories, categories] = await Promise.all([
     prisma.product.findMany({ where: { storeId: store.id }, orderBy: { title: "asc" } }),
     prisma.source.findMany({ where: { storeId: store.id }, orderBy: { createdAt: "asc" } }),
@@ -62,12 +66,10 @@ pricingRouter.get("/:storeId", async (req, res) => {
     where: { sourceId: { in: sources.map((s) => s.id) }, productId: { in: products.map((p) => p.id) } },
   });
 
-  // One rate lookup per distinct foreign currency actually present, not one
-  // per cell — most stores will have zero or one foreign-currency source.
-  const rateToStoreCurrency = await getRatesTo(
-    competitorPrices.map((cp) => cp.currency),
-    store.currency
-  );
+  // One rate lookup per distinct non-EUR currency actually present (the
+  // store's own currency plus every competitor currency), not one per cell.
+  const eurRates = await getRatesTo([store.currency, ...competitorPrices.map((cp) => cp.currency)], "EUR");
+  const storeCurrencyEurRate = store.currency !== "EUR" ? eurRates.get(store.currency) ?? null : null;
 
   const costBySkuOrEan = new Map(costs.map((c) => [c.skuOrEan, c.cost]));
   const compByProduct = new Map<string, typeof competitorPrices>();
@@ -107,7 +109,7 @@ pricingRouter.get("/:storeId", async (req, res) => {
       {
         price: number;
         currency: string;
-        convertedPrice: number | null;
+        eurPrice: number | null;
         url: string | null;
         fetchedAt: string;
         stale: boolean;
@@ -115,11 +117,11 @@ pricingRouter.get("/:storeId", async (req, res) => {
       }
     > = {};
     for (const m of matches) {
-      const rate = m.currency !== store.currency ? rateToStoreCurrency.get(m.currency) ?? null : null;
+      const rate = m.currency !== "EUR" ? eurRates.get(m.currency) ?? null : null;
       sourcePrices[m.sourceId] = {
         price: m.price,
         currency: m.currency,
-        convertedPrice: rate != null ? m.price * rate : null,
+        eurPrice: rate != null ? m.price * rate : null,
         url: m.url,
         fetchedAt: m.fetchedAt.toISOString(),
         stale: now - m.fetchedAt.getTime() > STALE_AFTER_MS,
@@ -166,6 +168,7 @@ pricingRouter.get("/:storeId", async (req, res) => {
     categories,
     rows,
     formula: null,
+    storeCurrencyEurRate,
   });
 });
 
@@ -174,12 +177,15 @@ async function sendCodPricingTable(
   store: {
     id: string;
     pricingProfile: string;
+    currency: string;
     markdownEnabled: boolean;
     markdownCollectionId: string | null;
     markdownAfterDays: number;
     markdownCeilingPct: number;
   }
 ) {
+  const storeCurrencyEurRate =
+    store.currency !== "EUR" ? (await getRatesTo([store.currency], "EUR")).get(store.currency) ?? null : null;
   const [products, costs, config, productCategories, brands, categories] = await Promise.all([
     prisma.product.findMany({ where: { storeId: store.id }, orderBy: { title: "asc" } }),
     prisma.cost.findMany({ where: { storeId: store.id } }),
@@ -406,5 +412,6 @@ async function sendCodPricingTable(
     categories,
     rows,
     formula: { config, avgCost, k, reason, scenario: scenario.key },
+    storeCurrencyEurRate,
   });
 }
