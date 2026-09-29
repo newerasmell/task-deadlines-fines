@@ -94,6 +94,11 @@ export const sources: Record<string, string> = {
   "jeftinije.hr (масово сканиране на брандове)": "jeftinije.hr (bulk brand-listing crawl)",
   "notino.hr (сканиране по бранд — тест)": "notino.hr (per-brand listing crawl — test)",
   "Базов URL": "Base URL",
+  "Валута на източника": "Source currency",
+  "(незадължително — оставете празно, ако конкурентът е в същата валута като магазина)":
+    "(optional — leave blank if the competitor is in the same currency as the store)",
+  "напр. USD": "e.g. USD",
+  "Цените от този източник се записват в {currency}": "Prices from this source are recorded in {currency}",
   "Шаблон за URL за търсене": "Search URL template",
   "(незадължително — отправна точка за проучващия)": "(optional — a starting point for whoever's researching)",
   "Сканира филтрираните по бранд страници на jeftinije.hr веднъж на изпълнение (без търсене по продукт) и съпоставя стриктно по бранд + мл + концентрация; всичко, което не е сигурно, отива в опашката за преглед вместо да се гадае.":

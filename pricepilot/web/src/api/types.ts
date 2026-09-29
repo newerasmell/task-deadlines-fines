@@ -113,6 +113,9 @@ export interface Source {
   type: SourceType;
   baseUrl: string;
   searchUrlTemplate: string | null;
+  // Null = assume same currency as the store. Set only when this competitor
+  // site actually prices in a different currency.
+  currency: string | null;
   active: boolean;
   autoRefresh: boolean;
   lastRefreshedAt: string | null;
@@ -150,6 +153,10 @@ export interface AmbiguousMatch {
 export interface SourcePriceCell {
   price: number;
   currency: string;
+  // Reference-only conversion into the store's own currency, when this
+  // source's currency differs — null if same currency, or the rate lookup
+  // wasn't available.
+  convertedPrice: number | null;
   url: string | null;
   fetchedAt: string;
   stale: boolean;

@@ -704,6 +704,10 @@ table.pricing-table tbody tr:hover {
   text-decoration: underline;
 }
 
+.source-cell-converted {
+  font-style: italic;
+}
+
 .add-manually-btn {
   border: 1px dashed var(--border);
   background: none;

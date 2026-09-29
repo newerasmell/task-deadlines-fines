@@ -105,7 +105,7 @@ async function refreshShopifyJsonSource(store: Store, source: Source): Promise<n
           competitorSku: variant.sku,
           competitorBarcode: variant.barcode ?? null,
           price,
-          currency: store.currency,
+          currency: source.currency ?? store.currency,
           url: `${source.baseUrl.replace(/\/$/, "")}/products/${product.id}`,
           isManual: false,
         });
@@ -176,7 +176,7 @@ export async function recordFoundPrice(params: {
     competitorSku: product.sku,
     competitorBarcode: product.barcode,
     price,
-    currency: store.currency,
+    currency: source.currency ?? store.currency,
     url,
     isManual,
   });

@@ -2,6 +2,7 @@ import { Response, Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { env } from "../lib/env";
+import { getRatesTo } from "../lib/exchangeRates";
 import { computeSuggestion } from "../services/suggestionEngine";
 import {
   applySaleDiscount,
@@ -61,6 +62,13 @@ pricingRouter.get("/:storeId", async (req, res) => {
     where: { sourceId: { in: sources.map((s) => s.id) }, productId: { in: products.map((p) => p.id) } },
   });
 
+  // One rate lookup per distinct foreign currency actually present, not one
+  // per cell — most stores will have zero or one foreign-currency source.
+  const rateToStoreCurrency = await getRatesTo(
+    competitorPrices.map((cp) => cp.currency),
+    store.currency
+  );
+
   const costBySkuOrEan = new Map(costs.map((c) => [c.skuOrEan, c.cost]));
   const compByProduct = new Map<string, typeof competitorPrices>();
   for (const cp of competitorPrices) {
@@ -96,12 +104,22 @@ pricingRouter.get("/:storeId", async (req, res) => {
 
     const sourcePrices: Record<
       string,
-      { price: number; currency: string; url: string | null; fetchedAt: string; stale: boolean; isManual: boolean }
+      {
+        price: number;
+        currency: string;
+        convertedPrice: number | null;
+        url: string | null;
+        fetchedAt: string;
+        stale: boolean;
+        isManual: boolean;
+      }
     > = {};
     for (const m of matches) {
+      const rate = m.currency !== store.currency ? rateToStoreCurrency.get(m.currency) ?? null : null;
       sourcePrices[m.sourceId] = {
         price: m.price,
         currency: m.currency,
+        convertedPrice: rate != null ? m.price * rate : null,
         url: m.url,
         fetchedAt: m.fetchedAt.toISOString(),
         stale: now - m.fetchedAt.getTime() > STALE_AFTER_MS,

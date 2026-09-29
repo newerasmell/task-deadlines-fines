@@ -27,12 +27,29 @@ sourcesRouter.get("/", async (req, res) => {
   res.json(sources);
 });
 
+// Empty string (the form's "leave blank = same as store") normalizes to
+// null rather than failing the 3-letter regex.
+const currencyField = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+  z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{3}$/, "3-letter ISO currency code, e.g. USD")
+    .nullable()
+    .optional()
+);
+
 const createSchema = z.object({
   storeId: z.string().min(1),
   label: z.string().min(1),
   type: z.enum(["shopify_json", "scrape", "manual_import", "jeftinije_hr", "notino_hr"]),
   baseUrl: z.string().min(1),
   searchUrlTemplate: z.string().nullable().optional(),
+  // Null (or omitted) means "same currency as the store" — the pre-existing
+  // behavior. Set only when this competitor site actually prices in a
+  // different currency, so the pricing table can show a converted reference.
+  currency: currencyField,
   active: z.boolean().default(true),
   // jeftinije_hr's full brand-listing crawl is heavy enough that it
   // defaults to manual-only ("Refresh now" button, no 24h auto-tick)

@@ -138,6 +138,7 @@ export function SourcesSection({ storeId }: { storeId: string }) {
               headerLeft={
                 <span>
                   {s.label} <span className="accordion-meta">({s.type})</span>
+                  {s.currency && <span className="tag" title={t("Цените от този източник се записват в {currency}", { currency: s.currency })}>{s.currency}</span>}
                   {s.degraded && <span className="tag">{t("влошено")}</span>}
                   {!s.active && <span className="tag">{t("неактивно")}</span>}
                   {!s.autoRefresh && <span className="tag">{t("само ръчно")}</span>}
@@ -559,6 +560,7 @@ function SourceForm({
   const [type, setType] = useState<SourceType>(source?.type ?? "shopify_json");
   const [baseUrl, setBaseUrl] = useState(source?.baseUrl ?? "");
   const [searchUrlTemplate, setSearchUrlTemplate] = useState(source?.searchUrlTemplate ?? "");
+  const [currency, setCurrency] = useState(source?.currency ?? "");
   const [active, setActive] = useState(source?.active ?? true);
   const [autoRefresh, setAutoRefresh] = useState(source?.autoRefresh ?? true);
   const [error, setError] = useState<string | null>(null);
@@ -597,6 +599,7 @@ function SourceForm({
         baseUrl,
         searchUrlTemplate:
           type === "shopify_json" || type === "jeftinije_hr" || type === "notino_hr" ? null : searchUrlTemplate || null,
+        currency: currency.trim() || null,
         active,
         autoRefresh,
       };
@@ -640,6 +643,17 @@ function SourceForm({
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={type === "shopify_json" ? "https://competitor.com" : "https://competitor.com"}
           required
+        />
+      </label>
+      <label>
+        {t("Валута на източника")}{" "}
+        <span className="muted">{t("(незадължително — оставете празно, ако конкурентът е в същата валута като магазина)")}</span>
+        <input
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+          placeholder={t("напр. USD")}
+          maxLength={3}
+          style={{ textTransform: "uppercase" }}
         />
       </label>
       {(type === "scrape" || type === "manual_import") && (

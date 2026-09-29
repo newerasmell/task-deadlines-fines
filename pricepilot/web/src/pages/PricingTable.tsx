@@ -649,9 +649,15 @@ export function PricingTable() {
       );
     }
     if (cell) {
+      const showConverted = cell.currency !== currentStore!.currency && cell.convertedPrice != null;
       return (
         <>
           <a href={cell.url ?? undefined} target="_blank" rel="noreferrer" title={cell.url ?? undefined}>
+            {showConverted && (
+              <div className="small muted source-cell-converted">
+                ≈ {fmtMoney(cell.convertedPrice, currentStore!.currency)}
+              </div>
+            )}
             {fmtMoney(cell.price, cell.currency)}
             <div className="small">
               {fmtFreshness(cell.fetchedAt, t)} {cell.stale && "⚠️"}

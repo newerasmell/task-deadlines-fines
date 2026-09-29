@@ -32,7 +32,7 @@ model User {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  auditLogs       AuditLog[]
+  auditLogs AuditLog[]
 }
 
 // One row per meaningful write — store/source config changes, cost edits,
@@ -65,7 +65,7 @@ model Group {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stores    Store[]
+  stores Store[]
 }
 
 // One row per configured Shopify store/market. admin_api_token is stored
@@ -74,25 +74,25 @@ model Group {
 // store (1:1) rather than a separate table, since a store always has
 // exactly one active rule.
 model Store {
-  id                String   @id @default(cuid())
-  name              String
-  myshopifyDomain   String   @unique
+  id                  String  @id @default(cuid())
+  name                String
+  myshopifyDomain     String  @unique
   shopifyClientId     String
   shopifyClientSecret String // encrypted at rest — exchanged for a short-lived Admin API access token via the client_credentials grant, not used directly (see shopifyClient.ts)
-  marketCode        String
-  currency          String
-  groupId           String?
-  group             Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  marketCode          String
+  currency            String
+  groupId             String?
+  group               Group?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
-  pricingStrategy   String   @default("undercut_min") // undercut_min | match_min | undercut_avg
-  undercutPct       Float    @default(1)
-  priceEnding       String?  // e.g. ".99" — null means no ending adjustment
-  minMarginPct      Float    @default(10)
+  pricingStrategy String  @default("undercut_min") // undercut_min | match_min | undercut_avg
+  undercutPct     Float   @default(1)
+  priceEnding     String? // e.g. ".99" — null means no ending adjustment
+  minMarginPct    Float   @default(10)
 
   // "competitor" (default, the engine above) or "cod_formula" — a COD store
   // prices off its own cost/logistics/ad-spend formula instead of tracking
   // competitor prices; see CodFormulaConfig and codPricingEngine.ts.
-  pricingProfile    String   @default("competitor")
+  pricingProfile String @default("competitor")
 
   // Opt-in, per store — the "Продажби" tab (6-month units sold/avg realized
   // price/page views/conv-rate, rolled up by Shopify collection) only shows
@@ -100,7 +100,7 @@ model Store {
   // read_orders Shopify scope most stores haven't granted yet, and GA4 wiring
   // most stores haven't configured — turning it on for everyone would just
   // show empty/broken data for stores that aren't set up for it.
-  salesAnalyticsEnabled Boolean @default(false)
+  salesAnalyticsEnabled Boolean   @default(false)
   // New-arrival markdown (COD-formula stores only): a product added to
   // markdownCollectionId starts a countdown the moment it's first observed
   // ACTIVE in Shopify (Product.activatedAt). Once markdownAfterDays have
@@ -110,56 +110,63 @@ model Store {
   // codPricingEngine.ts's markdown functions. Off by default; needs
   // salesAnalyticsEnabled too, since that's what syncs Category rows to
   // pick markdownCollectionId from in the first place.
-  markdownEnabled     Boolean  @default(false)
-  markdownCollectionId String?
-  markdownCollection  Category? @relation("MarkdownCollection", fields: [markdownCollectionId], references: [id], onDelete: SetNull)
-  markdownAfterDays   Int      @default(8)
-  markdownCeilingPct  Float    @default(12.5)
+  markdownEnabled       Boolean   @default(false)
+  markdownCollectionId  String?
+  markdownCollection    Category? @relation("MarkdownCollection", fields: [markdownCollectionId], references: [id], onDelete: SetNull)
+  markdownAfterDays     Int       @default(8)
+  markdownCeilingPct    Float     @default(12.5)
   // Shopify tag (e.g. used by the storefront theme to badge a product
   // "NEW") automatically removed from a product the moment a markdown-
   // eligible row's suggested price is actually published through this app
   // — the badge should disappear once the item's price has genuinely been
   // marked down, not linger just because nobody remembered to clear it by
   // hand. Empty/blank disables the removal (nothing to remove).
-  newArrivalTag       String   @default("c_newcollection")
+  newArrivalTag         String    @default("c_newcollection")
 
   // GA4 property to pull page views from (e.g. "properties/123456789") —
   // null means the page-views/conv-rate columns stay blank even with
   // salesAnalyticsEnabled on; see services/ga4Client.ts.
-  ga4PropertyId         String?
+  ga4PropertyId String?
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  sources           Source[]
-  products          Product[]
-  costs             Cost[]
-  manualMatches     ManualMatch[]
-  publishLogs       PublishLog[]
-  codFormulaConfig  CodFormulaConfig?
-  categories        Category[] @relation("StoreCategories")
-  brands            Brand[]
+  sources          Source[]
+  products         Product[]
+  costs            Cost[]
+  manualMatches    ManualMatch[]
+  publishLogs      PublishLog[]
+  codFormulaConfig CodFormulaConfig?
+  categories       Category[]        @relation("StoreCategories")
+  brands           Brand[]
 }
 
 // Up to 3 active competitor sources per store. Refresh health (degraded
 // flag / consecutive failure count) lives here so the UI can show a source
 // as struggling without digging through logs.
 model Source {
-  id                  String   @id @default(cuid())
-  storeId             String
-  store               Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  label               String
-  type                String   // shopify_json | scrape | manual_import | jeftinije_hr
-  baseUrl             String
-  searchUrlTemplate   String?  // used for type=scrape, e.g. https://x.com/search?q={EAN}
-  active              Boolean  @default(true)
+  label             String
+  type              String // shopify_json | scrape | manual_import | jeftinije_hr
+  baseUrl           String
+  searchUrlTemplate String? // used for type=scrape, e.g. https://x.com/search?q={EAN}
+  // ISO 4217 code, e.g. "USD" — set only when this competitor site actually
+  // prices in a different currency than the store's own. Null (the default)
+  // means "assume same currency as the store", which is how every source
+  // behaved before this field existed. Drives both what gets stamped onto
+  // CompetitorPrice.currency going forward and the reference-conversion
+  // display in the pricing table.
+  currency          String?
+  active            Boolean @default(true)
   // Whether the 15-min scheduler tick auto-refreshes this source once its
   // 24h window elapses. Defaults true (existing behavior for shopify_json/
   // scrape); jeftinije_hr is created with this off — a full brand-listing
   // crawl is heavy enough that someone should decide when it runs, not a
   // timer — but any source can opt out the same way.
-  autoRefresh         Boolean  @default(true)
+  autoRefresh       Boolean @default(true)
 
   lastRefreshedAt     DateTime?
   // Who clicked "Refresh now" — null when the scheduler triggered it
@@ -167,67 +174,67 @@ model Source {
   // dashboard password), so this is "Admin" today; it'll hold a real name
   // once accounts exist, no schema change needed then.
   lastTriggeredBy     String?
-  lastMatchedCount    Int?     // prices fetched on the most recent refresh, null = never refreshed
-  consecutiveFailures Int      @default(0)
-  degraded            Boolean  @default(false)
+  lastMatchedCount    Int? // prices fetched on the most recent refresh, null = never refreshed
+  consecutiveFailures Int       @default(0)
+  degraded            Boolean   @default(false)
   lastError           String?
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  competitorPrices    CompetitorPrice[]
-  priceHistory        CompetitorPriceHistory[]
-  manualMatches       ManualMatch[]
-  scrapeAttempts      ScrapeAttempt[]
-  ambiguousMatches    AmbiguousMatch[]
+  competitorPrices CompetitorPrice[]
+  priceHistory     CompetitorPriceHistory[]
+  manualMatches    ManualMatch[]
+  scrapeAttempts   ScrapeAttempt[]
+  ambiguousMatches AmbiguousMatch[]
 }
 
 // One row per Shopify VARIANT (not per product) — a product's title/vendor/
 // handle/image are duplicated across its variant rows, matching how the
 // pricing table itself is variant-grain (each row publishes independently).
 model Product {
-  id                  String   @id @default(cuid())
-  storeId             String
-  store               Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  shopifyProductId    String
-  shopifyVariantId    String
+  shopifyProductId String
+  shopifyVariantId String
 
-  title               String
+  title             String
   // Shopify's own per-variant title (e.g. "42", "Black / M") — distinct
   // from `title` above, which is the shared PRODUCT title every variant
   // row of the same shopifyProductId carries identically. Used only to
   // label a variant within its group on the Pricing table; "Default
   // Title" (Shopify's placeholder for a product with no real options) is
   // never shown as-is, see pricing.ts's row-building.
-  variantTitle        String?
+  variantTitle      String?
   // Shopify's own configured display order for this variant within its
   // product (ProductVariant.position) — S/M/L/XL isn't sortable any other
   // way (alphabetical puts L before M before S; confirmed live), and a
   // numeric size like "42" only sorts correctly by luck. This is exactly
   // the order Shopify's own admin already shows, so reusing it needs no
   // size-name parsing of our own.
-  variantPosition     Int?
-  vendor              String?
-  handle              String?
-  sku                 String?
-  barcode             String?
-  price               Float
-  compareAtPrice      Float?
-  inventoryQuantity   Int?
-  imageUrl            String?
+  variantPosition   Int?
+  vendor            String?
+  handle            String?
+  sku               String?
+  barcode           String?
+  price             Float
+  compareAtPrice    Float?
+  inventoryQuantity Int?
+  imageUrl          String?
   // Comma-joined Shopify product tags (e.g. "sale,new") — used by the
   // cod_formula profile to flag which products are tagged as discounted.
-  tags                String?
+  tags              String?
 
   // Manual "always scrape this one every run" flag; the top-N-by-inventory-
   // value rule is computed on the fly at scrape-scheduling time, not stored.
-  priority            Boolean  @default(false)
+  priority Boolean @default(false)
 
   // Shopify's own product status (ACTIVE | DRAFT | ARCHIVED) and publish
   // timestamp — synced read-only, purely informational.
-  shopifyStatus       String?
-  shopifyPublishedAt  DateTime?
+  shopifyStatus      String?
+  shopifyPublishedAt DateTime?
   // OUR OWN stamp of the first sync that ever observed this variant's
   // status as ACTIVE — set once, never overwritten by a later sync even if
   // the product is archived and reactivated. This (not shopifyPublishedAt,
@@ -236,19 +243,19 @@ model Product {
   // price snapshotted at that same moment, so a manual price edit made
   // afterwards doesn't change what "the original price" meant when the
   // countdown started. See codPricingEngine.ts's markdown functions.
-  activatedAt         DateTime?
-  priceAtActivation   Float?
+  activatedAt        DateTime?
+  priceAtActivation  Float?
 
-  syncedAt            DateTime @default(now())
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  syncedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  manualMatches       ManualMatch[]
-  scrapeAttempts      ScrapeAttempt[]
-  ambiguousMatches    AmbiguousMatch[]
-  categories          ProductCategory[]
-  sales               ProductSales?
-  pageViews           ProductPageViews?
+  manualMatches    ManualMatch[]
+  scrapeAttempts   ScrapeAttempt[]
+  ambiguousMatches AmbiguousMatch[]
+  categories       ProductCategory[]
+  sales            ProductSales?
+  pageViews        ProductPageViews?
 
   @@unique([storeId, shopifyVariantId])
   @@index([storeId, barcode])
@@ -261,16 +268,16 @@ model Product {
 // more than one collection (Shopify allows that), so it can roll up into
 // more than one category's totals — same as browsing the storefront.
 model Category {
-  id                  String   @id @default(cuid())
-  storeId             String
-  store               Store    @relation("StoreCategories", fields: [storeId], references: [id], onDelete: Cascade)
+  id                String  @id @default(cuid())
+  storeId           String
+  store             Store   @relation("StoreCategories", fields: [storeId], references: [id], onDelete: Cascade)
   // Back-relation for Store.markdownCollection — a Category can be picked
   // as the "new arrivals" collection by at most the one Store it belongs
   // to anyway (markdownCollectionId is store-scoped), so this is always
   // either empty or a single-element list.
-  markdownForStores   Store[]  @relation("MarkdownCollection")
+  markdownForStores Store[] @relation("MarkdownCollection")
 
-  shopifyCollectionId String   // Shopify collection GID
+  shopifyCollectionId String // Shopify collection GID
   title               String
 
   // Manually-set envelope for the "suggested base/compare-at price" shown
@@ -279,14 +286,14 @@ model Category {
   // Продажби tab. A product in this category gets a price somewhere in
   // [baseMinPrice, baseMaxPrice], placed by its brand's coefficient (see
   // Brand) relative to the other brands actually selling in this category.
-  baseMinPrice        Float?
-  baseMaxPrice        Float?
+  baseMinPrice Float?
+  baseMaxPrice Float?
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  products            ProductCategory[]
-  categoryCost        CategoryCost?
+  products     ProductCategory[]
+  categoryCost CategoryCost?
 
   @@unique([storeId, shopifyCollectionId])
 }
@@ -297,15 +304,15 @@ model Category {
 // it on the Марки tab; a product whose vendor has no coefficient yet gets no
 // suggested base price, same as a category with no min/max set.
 model Brand {
-  id          String   @id @default(cuid())
-  storeId     String
-  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  vendor      String   // exact match against Product.vendor
+  vendor      String // exact match against Product.vendor
   coefficient Float?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([storeId, vendor])
 }
@@ -327,12 +334,12 @@ model ProductCategory {
 // revenue6m / unitsSold6m at read time, not stored, so it's never stale
 // relative to the two numbers it's derived from.
 model ProductSales {
-  id          String   @id @default(cuid())
-  productId   String   @unique
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  productId String  @unique
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   unitsSold6m Int
-  revenue6m   Float    // sum of realized line-item price * qty, in store currency
+  revenue6m   Float // sum of realized line-item price * qty, in store currency
   periodStart DateTime
   periodEnd   DateTime
   syncedAt    DateTime @default(now())
@@ -343,9 +350,9 @@ model ProductSales {
 // see services/ga4Client.ts) on its own sync cadence, and simply doesn't
 // exist for a store that hasn't configured ga4PropertyId yet.
 model ProductPageViews {
-  id          String   @id @default(cuid())
-  productId   String   @unique
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  productId String  @unique
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   pageViews6m Int
   periodStart DateTime
@@ -363,11 +370,11 @@ model CategoryCost {
   categoryId String   @unique
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  cost       Float
-  currency   String
+  cost     Float
+  currency String
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // A bulk-index source (jeftinije_hr) found more than one plausible
@@ -377,19 +384,19 @@ model CategoryCost {
 // candidate list in place as long as it's still pending, and leaves a
 // resolved/dismissed row alone unless the candidates actually changed.
 model AmbiguousMatch {
-  id             String    @id @default(cuid())
-  sourceId       String
-  source         Source    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  productId      String
-  product        Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  sourceId  String
+  source    Source  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   // JSON array: [{ "title": string, "price": number | null, "url": string }]
   candidatesJson String
   status         String    @default("pending") // pending | resolved | dismissed
   resolvedAt     DateTime?
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sourceId, productId])
   @@index([sourceId, status])
@@ -397,15 +404,15 @@ model AmbiguousMatch {
 
 // Imported via Settings → Import costs (CSV: sku_or_ean,cost).
 model Cost {
-  id         String   @id @default(cuid())
-  storeId    String
-  store      Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  skuOrEan   String
-  cost       Float
+  skuOrEan String
+  cost     Float
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([storeId, skuOrEan])
 }
@@ -416,41 +423,41 @@ model Cost {
 // (see Cost above) instead of the competitor-undercut engine. scenariosJson
 // / bracketsJson hold small fixed-shape arrays not worth their own tables.
 model CodFormulaConfig {
-  id            String   @id @default(cuid())
-  storeId       String   @unique
-  store         Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  storeId String @unique
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  mode          String   @default("target") // cost | target | breakeven
-  cogsPct       Float    @default(40)  // used only in mode=cost
-  fRate         Float    @default(5)   // agency fee rate assumed inside the price formula, %
-  mRate         Float    @default(10)  // target net profit, % of collected revenue (mode=target)
-  nItems        Float    @default(1.3) // items per order
-  rMult         Float    @default(2)   // shipping multiple on a failed/returned parcel
-  lLoss         Float    @default(0)   // % of cost lost on returned stock
-  fCost         Float    @default(5000) // other monthly costs
-  roundStep     Float    @default(1)
-  discountPct   Float    @default(50) // discount used to derive the compare-at (slashed) price
+  mode               String @default("target") // cost | target | breakeven
+  cogsPct            Float  @default(40) // used only in mode=cost
+  fRate              Float  @default(5) // agency fee rate assumed inside the price formula, %
+  mRate              Float  @default(10) // target net profit, % of collected revenue (mode=target)
+  nItems             Float  @default(1.3) // items per order
+  rMult              Float  @default(2) // shipping multiple on a failed/returned parcel
+  lLoss              Float  @default(0) // % of cost lost on returned stock
+  fCost              Float  @default(5000) // other monthly costs
+  roundStep          Float  @default(1)
+  discountPct        Float  @default(50) // discount used to derive the compare-at (slashed) price
   // Shopify tag that marks a product for the extra clearance cut applied on
   // top of its current suggested price — see applySaleDiscount in
   // codPricingEngine.ts. Also just shown as a badge in the UI for a product
   // tagged but with no suggested price to discount yet.
-  discountTag   String   @default("c_sale")
+  discountTag        String @default("c_sale")
   // The [min,max] range the SALE tag's extra cut is placed in by the
   // product's brand coefficient — see saleDiscountPctForCoefficient in
   // codPricingEngine.ts. Editable per store: what counts as an aggressive
   // clearance discount varies by market/country and by store.
-  saleDiscountMinPct Float @default(30)
-  saleDiscountMaxPct Float @default(35)
-  pricingScenario String @default("avg") // pess | avg | opt — which scenario's A/d/S feeds the price formula
-  pricingN      Float    @default(1000) // N used for F/N in the price formula (not the live order count)
+  saleDiscountMinPct Float  @default(30)
+  saleDiscountMaxPct Float  @default(35)
+  pricingScenario    String @default("avg") // pess | avg | opt — which scenario's A/d/S feeds the price formula
+  pricingN           Float  @default(1000) // N used for F/N in the price formula (not the live order count)
 
   // JSON: [{ key: "pess"|"avg"|"opt", label, A, d, S }] — d as a 0-100 %.
-  scenariosJson String   @default("[{\"key\":\"pess\",\"label\":\"Песимистичен\",\"A\":25,\"d\":60,\"S\":7},{\"key\":\"avg\",\"label\":\"Среден\",\"A\":20,\"d\":62.5,\"S\":6},{\"key\":\"opt\",\"label\":\"Оптимистичен\",\"A\":15,\"d\":65,\"S\":5}]")
+  scenariosJson String @default("[{\"key\":\"pess\",\"label\":\"Песимистичен\",\"A\":25,\"d\":60,\"S\":7},{\"key\":\"avg\",\"label\":\"Среден\",\"A\":20,\"d\":62.5,\"S\":6},{\"key\":\"opt\",\"label\":\"Оптимистичен\",\"A\":15,\"d\":65,\"S\":5}]")
   // JSON: [{ upper: number|null, rate: number }] (rate as a 0-100 %, upper=null means unbounded).
-  bracketsJson  String   @default("[{\"upper\":25000,\"rate\":4},{\"upper\":50000,\"rate\":5},{\"upper\":75000,\"rate\":6},{\"upper\":null,\"rate\":7}]")
+  bracketsJson  String @default("[{\"upper\":25000,\"rate\":4},{\"upper\":50000,\"rate\":5},{\"upper\":75000,\"rate\":6},{\"upper\":null,\"rate\":7}]")
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Latest fetched price per (source, matchKey) — upserted every refresh so
@@ -460,11 +467,11 @@ model CodFormulaConfig {
 // productId is filled in once the matching engine (or a manual binding)
 // resolves it; null means it currently shows up in the Unmatched tab.
 model CompetitorPrice {
-  id                String   @id @default(cuid())
-  sourceId          String
-  source            Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  sourceId String
+  source   Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
-  productId         String?  // resolved match, if any (not enforced as FK — Product rows get replaced on re-sync)
+  productId String? // resolved match, if any (not enforced as FK — Product rows get replaced on re-sync)
 
   matchKey          String
   competitorTitle   String?
@@ -473,11 +480,11 @@ model CompetitorPrice {
   price             Float
   currency          String
   url               String?
-  isManual          Boolean  @default(false) // entered by hand on the Pricing Table for a product no automated source found, vs. written by a scraper/CSV import
+  isManual          Boolean @default(false) // entered by hand on the Pricing Table for a product no automated source found, vs. written by a scraper/CSV import
 
-  fetchedAt         DateTime @default(now())
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  fetchedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sourceId, matchKey])
   @@index([sourceId, productId])
@@ -486,9 +493,9 @@ model CompetitorPrice {
 // Rolling trend log — pruned to the last 30 rows per (sourceId, matchKey)
 // after each insert (see services/competitorHistory.ts).
 model CompetitorPriceHistory {
-  id        String   @id @default(cuid())
-  sourceId  String
-  source    Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  sourceId String
+  source   Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   matchKey  String
   price     Float
@@ -505,16 +512,16 @@ model CompetitorPriceHistory {
 // shows successes, so a product that's been searched-but-never-found would
 // otherwise look identical to one that's never been searched at all.
 model ScrapeAttempt {
-  id          String   @id @default(cuid())
-  sourceId    String
-  source      Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  sourceId  String
+  source    Source  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  found       Boolean
-  price       Float?
-  error       String?
-  url         String
+  found Boolean
+  price Float?
+  error String?
+  url   String
 
   attemptedAt DateTime @default(now())
 
@@ -525,39 +532,39 @@ model ScrapeAttempt {
 // A manually-bound competitor listing for one of our products on one
 // source — always takes priority over the automatic EAN/string matcher.
 model ManualMatch {
-  id                   String   @id @default(cuid())
-  storeId              String
-  store                Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  sourceId             String
-  source               Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  productId            String
-  product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  storeId   String
+  store     Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sourceId  String
+  source    Source  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  competitorUrlOrEan   String   // whatever the operator pasted
-  resolvedMatchKey     String   // EAN if extractable/confirmed, else a synthetic key tied to this binding
+  competitorUrlOrEan String // whatever the operator pasted
+  resolvedMatchKey   String // EAN if extractable/confirmed, else a synthetic key tied to this binding
 
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sourceId, productId])
 }
 
 model PublishLog {
-  id             String   @id @default(cuid())
-  storeId        String
-  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  variantId      String   // Shopify variant GID
-  productTitle   String?
+  variantId    String // Shopify variant GID
+  productTitle String?
 
-  oldPrice       Float
-  newPrice       Float
-  oldCompareAt   Float?
-  newCompareAt   Float?
+  oldPrice     Float
+  newPrice     Float
+  oldCompareAt Float?
+  newCompareAt Float?
 
-  status         String   // SUCCESS | ERROR
-  errorMessage   String?
-  source         String   // single | bulk | revert
+  status       String // SUCCESS | ERROR
+  errorMessage String?
+  source       String // single | bulk | revert
 
   // Set on the ORIGINAL entry once it's been successfully reverted — hides
   // its own Revert button afterwards (reverting twice would push the same
@@ -565,9 +572,9 @@ model PublishLog {
   // instead. The revert itself creates its own separate PublishLog row (so
   // it shows up in the log and can itself be reverted, i.e. redo), rather
   // than mutating this row's old/new values in place.
-  revertedAt     DateTime?
+  revertedAt DateTime?
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([storeId, createdAt])
 }
