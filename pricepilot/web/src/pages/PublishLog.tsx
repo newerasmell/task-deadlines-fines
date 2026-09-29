@@ -3,11 +3,20 @@ import { api } from "../api/client";
 import type { PublishLogEntry, RevertResultItem } from "../api/types";
 import { useStores } from "../context/StoreContext";
 import { useT } from "../i18n/I18nContext";
+import { Money } from "../lib/money";
+
+interface PublishLogResponse {
+  entries: PublishLogEntry[];
+  currency: string;
+  storeCurrencyEurRate: number | null;
+}
 
 export function PublishLog() {
   const { currentStore } = useStores();
   const t = useT();
   const [logs, setLogs] = useState<PublishLogEntry[]>([]);
+  const [currency, setCurrency] = useState("");
+  const [eurRate, setEurRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [source, setSource] = useState("");
@@ -23,8 +32,10 @@ export function PublishLog() {
     if (status) params.set("status", status);
     if (source) params.set("source", source);
     if (search.trim()) params.set("search", search.trim());
-    const res = await api<PublishLogEntry[]>(`/publish-log?${params.toString()}`);
-    setLogs(res);
+    const res = await api<PublishLogResponse>(`/publish-log?${params.toString()}`);
+    setLogs(res.entries);
+    setCurrency(res.currency);
+    setEurRate(res.storeCurrencyEurRate);
     setLoading(false);
   }
 
@@ -169,11 +180,20 @@ export function PublishLog() {
                       )}
                     </td>
                     <td>{log.productTitle ?? log.variantId}</td>
-                    <td>{log.oldPrice.toFixed(2)}</td>
-                    <td>{log.newPrice.toFixed(2)}</td>
                     <td>
-                      {log.oldCompareAt != null ? log.oldCompareAt.toFixed(2) : "—"}
-                      {log.newCompareAt != null ? ` → ${log.newCompareAt.toFixed(2)}` : ""}
+                      <Money value={log.oldPrice} currency={currency} eurRate={eurRate} />
+                    </td>
+                    <td>
+                      <Money value={log.newPrice} currency={currency} eurRate={eurRate} />
+                    </td>
+                    <td>
+                      <Money value={log.oldCompareAt} currency={currency} eurRate={eurRate} />
+                      {log.newCompareAt != null && (
+                        <>
+                          {" → "}
+                          <Money value={log.newCompareAt} currency={currency} eurRate={eurRate} />
+                        </>
+                      )}
                     </td>
                     <td>
                       {log.status === "SUCCESS" ? (

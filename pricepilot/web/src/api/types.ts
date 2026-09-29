@@ -319,6 +319,7 @@ export interface SalesResponse {
   salesAnalyticsEnabled: boolean;
   pricingProfile: PricingProfile;
   currency: string;
+  storeCurrencyEurRate: number | null;
   products: SalesProductRow[];
   categories: SalesCategoryRow[];
 }

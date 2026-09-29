@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { logAudit } from "../lib/audit";
+import { getRatesTo } from "../lib/exchangeRates";
 import { prisma } from "../lib/prisma";
 
 export const salesRouter = Router();
@@ -84,10 +85,14 @@ salesRouter.get("/:storeId", async (req, res) => {
     };
   });
 
+  const storeCurrencyEurRate =
+    store.currency !== "EUR" ? (await getRatesTo([store.currency], "EUR")).get(store.currency) ?? null : null;
+
   res.json({
     salesAnalyticsEnabled: store.salesAnalyticsEnabled,
     pricingProfile: store.pricingProfile,
     currency: store.currency,
+    storeCurrencyEurRate,
     products: productRows,
     categories: categoryRows,
   });

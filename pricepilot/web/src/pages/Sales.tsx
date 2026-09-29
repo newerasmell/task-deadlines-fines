@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { SalesResponse, Store } from "../api/types";
 import { useStores } from "../context/StoreContext";
 import { useT } from "../i18n/I18nContext";
+import { Money } from "../lib/money";
 
 function fmt(n: number | null, digits = 2): string {
   return n == null ? "—" : n.toFixed(digits);
@@ -344,7 +345,9 @@ export function Sales() {
                   <td>{c.title}</td>
                   <td>{c.productCount}</td>
                   <td>{c.unitsSold6m}</td>
-                  <td>{c.avgSalePrice6m != null ? `${fmt(c.avgSalePrice6m)} ${data.currency}` : "—"}</td>
+                  <td>
+                    <Money value={c.avgSalePrice6m} currency={data.currency} eurRate={data.storeCurrencyEurRate} />
+                  </td>
                   <td>{c.pageViews6m ?? "—"}</td>
                   <td>{c.convRate6m != null ? `${fmt(c.convRate6m, 1)}%` : "—"}</td>
                   {data.pricingProfile === "cod_formula" && (
@@ -401,7 +404,9 @@ export function Sales() {
                   <td className="muted small">{p.categoryIds.map((id) => categoriesById.get(id)).filter(Boolean).join(", ") || "—"}</td>
                   <td>{p.inventoryQuantity ?? "—"}</td>
                   <td>{p.unitsSold6m}</td>
-                  <td>{p.avgSalePrice6m != null ? `${fmt(p.avgSalePrice6m)} ${data.currency}` : "—"}</td>
+                  <td>
+                    <Money value={p.avgSalePrice6m} currency={data.currency} eurRate={data.storeCurrencyEurRate} />
+                  </td>
                   <td>{p.pageViews6m ?? "—"}</td>
                   <td>{p.convRate6m != null ? `${fmt(p.convRate6m, 1)}%` : "—"}</td>
                 </tr>
