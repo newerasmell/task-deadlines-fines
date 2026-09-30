@@ -79,7 +79,8 @@ function chunk<T>(items: T[], size: number): T[][] {
 export async function publishPrices(
   store: Store,
   items: PublishRequestItem[],
-  source: "single" | "bulk"
+  source: "single" | "bulk" | "transfer",
+  transferFromStoreName?: string
 ): Promise<PublishResultItem[]> {
   const products = await prisma.product.findMany({
     where: { id: { in: items.map((i) => i.productId) }, storeId: store.id },
@@ -145,6 +146,7 @@ export async function publishPrices(
             status,
             errorMessage: batchFailed ? errorMessage : null,
             source,
+            transferFromStoreName: source === "transfer" ? transferFromStoreName ?? null : null,
           },
         });
 
@@ -292,6 +294,9 @@ export async function revertPublishes(store: Store, logIds: string[]): Promise<R
         newCompareAt: revertedCompareAt,
         status: "SUCCESS",
         source: "revert",
+        // Carries over from the entry being reverted, so reverting a
+        // transferred price still reads as transfer-related in the log.
+        transferFromStoreName: log.transferFromStoreName,
       },
     });
     await prisma.publishLog.update({ where: { id: log.id }, data: { revertedAt: new Date() } });

@@ -273,7 +273,10 @@ export interface PublishLogEntry {
   newCompareAt: number | null;
   status: "SUCCESS" | "ERROR";
   errorMessage: string | null;
-  source: "single" | "bulk" | "revert";
+  source: "single" | "bulk" | "transfer" | "revert";
+  // Set only when source is "transfer" (or a revert of one) — the store
+  // this price was pulled from via the Transfer Prices tab.
+  transferFromStoreName: string | null;
   revertedAt: string | null;
   createdAt: string;
 }

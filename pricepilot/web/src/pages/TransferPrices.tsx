@@ -73,6 +73,7 @@ export function TransferPrices() {
   async function applySelected() {
     if (!diff || selected.size === 0) return;
     const targetStore = stores.find((s) => s.id === targetStoreId);
+    const sourceStore = stores.find((s) => s.id === sourceStoreId);
     const items = diff.rows
       .filter((r) => selected.has(r.targetProductId))
       .map((r) => ({
@@ -101,7 +102,7 @@ export function TransferPrices() {
     try {
       const res = await api<{ results: PublishResultItem[] }>("/publish", {
         method: "POST",
-        body: JSON.stringify({ storeId: targetStoreId, mode: "bulk", items }),
+        body: JSON.stringify({ storeId: targetStoreId, mode: "transfer", transferFromStoreName: sourceStore?.name, items }),
       });
       setRowStatus((cur) => {
         const next = new Map(cur);

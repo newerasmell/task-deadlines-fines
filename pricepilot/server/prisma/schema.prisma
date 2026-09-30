@@ -564,7 +564,13 @@ model PublishLog {
 
   status       String // SUCCESS | ERROR
   errorMessage String?
-  source       String // single | bulk | revert
+  source       String // single | bulk | transfer | revert
+
+  // Set only when source = "transfer" — the name of the store this price
+  // was pulled from (Transfer Prices tab), snapshotted at publish time the
+  // same way productTitle is, so it still reads correctly even if that
+  // store gets renamed or deleted later.
+  transferFromStoreName String?
 
   // Set on the ORIGINAL entry once it's been successfully reverted — hides
   // its own Revert button afterwards (reverting twice would push the same

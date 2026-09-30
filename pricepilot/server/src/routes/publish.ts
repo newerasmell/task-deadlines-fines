@@ -8,7 +8,11 @@ export const publishRouter = Router();
 
 const publishSchema = z.object({
   storeId: z.string().min(1),
-  mode: z.enum(["single", "bulk"]),
+  mode: z.enum(["single", "bulk", "transfer"]),
+  // Only meaningful (and expected) when mode is "transfer" — the Transfer
+  // Prices tab's source store name, snapshotted onto each PublishLog row
+  // it creates so the log can show where a transferred price came from.
+  transferFromStoreName: z.string().min(1).optional(),
   items: z
     .array(
       z.object({
@@ -29,7 +33,7 @@ publishRouter.post("/", async (req, res) => {
   const store = await prisma.store.findUnique({ where: { id: parsed.data.storeId } });
   if (!store) return res.status(404).json({ error: "Store not found" });
 
-  const results = await publishPrices(store, parsed.data.items, parsed.data.mode);
+  const results = await publishPrices(store, parsed.data.items, parsed.data.mode, parsed.data.transferFromStoreName);
   const successCount = results.filter((r) => r.status === "SUCCESS").length;
   const failCount = results.length - successCount;
   await logAudit(

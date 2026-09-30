@@ -691,6 +691,15 @@ table.pricing-table tbody tr:hover {
   background: var(--danger-bg);
 }
 
+.publish-log-transfer-row {
+  background: var(--info-bg);
+}
+
+.publish-log-transfer-badge {
+  background: var(--primary);
+  color: #fff;
+}
+
 .source-cell {
   white-space: nowrap;
 }

@@ -11,6 +11,13 @@ interface PublishLogResponse {
   storeCurrencyEurRate: number | null;
 }
 
+const SOURCE_LABELS: Record<PublishLogEntry["source"], string> = {
+  single: "Единично",
+  bulk: "Групово",
+  transfer: "Прехвърляне",
+  revert: "Връщане",
+};
+
 export function PublishLog() {
   const { currentStore } = useStores();
   const t = useT();
@@ -137,9 +144,10 @@ export function PublishLog() {
           <option value="ERROR">{t("Грешка")}</option>
         </select>
         <select value={source} onChange={(e) => setSource(e.target.value)}>
-          <option value="">{t("Единично + групово + връщане")}</option>
+          <option value="">{t("Всички")}</option>
           <option value="single">{t("Единично")}</option>
           <option value="bulk">{t("Групово")}</option>
+          <option value="transfer">{t("Прехвърляне")}</option>
           <option value="revert">{t("Връщане")}</option>
         </select>
       </div>
@@ -173,7 +181,7 @@ export function PublishLog() {
               {logs.map((log) => {
                 const error = revertErrors.get(log.id);
                 return (
-                  <tr key={log.id}>
+                  <tr key={log.id} className={log.transferFromStoreName ? "publish-log-transfer-row" : undefined}>
                     <td>
                       {canRevert(log) && (
                         <input type="checkbox" checked={selected.has(log.id)} onChange={() => toggleRow(log.id)} />
@@ -205,7 +213,14 @@ export function PublishLog() {
                       )}
                     </td>
                     <td>
-                      {log.source}
+                      {log.source === "transfer" ? (
+                        <span className="badge publish-log-transfer-badge">↔ {t(SOURCE_LABELS[log.source])}</span>
+                      ) : (
+                        t(SOURCE_LABELS[log.source])
+                      )}
+                      {log.transferFromStoreName && (
+                        <div className="small muted">{t("Прехвърлено от {store}", { store: log.transferFromStoreName })}</div>
+                      )}
                       {log.revertedAt && (
                         <span className="tag" title={t("Върната на {date}", { date: new Date(log.revertedAt).toLocaleString() })}>
                           {t("Върната")}
