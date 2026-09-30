@@ -14,6 +14,7 @@ import { authRouter } from "./routes/auth";
 import { brandsRouter } from "./routes/brands";
 import { codConfigRouter } from "./routes/codConfig";
 import { costsRouter } from "./routes/costs";
+import { crossStorePricingRouter } from "./routes/crossStorePricing";
 import { groupsRouter } from "./routes/groups";
 import { pricingRouter } from "./routes/pricing";
 import { publishRouter } from "./routes/publish";
@@ -59,6 +60,7 @@ export function createApp() {
   app.use("/api/publish-log", requireAuth, publishLogRouter);
   app.use("/api/unmatched", requireAuth, unmatchedRouter);
   app.use("/api/costs", requireAuth, costsRouter);
+  app.use("/api/cross-store-pricing", requireAuth, crossStorePricingRouter);
   app.use("/api/cod-config", requireAuth, codConfigRouter);
   app.use("/api/sales", requireAuth, salesRouter);
   app.use("/api/brands", requireAuth, brandsRouter);

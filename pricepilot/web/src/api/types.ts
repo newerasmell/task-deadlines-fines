@@ -128,6 +128,33 @@ export interface Source {
   updatedAt: string;
 }
 
+export interface CrossStoreRow {
+  sourceProductId: string;
+  targetProductId: string;
+  matchedBy: "sku" | "barcode";
+  title: string;
+  variantTitle: string | null;
+  sku: string | null;
+  vendor: string | null;
+  imageUrl: string | null;
+  targetPrice: number;
+  targetCompareAtPrice: number | null;
+  sourcePrice: number;
+  sourceCompareAtPrice: number | null;
+  newPrice: number;
+  newCompareAtPrice: number | null;
+  priceChanged: boolean;
+  deltaPct: number | null;
+}
+
+export interface CrossStoreDiff {
+  rows: CrossStoreRow[];
+  unmatchedSourceCount: number;
+  sourceCurrency: string;
+  targetCurrency: string;
+  conversionUnavailable: boolean;
+}
+
 export interface AmbiguousMatchCandidate {
   title: string;
   price: number | null;

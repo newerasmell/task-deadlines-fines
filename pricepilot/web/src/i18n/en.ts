@@ -3,6 +3,7 @@ import { logsAndMatching } from "./dict.logsAndMatching";
 import { pricingTable } from "./dict.pricingTable";
 import { sources } from "./dict.sources";
 import { storeConfig } from "./dict.storeConfig";
+import { transferPrices } from "./dict.transferPrices";
 
 // Flat BG-text -> EN-text lookup, assembled from one partial dictionary per
 // page/component so several files can be translated independently without
@@ -14,4 +15,5 @@ export const en: Record<string, string> = {
   ...pricingTable,
   ...sources,
   ...storeConfig,
+  ...transferPrices,
 };

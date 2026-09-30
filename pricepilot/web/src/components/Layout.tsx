@@ -57,6 +57,7 @@ export function Layout() {
           </NavLink>
           <NavLink to="/unmatched">{t("Несъпоставени")}</NavLink>
           <NavLink to="/publish-log">{t("Дневник публикации")}</NavLink>
+          {stores.length > 1 && <NavLink to="/transfer-prices">{t("Прехвърляне на цени")}</NavLink>}
           {currentStore?.salesAnalyticsEnabled && <NavLink to="/sales">{t("Продажби")}</NavLink>}
           {currentStore?.salesAnalyticsEnabled && currentStore?.pricingProfile === "cod_formula" && (
             <NavLink to="/brands">{t("Марки")}</NavLink>
