@@ -1,6 +1,6 @@
 import type { Product } from "@prisma/client";
 import { getRatesTo } from "../lib/exchangeRates";
-import { normalizeBarcode } from "../lib/textNormalize";
+import { normalizeBarcode, normalizeText } from "../lib/textNormalize";
 import { prisma } from "../lib/prisma";
 
 // SKUs are typed by hand into two separate Shopify admins, often by
@@ -19,11 +19,40 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
 
+// A SKU (or barcode) match is still trusted less than an exact key would
+// suggest — it's hand-typed data on both sides, and the same SKU getting
+// mixed up between two different products is exactly the kind of mistake
+// that would otherwise push a wrong price straight to Shopify unnoticed.
+// This is a loose "does the name look like the same product" check, not an
+// exact match — real listings differ in phrasing ("EDP" vs "Eau de
+// Parfum", punctuation) between two stores' admins — so it only flags a
+// match whose titles share less than half of the shorter title's words.
+function titleTokens(title: string): Set<string> {
+  return new Set(normalizeText(title).split(" ").filter((t) => t.length > 1));
+}
+
+function titlesLookRelated(a: string, b: string): boolean {
+  const tokensA = titleTokens(a);
+  const tokensB = titleTokens(b);
+  if (tokensA.size === 0 || tokensB.size === 0) return true; // nothing to compare — don't flag on missing data
+  const [shorter, longer] = tokensA.size <= tokensB.size ? [tokensA, tokensB] : [tokensB, tokensA];
+  let overlap = 0;
+  for (const t of shorter) if (longer.has(t)) overlap++;
+  return overlap / shorter.size >= 0.5;
+}
+
 export interface CrossStoreRow {
   sourceProductId: string;
   targetProductId: string;
   matchedBy: "sku" | "barcode";
   title: string;
+  sourceTitle: string;
+  // True when the source and target products' titles don't look like the
+  // same product despite the SKU/barcode match — a mixed-up SKU on one
+  // side is exactly this shape. Flagged rows are never included in "select
+  // all"; a person has to look at the two titles and select the row
+  // themselves if it's actually fine.
+  titleMismatch: boolean;
   variantTitle: string | null;
   sku: string | null;
   vendor: string | null;
@@ -48,6 +77,7 @@ export interface CrossStoreDiff {
   // so a real data gap (typo'd SKU, product simply doesn't exist there
   // yet) doesn't look like "everything's already in sync".
   unmatchedSourceCount: number;
+  titleMismatchCount: number;
   sourceCurrency: string;
   targetCurrency: string;
   // True when the two stores' currencies differ and no exchange rate could
@@ -85,6 +115,7 @@ export async function buildCrossStoreDiff(sourceStoreId: string, targetStoreId: 
       return {
         rows: [],
         unmatchedSourceCount: 0,
+        titleMismatchCount: 0,
         sourceCurrency: sourceStore.currency,
         targetCurrency: targetStore.currency,
         conversionUnavailable: true,
@@ -119,12 +150,15 @@ export async function buildCrossStoreDiff(sourceStoreId: string, targetStoreId: 
     const newCompareAtPrice = sp.compareAtPrice != null ? round2(sp.compareAtPrice * rate) : null;
     const priceChanged = newPrice !== matched.price || newCompareAtPrice !== matched.compareAtPrice;
     const deltaPct = matched.price > 0 ? ((newPrice - matched.price) / matched.price) * 100 : null;
+    const titleMismatch = !titlesLookRelated(sp.title, matched.title);
 
     rows.push({
       sourceProductId: sp.id,
       targetProductId: matched.id,
       matchedBy,
       title: matched.title,
+      sourceTitle: sp.title,
+      titleMismatch,
       variantTitle: matched.variantTitle,
       sku: matched.sku,
       vendor: matched.vendor,
@@ -143,6 +177,7 @@ export async function buildCrossStoreDiff(sourceStoreId: string, targetStoreId: 
   return {
     rows,
     unmatchedSourceCount,
+    titleMismatchCount: rows.filter((r) => r.titleMismatch).length,
     sourceCurrency: sourceStore.currency,
     targetCurrency: targetStore.currency,
     conversionUnavailable: false,

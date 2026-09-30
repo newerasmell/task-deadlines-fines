@@ -26,4 +26,8 @@ export const transferPrices: Record<string, string> = {
   "Публикувано": "Published",
   "Няма продукти с различна цена.": "No products with a different price.",
   "Няма съвпадения.": "No matches.",
+  '⚠ В source се казва "{title}" — провери преди да приложиш':
+    '⚠ In the source store it\'s called "{title}" — check before applying',
+  "{count} съвпадения са маркирани в червено — имената не изглеждат като един и същ продукт, провери ги.":
+    "{count} match(es) flagged in red — the names don't look like the same product, please check them.",
 };

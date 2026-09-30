@@ -133,6 +133,11 @@ export interface CrossStoreRow {
   targetProductId: string;
   matchedBy: "sku" | "barcode";
   title: string;
+  sourceTitle: string;
+  // True when the source/target titles don't look like the same product
+  // despite the SKU/barcode match — likely a mixed-up SKU. Flagged rows
+  // are excluded from "select all" and shown with a warning.
+  titleMismatch: boolean;
   variantTitle: string | null;
   sku: string | null;
   vendor: string | null;
@@ -150,6 +155,7 @@ export interface CrossStoreRow {
 export interface CrossStoreDiff {
   rows: CrossStoreRow[];
   unmatchedSourceCount: number;
+  titleMismatchCount: number;
   sourceCurrency: string;
   targetCurrency: string;
   conversionUnavailable: boolean;

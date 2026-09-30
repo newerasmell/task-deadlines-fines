@@ -50,7 +50,12 @@ export function TransferPrices() {
     return onlyChanged ? diff.rows.filter((r) => r.priceChanged) : diff.rows;
   }, [diff, onlyChanged]);
 
-  const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.targetProductId));
+  // A title-mismatch row (SKU/barcode matched, but the names don't look
+  // like the same product — likely a mixed-up SKU) never joins "select
+  // all" — only an explicit, individual click can include one, after
+  // someone's actually looked at the two names.
+  const selectableRows = useMemo(() => visibleRows.filter((r) => !r.titleMismatch), [visibleRows]);
+  const allVisibleSelected = selectableRows.length > 0 && selectableRows.every((r) => selected.has(r.targetProductId));
 
   function toggleRow(id: string) {
     setSelected((cur) => {
@@ -62,7 +67,7 @@ export function TransferPrices() {
   }
 
   function toggleSelectAll(checked: boolean) {
-    setSelected(checked ? new Set(visibleRows.map((r) => r.targetProductId)) : new Set());
+    setSelected(checked ? new Set(selectableRows.map((r) => r.targetProductId)) : new Set());
   }
 
   async function applySelected() {
@@ -121,7 +126,7 @@ export function TransferPrices() {
   function renderRow(row: CrossStoreRow) {
     const status = rowStatus.get(row.targetProductId) ?? { state: "idle" as const };
     return (
-      <tr key={row.targetProductId}>
+      <tr key={row.targetProductId} className={row.titleMismatch ? "cross-store-mismatch-row" : undefined}>
         <td>
           <input type="checkbox" checked={selected.has(row.targetProductId)} onChange={() => toggleRow(row.targetProductId)} />
         </td>
@@ -134,6 +139,11 @@ export function TransferPrices() {
                 {row.variantTitle && <span className="muted"> — {row.variantTitle}</span>}
               </div>
               <div className="product-sku">{row.sku ?? "—"}</div>
+              {row.titleMismatch && (
+                <div className="row-status-error small">
+                  {t('⚠ В source се казва "{title}" — провери преди да приложиш', { title: row.sourceTitle })}
+                </div>
+              )}
             </div>
           </div>
         </td>
@@ -230,7 +240,14 @@ export function TransferPrices() {
                 {diff.unmatchedSourceCount > 0 &&
                   t("{count} продукта от source нямат съвпадение по SKU/баркод в target и не могат да се пренесат.", {
                     count: diff.unmatchedSourceCount,
-                  })}
+                  })}{" "}
+                {diff.titleMismatchCount > 0 && (
+                  <span className="row-status-error">
+                    {t("{count} съвпадения са маркирани в червено — имената не изглеждат като един и същ продукт, провери ги.", {
+                      count: diff.titleMismatchCount,
+                    })}
+                  </span>
+                )}
               </p>
 
               {selected.size > 0 && (

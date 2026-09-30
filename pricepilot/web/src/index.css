@@ -687,6 +687,10 @@ table.pricing-table tbody tr:hover {
   color: var(--muted);
 }
 
+.cross-store-mismatch-row {
+  background: var(--danger-bg);
+}
+
 .source-cell {
   white-space: nowrap;
 }
