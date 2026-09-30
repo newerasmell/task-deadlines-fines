@@ -241,6 +241,14 @@ export function TransferPrices() {
                   t("{count} продукта от source нямат съвпадение по SKU/баркод в target и не могат да се пренесат.", {
                     count: diff.unmatchedSourceCount,
                   })}{" "}
+                {diff.ambiguousSourceCount > 0 && (
+                  <span className="row-status-error">
+                    {t(
+                      "{count} продукта от source имат SKU/баркод, който се повтаря на повече от един продукт в source — прескочени, защото не е ясно коя цена е вярната. Оправи дублирания SKU в source магазина и презареди.",
+                      { count: diff.ambiguousSourceCount }
+                    )}
+                  </span>
+                )}{" "}
                 {diff.titleMismatchCount > 0 && (
                   <span className="row-status-error">
                     {t("{count} съвпадения са маркирани в червено — имената не изглеждат като един и същ продукт, провери ги.", {

@@ -30,4 +30,6 @@ export const transferPrices: Record<string, string> = {
     '⚠ In the source store it\'s called "{title}" — check before applying',
   "{count} съвпадения са маркирани в червено — имената не изглеждат като един и същ продукт, провери ги.":
     "{count} match(es) flagged in red — the names don't look like the same product, please check them.",
+  "{count} продукта от source имат SKU/баркод, който се повтаря на повече от един продукт в source — прескочени, защото не е ясно коя цена е вярната. Оправи дублирания SKU в source магазина и презареди.":
+    "{count} product(s) from the source store have a SKU/barcode that's repeated on more than one product in the source store — skipped, since it's unclear which price is the right one. Fix the duplicate SKU in the source store and reload.",
 };

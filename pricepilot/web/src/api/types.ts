@@ -155,6 +155,10 @@ export interface CrossStoreRow {
 export interface CrossStoreDiff {
   rows: CrossStoreRow[];
   unmatchedSourceCount: number;
+  // Source products whose SKU/barcode is shared by more than one product
+  // within the source store itself — skipped rather than matched, since
+  // there's no safe way to tell which price is "the fixed one".
+  ambiguousSourceCount: number;
   titleMismatchCount: number;
   sourceCurrency: string;
   targetCurrency: string;

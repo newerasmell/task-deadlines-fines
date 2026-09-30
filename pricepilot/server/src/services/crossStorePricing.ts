@@ -41,6 +41,39 @@ function titlesLookRelated(a: string, b: string): boolean {
   return overlap / shorter.size >= 0.5;
 }
 
+// Builds a key -> product lookup, but only for keys that identify exactly
+// ONE product — a key shared by two products in the same store is
+// ambiguous (which one is "the" SKU SK123?), and picking whichever
+// happened to sync first would silently match the wrong one. Used for
+// both stores: the target side (so an ambiguous target SKU is simply
+// unreachable, never guessed at) and, together with sourceKeyCounts below,
+// the source side (so two source products sharing a SKU don't both match
+// the same target row — confirmed live: that produced two publish items
+// for the same Shopify variant in one request, which Shopify rejects
+// outright as "Duplicated input value").
+function buildUniqueIndex(products: Product[], keyFn: (p: Product) => string | null): Map<string, Product> {
+  const counts = new Map<string, number>();
+  for (const p of products) {
+    const key = keyFn(p);
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const index = new Map<string, Product>();
+  for (const p of products) {
+    const key = keyFn(p);
+    if (key && counts.get(key) === 1) index.set(key, p);
+  }
+  return index;
+}
+
+function keyCounts(products: Product[], keyFn: (p: Product) => string | null): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const p of products) {
+    const key = keyFn(p);
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export interface CrossStoreRow {
   sourceProductId: string;
   targetProductId: string;
@@ -77,6 +110,12 @@ export interface CrossStoreDiff {
   // so a real data gap (typo'd SKU, product simply doesn't exist there
   // yet) doesn't look like "everything's already in sync".
   unmatchedSourceCount: number;
+  // Source products whose SKU (or barcode) is shared by more than one
+  // product within the SOURCE store itself — skipped rather than matched,
+  // since there's no safe way to tell which of the two prices is "the
+  // fixed one" for the shared target product. The fix is to de-duplicate
+  // the SKU in the source store, not something this tool can guess at.
+  ambiguousSourceCount: number;
   titleMismatchCount: number;
   sourceCurrency: string;
   targetCurrency: string;
@@ -96,16 +135,10 @@ export async function buildCrossStoreDiff(sourceStoreId: string, targetStoreId: 
     prisma.product.findMany({ where: { storeId: targetStoreId } }),
   ]);
 
-  const targetBySku = new Map<string, Product>();
-  const targetByBarcode = new Map<string, Product>();
-  for (const p of targetProducts) {
-    const sku = normalizeSku(p.sku);
-    if (sku && !targetBySku.has(sku)) targetBySku.set(sku, p);
-    if (p.barcode) {
-      const bc = normalizeBarcode(p.barcode);
-      if (bc && !targetByBarcode.has(bc)) targetByBarcode.set(bc, p);
-    }
-  }
+  const targetBySku = buildUniqueIndex(targetProducts, (p) => normalizeSku(p.sku));
+  const targetByBarcode = buildUniqueIndex(targetProducts, (p) => (p.barcode ? normalizeBarcode(p.barcode) : null));
+  const sourceSkuCounts = keyCounts(sourceProducts, (p) => normalizeSku(p.sku));
+  const sourceBarcodeCounts = keyCounts(sourceProducts, (p) => (p.barcode ? normalizeBarcode(p.barcode) : null));
 
   const currenciesDiffer = sourceStore.currency !== targetStore.currency;
   let rate = 1;
@@ -115,6 +148,7 @@ export async function buildCrossStoreDiff(sourceStoreId: string, targetStoreId: 
       return {
         rows: [],
         unmatchedSourceCount: 0,
+        ambiguousSourceCount: 0,
         titleMismatchCount: 0,
         sourceCurrency: sourceStore.currency,
         targetCurrency: targetStore.currency,
@@ -126,23 +160,37 @@ export async function buildCrossStoreDiff(sourceStoreId: string, targetStoreId: 
 
   const rows: CrossStoreRow[] = [];
   let unmatchedSourceCount = 0;
+  let ambiguousSourceCount = 0;
 
   for (const sp of sourceProducts) {
     const sku = normalizeSku(sp.sku);
+    const skuAmbiguous = sku != null && (sourceSkuCounts.get(sku) ?? 0) > 1;
     let matched: Product | undefined;
     let matchedBy: "sku" | "barcode" | undefined;
+    let ambiguous = false;
+
     if (sku && targetBySku.has(sku)) {
-      matched = targetBySku.get(sku);
-      matchedBy = "sku";
-    } else if (sp.barcode) {
-      const bc = normalizeBarcode(sp.barcode);
-      if (bc && targetByBarcode.has(bc)) {
-        matched = targetByBarcode.get(bc);
-        matchedBy = "barcode";
+      if (skuAmbiguous) ambiguous = true;
+      else {
+        matched = targetBySku.get(sku);
+        matchedBy = "sku";
       }
     }
+    if (!matched && sp.barcode) {
+      const bc = normalizeBarcode(sp.barcode);
+      const bcAmbiguous = bc != null && (sourceBarcodeCounts.get(bc) ?? 0) > 1;
+      if (bc && targetByBarcode.has(bc)) {
+        if (bcAmbiguous) ambiguous = true;
+        else {
+          matched = targetByBarcode.get(bc);
+          matchedBy = "barcode";
+        }
+      }
+    }
+
     if (!matched || !matchedBy) {
-      unmatchedSourceCount++;
+      if (ambiguous) ambiguousSourceCount++;
+      else unmatchedSourceCount++;
       continue;
     }
 
@@ -177,6 +225,7 @@ export async function buildCrossStoreDiff(sourceStoreId: string, targetStoreId: 
   return {
     rows,
     unmatchedSourceCount,
+    ambiguousSourceCount,
     titleMismatchCount: rows.filter((r) => r.titleMismatch).length,
     sourceCurrency: sourceStore.currency,
     targetCurrency: targetStore.currency,
