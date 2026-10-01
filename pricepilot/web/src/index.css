@@ -325,6 +325,17 @@ button.small-btn {
   flex: 1;
 }
 
+.round-up-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.round-up-control select {
+  min-width: 0;
+  width: 80px;
+}
+
 .table-wrap {
   overflow-x: auto;
   border-radius: var(--radius);

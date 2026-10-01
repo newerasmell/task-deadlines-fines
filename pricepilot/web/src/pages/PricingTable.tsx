@@ -16,6 +16,11 @@ import { useStores } from "../context/StoreContext";
 import { useT } from "../i18n/I18nContext";
 import { EurNote, Money, MoneyRange, eurEquivalent, fmtMoney, fmtMoneyEurInline, summarizeNumbers } from "../lib/money";
 
+// Presets for the "round selected prices up" bulk tool — covers both
+// small-value currencies (EUR, round to nearest 1/5/10) and large-face-
+// value ones like HUF, where a "clean" price moves in hundreds/thousands.
+const ROUND_STEP_OPTIONS = [1, 5, 10, 50, 100, 200, 500, 1000, 5000, 10000];
+
 const FLAG_LABELS: Record<RowFlag, string> = {
   "above-market": "Над пазара",
   competitive: "Конкурентна",
@@ -157,6 +162,7 @@ export function PricingTable() {
   // — 252.10 in that case — was there before). Opt-in only.
   const [setCompareAt, setSetCompareAt] = useState(false);
   const [skipSingleConfirm, setSkipSingleConfirm] = useState(() => localStorage.getItem("pp.skipSingleConfirm") === "1");
+  const [roundStep, setRoundStep] = useState(() => Number(localStorage.getItem("pp.roundStep")) || 100);
   const [bulkPublishing, setBulkPublishing] = useState(false);
   const [costDraft, setCostDraft] = useState<Map<string, string>>(new Map());
   const [costSaving, setCostSaving] = useState<Set<string>>(new Set());
@@ -204,6 +210,10 @@ export function PricingTable() {
   useEffect(() => {
     localStorage.setItem("pp.pricingView", viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem("pp.roundStep", String(roundStep));
+  }, [roundStep]);
 
   const vendors = useMemo(() => {
     if (!data) return [];
@@ -319,6 +329,23 @@ export function PricingTable() {
       else next.set(productId, num);
       return next;
     });
+  }
+
+  // Rounds the currently selected rows' "Предложена" value UP to the next
+  // multiple of roundStep — never down, so a cleanup pass can't quietly
+  // undercut a price that was set deliberately. Operates on whatever's
+  // already in "Предложена" (an edit, or the suggestion engine's own
+  // number), not the live price directly, so it composes with both:
+  // rounding a formula-computed suggestion, or just a current price left
+  // untouched by the engine. The usual Publish/Publish-selected buttons do
+  // the actual publish, same as any other suggested-price edit.
+  function applyRoundUp() {
+    for (const row of filteredSortedRows) {
+      if (!selected.has(row.productId)) continue;
+      const base = suggestedFor(row) ?? row.ourPrice;
+      const rounded = Math.ceil(base / roundStep) * roundStep;
+      setSuggestedValue(row.productId, String(rounded));
+    }
   }
 
   function toggleRow(id: string) {
@@ -836,6 +863,24 @@ export function PricingTable() {
         <div className="bulk-bar">
           <span>{t("{count} избрани", { count: selected.size })}</span>
           <span className="spacer" />
+          <span className="round-up-control">
+            <span className="muted small">{t("Закръгли нагоре до")}</span>
+            <select value={roundStep} onChange={(e) => setRoundStep(Number(e.target.value))}>
+              {ROUND_STEP_OPTIONS.map((step) => (
+                <option key={step} value={step}>
+                  {step}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="small-btn secondary"
+              onClick={applyRoundUp}
+              title={t("Задава \"Предложена\" за избраните на следващото кръгло число нагоре — после публикувай с бутоните вдясно.")}
+            >
+              {t("Приложи")}
+            </button>
+          </span>
           <button onClick={publishSelected} disabled={bulkPublishing}>
             {bulkPublishing ? t("Публикуване…") : t("Публикувай {count} избрани", { count: selected.size })}
           </button>

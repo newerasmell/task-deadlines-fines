@@ -57,6 +57,10 @@ export const pricingTable: Record<string, string> = {
   "{count} избрани": "{count} selected",
   "Публикувай {count} избрани": "Publish {count} selected",
   "Изчисти избора": "Clear selection",
+  "Закръгли нагоре до": "Round up to",
+  "Приложи": "Apply",
+  'Задава "Предложена" за избраните на следващото кръгло число нагоре — после публикувай с бутоните вдясно.':
+    'Sets "Suggested" for the selected rows to the next round number up — then publish with the buttons on the right.',
   "Избери всички ({count})": "Select all ({count})",
   "Подреди по": "Sort by",
   "Продукт": "Product",
