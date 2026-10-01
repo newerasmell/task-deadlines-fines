@@ -16,10 +16,11 @@ import { useStores } from "../context/StoreContext";
 import { useT } from "../i18n/I18nContext";
 import { EurNote, Money, MoneyRange, eurEquivalent, fmtMoney, fmtMoneyEurInline, summarizeNumbers } from "../lib/money";
 
-// Presets for the "round selected prices up" bulk tool — covers both
-// small-value currencies (EUR, round to nearest 1/5/10) and large-face-
-// value ones like HUF, where a "clean" price moves in hundreds/thousands.
-const ROUND_STEP_OPTIONS = [1, 5, 10, 50, 100, 200, 500, 1000, 5000, 10000];
+// Presets for the "round selected prices up" bulk tool — covers
+// cent-level cleanup for currencies with decimals (EUR, USD, PLN…),
+// round-to-whole-unit (1/5/10), and large-face-value currencies like HUF,
+// where a "clean" price moves in hundreds/thousands.
+const ROUND_STEP_OPTIONS = [0.1, 0.5, 1, 5, 10, 50, 100, 200, 500, 1000, 5000, 10000];
 
 const FLAG_LABELS: Record<RowFlag, string> = {
   "above-market": "Над пазара",
@@ -343,7 +344,11 @@ export function PricingTable() {
     for (const row of filteredSortedRows) {
       if (!selected.has(row.productId)) continue;
       const base = suggestedFor(row) ?? row.ourPrice;
-      const rounded = Math.ceil(base / roundStep) * roundStep;
+      // Rounded to 2 decimals on top of the ceil — harmless for a whole-
+      // unit step (100, 500…), but a fractional step like 0.1 or 0.5
+      // (cent-level cleanup for EUR/USD-style currencies) can otherwise
+      // leave floating-point noise like 24.400000000000002 in the field.
+      const rounded = Math.round(Math.ceil(base / roundStep) * roundStep * 100) / 100;
       setSuggestedValue(row.productId, String(rounded));
     }
   }
