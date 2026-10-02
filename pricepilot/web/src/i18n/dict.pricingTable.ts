@@ -59,8 +59,8 @@ export const pricingTable: Record<string, string> = {
   "Изчисти избора": "Clear selection",
   "Закръгли нагоре до": "Round up to",
   "Приложи": "Apply",
-  'Задава "Предложена" за избраните на следващото кръгло число нагоре — после публикувай с бутоните вдясно.':
-    'Sets "Suggested" for the selected rows to the next round number up — then publish with the buttons on the right.',
+  'Закръгля АКТУАЛНАТА (публикувана) цена на избраните нагоре до следващото кръгло число и я слага в "Предложена" — не взима предвид съджестнати/конкурентни цени. После публикувай с бутоните вдясно.':
+    'Rounds the selected rows\' CURRENT (published) price up to the next round number and puts it in "Suggested" — ignores suggested/competitor prices. Then publish with the buttons on the right.',
   "Избери всички ({count})": "Select all ({count})",
   "Подреди по": "Sort by",
   "Продукт": "Product",

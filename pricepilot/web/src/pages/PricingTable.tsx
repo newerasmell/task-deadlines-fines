@@ -340,15 +340,24 @@ export function PricingTable() {
   // rounding a formula-computed suggestion, or just a current price left
   // untouched by the engine. The usual Publish/Publish-selected buttons do
   // the actual publish, same as any other suggested-price edit.
+  // Always rounds the row's actual CURRENT price (ourPrice) — never a
+  // competitor-suggested or already-edited value. Confirmed live this
+  // matters for more than just "what should it round from": composing on
+  // top of the suggested/edited value meant a second Apply with a finer
+  // step than the first could look like a no-op (e.g. round to 1000, then
+  // try 100 — a multiple of 1000 is already a multiple of 100, so nothing
+  // visibly changes), with no way to fix it short of reloading the page
+  // to clear the edit and start over. Rounding from ourPrice every time
+  // makes repeated Apply clicks with different steps idempotent and
+  // predictable instead.
   function applyRoundUp() {
     for (const row of filteredSortedRows) {
       if (!selected.has(row.productId)) continue;
-      const base = suggestedFor(row) ?? row.ourPrice;
       // Rounded to 2 decimals on top of the ceil — harmless for a whole-
       // unit step (100, 500…), but a fractional step like 0.1 or 0.5
       // (cent-level cleanup for EUR/USD-style currencies) can otherwise
       // leave floating-point noise like 24.400000000000002 in the field.
-      const rounded = Math.round(Math.ceil(base / roundStep) * roundStep * 100) / 100;
+      const rounded = Math.round(Math.ceil(row.ourPrice / roundStep) * roundStep * 100) / 100;
       setSuggestedValue(row.productId, String(rounded));
     }
   }
@@ -881,7 +890,9 @@ export function PricingTable() {
               type="button"
               className="small-btn secondary"
               onClick={applyRoundUp}
-              title={t("Задава \"Предложена\" за избраните на следващото кръгло число нагоре — после публикувай с бутоните вдясно.")}
+              title={t(
+                "Закръгля АКТУАЛНАТА (публикувана) цена на избраните нагоре до следващото кръгло число и я слага в \"Предложена\" — не взима предвид съджестнати/конкурентни цени. После публикувай с бутоните вдясно."
+              )}
             >
               {t("Приложи")}
             </button>
