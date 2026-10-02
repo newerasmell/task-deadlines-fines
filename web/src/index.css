@@ -643,14 +643,77 @@ button.meet-link-btn-active:hover {
 }
 
 .fine-task-group-header td {
-  background: #fafbfd;
+  background: #eef1fc;
   cursor: pointer;
-  font-weight: 500;
-  padding-left: 32px;
+  font-weight: 600;
+  padding-left: 28px;
+}
+
+.fine-task-group-header td:first-child {
+  border-left: 4px solid #6366f1;
 }
 
 .fine-task-group-header:hover td {
-  background: #f2f4f9;
+  background: #e4e9fa;
+}
+
+.fine-task-group-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.fine-task-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fine-task-group-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Rows belonging to an expanded task sub-group: a lighter version of the
+   group header's accent bar continues down the left edge so they read as
+   "still inside this branch," and the employee/task columns collapse to a
+   muted name + compact day pill since both are already named in the header
+   above — that redundant full-title repeat per day was what made an
+   expanded group blend into the rows after it. */
+.fine-task-child-row td {
+  background: #f8f9fd;
+}
+
+.fine-task-child-row td:first-child {
+  border-left: 4px solid #c7cdf5;
+}
+
+.fine-task-child-row .person-cell {
+  padding-left: 22px;
+}
+
+.fine-day-pill {
+  display: inline-block;
+  background: #e0e4fa;
+  color: #4338ca;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Closes off a task sub-group visually once it ends, whatever follows it
+   (another task group, a standalone single-fine row, or the next
+   employee) — without this the last day row ran straight into the next
+   item with no boundary at all. */
+.fine-task-child-row + tr:not(.fine-task-child-row) td {
+  border-top: 2px solid var(--border);
 }
 
 .fine-bulk-bar {

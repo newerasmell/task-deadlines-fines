@@ -198,9 +198,15 @@ export function Fines() {
     }
   }
 
-  function renderFineRow(f: Fine) {
+  // `child` marks a row rendered inside an expanded task sub-group: its task
+  // is already named in the group header above it, so repeating the full
+  // title (and the employee, already named in the outer employee-group
+  // header) on every single day row is what was making the expanded list
+  // blend into a wall of text — here it collapses to a compact day badge and
+  // picks up the group's accent bar/indent instead (see .fine-task-child-row).
+  function renderFineRow(f: Fine, child?: boolean) {
     return (
-      <tr key={f.id}>
+      <tr key={f.id} className={child ? "fine-task-child-row" : undefined}>
         {isAdmin && (
           <td>
             {f.status === "ACTIVE" && (
@@ -209,13 +215,21 @@ export function Fines() {
           </td>
         )}
         <td className="person-cell" data-label={t("Служител")}>
-          <div className="person-cell-group">
-            {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
-            {f.user?.name}
-          </div>
+          {child ? (
+            <span className="muted small">{f.user?.name}</span>
+          ) : (
+            <div className="person-cell-group">
+              {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
+              {f.user?.name}
+            </div>
+          )}
         </td>
         <td data-label={t("Задача")}>
-          {f.task ? (
+          {child ? (
+            <span className="fine-day-pill">
+              {t("Ден")} {f.daysLate}
+            </span>
+          ) : f.task ? (
             <Link to={`/tasks?taskId=${f.task.id}`}>{f.task.title}</Link>
           ) : (
             <span className="muted">{t("Ръчна глоба")}</span>
@@ -438,40 +452,45 @@ export function Fines() {
                             </td>
                           )}
                           <td colSpan={colCount - (isAdmin ? 1 : 0)} onClick={() => toggleGroup(tg.key)}>
-                            <span className="fine-group-toggle">{tgExpanded ? "▾" : "▸"}</span>
-                            {tg.task ? (
-                              <Link to={`/tasks?taskId=${tg.task.id}`} onClick={(e) => e.stopPropagation()}>
-                                {tg.task.title}
-                              </Link>
-                            ) : (
-                              <span className="muted">{t("Ръчна глоба")}</span>
-                            )}{" "}
-                            <span className="muted small">
-                              ({tg.fines.length} {t("дни")}, {t("до ден")} {maxDaysLate})
-                            </span>{" "}
-                            {tgOwed > 0 ? (
-                              <span className="badge badge-danger">
-                                {t("дължи")} {formatTotals(tgTotals)}
-                              </span>
-                            ) : (
-                              <span className="badge badge-success">{t("Уредено")}</span>
-                            )}
-                            {user?.isSuperAdmin && tgActiveIds.length > 0 && (
-                              <button
-                                type="button"
-                                className="small-btn"
-                                style={{ marginLeft: 8 }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConsolidating(tg);
-                                }}
-                              >
-                                {t("Редактирай баланс")}
-                              </button>
-                            )}
+                            <div className="fine-task-group-row">
+                              <div className="fine-task-group-title">
+                                <span className="fine-group-toggle">{tgExpanded ? "▾" : "▸"}</span>
+                                {tg.task ? (
+                                  <Link to={`/tasks?taskId=${tg.task.id}`} onClick={(e) => e.stopPropagation()}>
+                                    {tg.task.title}
+                                  </Link>
+                                ) : (
+                                  <span className="muted">{t("Ръчна глоба")}</span>
+                                )}
+                                <span className="muted small">
+                                  ({tg.fines.length} {t("дни")}, {t("до ден")} {maxDaysLate})
+                                </span>
+                              </div>
+                              <div className="fine-task-group-meta">
+                                {tgOwed > 0 ? (
+                                  <span className="badge badge-danger">
+                                    {t("дължи")} {formatTotals(tgTotals)}
+                                  </span>
+                                ) : (
+                                  <span className="badge badge-success">{t("Уредено")}</span>
+                                )}
+                                {user?.isSuperAdmin && tgActiveIds.length > 0 && (
+                                  <button
+                                    type="button"
+                                    className="small-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConsolidating(tg);
+                                    }}
+                                  >
+                                    {t("Редактирай баланс")}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           </td>
                         </tr>
-                        {tgExpanded && tg.fines.map((f) => renderFineRow(f))}
+                        {tgExpanded && tg.fines.map((f) => renderFineRow(f, true))}
                       </Fragment>
                     );
                   })}

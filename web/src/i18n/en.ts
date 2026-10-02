@@ -261,6 +261,7 @@ export const en: Record<string, string> = {
   "Да маркирам {count} избрани глоби като платени — общо {total}?": "Mark {count} selected fines as paid — total {total}?",
   "Избери всички активни глоби за тази задача": "Select all active fines for this task",
   "дни": "days",
+  "Ден": "Day",
   "до ден": "up to day",
   "Уредено": "Settled",
   "Редактирай баланс": "Edit balance",
