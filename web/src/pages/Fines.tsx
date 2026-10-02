@@ -52,6 +52,39 @@ function formatTotals(totals: Record<string, number>): string {
   return entries.map(([currency, sum]) => `${sum.toFixed(2)} ${currency}`).join(" + ");
 }
 
+interface TaskSubGroup {
+  key: string;
+  taskId: string | null;
+  task: Fine["task"];
+  fines: Fine[];
+}
+
+// Groups one employee's fines by task so a long run of daily late-fine rows
+// collapses into a single row per task. Manual fines (no taskId) never merge
+// with each other — each gets its own unique key — since there's nothing
+// meaningful to consolidate them into.
+function groupByTask(fines: Fine[]): TaskSubGroup[] {
+  const order: string[] = [];
+  const byKey = new Map<string, TaskSubGroup>();
+  for (const f of fines) {
+    const key = f.taskId ? `task:${f.taskId}` : `manual:${f.id}`;
+    let g = byKey.get(key);
+    if (!g) {
+      g = { key, taskId: f.taskId, task: f.task ?? null, fines: [] };
+      byKey.set(key, g);
+      order.push(key);
+    }
+    g.fines.push(f);
+  }
+  return order.map((k) => byKey.get(k)!);
+}
+
+function sumActive(fines: Fine[]): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const f of fines) if (f.status === "ACTIVE") totals[f.currency] = (totals[f.currency] ?? 0) + f.amount;
+  return totals;
+}
+
 export function Fines() {
   const { user } = useAuth();
   const { t, lang } = useI18n();
@@ -62,6 +95,7 @@ export function Fines() {
   const [showForm, setShowForm] = useState(false);
   const [waiving, setWaiving] = useState<Fine | null>(null);
   const [editingAmount, setEditingAmount] = useState<Fine | null>(null);
+  const [consolidating, setConsolidating] = useState<TaskSubGroup | null>(null);
   const [loading, setLoading] = useState(true);
   const [cleaning, setCleaning] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -164,6 +198,68 @@ export function Fines() {
     }
   }
 
+  function renderFineRow(f: Fine) {
+    return (
+      <tr key={f.id}>
+        {isAdmin && (
+          <td>
+            {f.status === "ACTIVE" && (
+              <input type="checkbox" checked={selectedIds.has(f.id)} onChange={() => toggleSelected(f.id)} />
+            )}
+          </td>
+        )}
+        <td className="person-cell" data-label={t("Служител")}>
+          <div className="person-cell-group">
+            {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
+            {f.user?.name}
+          </div>
+        </td>
+        <td data-label={t("Задача")}>
+          {f.task ? (
+            <Link to={`/tasks?taskId=${f.task.id}`}>{f.task.title}</Link>
+          ) : (
+            <span className="muted">{t("Ръчна глоба")}</span>
+          )}
+        </td>
+        <td data-label={t("Причина")}>
+          {f.reason}
+          {f.waivedReason && <div className="muted small">{t("Анулирана:")} {f.waivedReason}</div>}
+        </td>
+        <td data-label={t("Сума")}>
+          {f.amount.toFixed(2)} {f.currency}
+        </td>
+        <td data-label={t("Дата")}>{new Date(f.createdAt).toLocaleString(locale)}</td>
+        <td data-label={t("Платена на")}>
+          {f.paidAt ? new Date(f.paidAt).toLocaleString(locale) : <span className="muted">—</span>}
+        </td>
+        <td data-label={t("Статус")}>
+          <span className={statusClass[f.status]}>{t(statusLabels[f.status])}</span>
+        </td>
+        {isAdmin && (
+          <td className="row-actions">
+            <div className="row-actions-group">
+              {f.status === "ACTIVE" && (
+                <>
+                  <button className="small-btn" onClick={() => setWaiving(f)}>
+                    {t("Анулирай")}
+                  </button>
+                  <button className="small-btn" onClick={() => markPaid(f.id)}>
+                    {t("Платена")}
+                  </button>
+                </>
+              )}
+              {user?.isSuperAdmin && (
+                <button className="small-btn" onClick={() => setEditingAmount(f)}>
+                  {t("Редактирай сума")}
+                </button>
+              )}
+            </div>
+          </td>
+        )}
+      </tr>
+    );
+  }
+
   if (loading) return <p>{t("Зареждане…")}</p>;
 
   const groups = groupFines(fines);
@@ -220,6 +316,18 @@ export function Fines() {
             refresh();
           }}
           onCancel={() => setEditingAmount(null)}
+        />
+      )}
+
+      {consolidating && (
+        <ConsolidateForm
+          taskTitle={consolidating.task?.title ?? t("Ръчна глоба")}
+          fines={consolidating.fines}
+          onDone={() => {
+            setConsolidating(null);
+            refresh();
+          }}
+          onCancel={() => setConsolidating(null)}
         />
       )}
 
@@ -304,65 +412,69 @@ export function Fines() {
                   </td>
                 </tr>
                 {expanded &&
-                  group.fines.map((f) => (
-                    <tr key={f.id}>
-                      {isAdmin && (
-                        <td>
-                          {f.status === "ACTIVE" && (
-                            <input type="checkbox" checked={selectedIds.has(f.id)} onChange={() => toggleSelected(f.id)} />
+                  groupByTask(group.fines).map((tg) => {
+                    if (tg.fines.length === 1) return renderFineRow(tg.fines[0]);
+
+                    const tgActiveIds = tg.fines.filter((f) => f.status === "ACTIVE").map((f) => f.id);
+                    const tgAllSelected = tgActiveIds.length > 0 && tgActiveIds.every((id) => selectedIds.has(id));
+                    const tgTotals = sumActive(tg.fines);
+                    const tgOwed = Object.values(tgTotals).reduce((s, v) => s + v, 0);
+                    const maxDaysLate = Math.max(...tg.fines.map((f) => f.daysLate));
+                    const tgExpanded = toggledGroups.has(tg.key);
+
+                    return (
+                      <Fragment key={tg.key}>
+                        <tr className="fine-task-group-header">
+                          {isAdmin && (
+                            <td onClick={(e) => e.stopPropagation()}>
+                              {tgActiveIds.length > 0 && (
+                                <input
+                                  type="checkbox"
+                                  checked={tgAllSelected}
+                                  onChange={(e) => toggleSelectedMany(tgActiveIds, e.target.checked)}
+                                  title={t("Избери всички активни глоби за тази задача")}
+                                />
+                              )}
+                            </td>
                           )}
-                        </td>
-                      )}
-                      <td className="person-cell" data-label={t("Служител")}>
-                        <div className="person-cell-group">
-                          {f.user && <Avatar id={f.userId} name={f.user.name} size={22} />}
-                          {f.user?.name}
-                        </div>
-                      </td>
-                      <td data-label={t("Задача")}>
-                        {f.task ? (
-                          <Link to={`/tasks?taskId=${f.task.id}`}>{f.task.title}</Link>
-                        ) : (
-                          <span className="muted">{t("Ръчна глоба")}</span>
-                        )}
-                      </td>
-                      <td data-label={t("Причина")}>
-                        {f.reason}
-                        {f.waivedReason && <div className="muted small">{t("Анулирана:")} {f.waivedReason}</div>}
-                      </td>
-                      <td data-label={t("Сума")}>
-                        {f.amount.toFixed(2)} {f.currency}
-                      </td>
-                      <td data-label={t("Дата")}>{new Date(f.createdAt).toLocaleString(locale)}</td>
-                      <td data-label={t("Платена на")}>
-                        {f.paidAt ? new Date(f.paidAt).toLocaleString(locale) : <span className="muted">—</span>}
-                      </td>
-                      <td data-label={t("Статус")}>
-                        <span className={statusClass[f.status]}>{t(statusLabels[f.status])}</span>
-                      </td>
-                      {isAdmin && (
-                        <td className="row-actions">
-                          <div className="row-actions-group">
-                            {f.status === "ACTIVE" && (
-                              <>
-                                <button className="small-btn" onClick={() => setWaiving(f)}>
-                                  {t("Анулирай")}
-                                </button>
-                                <button className="small-btn" onClick={() => markPaid(f.id)}>
-                                  {t("Платена")}
-                                </button>
-                              </>
+                          <td colSpan={colCount - (isAdmin ? 1 : 0)} onClick={() => toggleGroup(tg.key)}>
+                            <span className="fine-group-toggle">{tgExpanded ? "▾" : "▸"}</span>
+                            {tg.task ? (
+                              <Link to={`/tasks?taskId=${tg.task.id}`} onClick={(e) => e.stopPropagation()}>
+                                {tg.task.title}
+                              </Link>
+                            ) : (
+                              <span className="muted">{t("Ръчна глоба")}</span>
+                            )}{" "}
+                            <span className="muted small">
+                              ({tg.fines.length} {t("дни")}, {t("до ден")} {maxDaysLate})
+                            </span>{" "}
+                            {tgOwed > 0 ? (
+                              <span className="badge badge-danger">
+                                {t("дължи")} {formatTotals(tgTotals)}
+                              </span>
+                            ) : (
+                              <span className="badge badge-success">{t("Уредено")}</span>
                             )}
-                            {user?.isSuperAdmin && (
-                              <button className="small-btn" onClick={() => setEditingAmount(f)}>
-                                {t("Редактирай сума")}
+                            {user?.isSuperAdmin && tgActiveIds.length > 0 && (
+                              <button
+                                type="button"
+                                className="small-btn"
+                                style={{ marginLeft: 8 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConsolidating(tg);
+                                }}
+                              >
+                                {t("Редактирай баланс")}
                               </button>
                             )}
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
+                          </td>
+                        </tr>
+                        {tgExpanded && tg.fines.map((f) => renderFineRow(f))}
+                      </Fragment>
+                    );
+                  })}
               </Fragment>
             );
           })}
@@ -493,6 +605,75 @@ function EditAmountForm({ fine, onDone, onCancel }: { fine: Fine; onDone: () => 
       <div className="form-row">
         <button type="submit" disabled={submitting}>
           {submitting ? t("Записване…") : t("Запази новата сума")}
+        </button>
+        <button type="button" className="secondary" onClick={onCancel}>
+          {t("Отказ")}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ConsolidateForm({
+  taskTitle,
+  fines,
+  onDone,
+  onCancel,
+}: {
+  taskTitle: string;
+  fines: Fine[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useI18n();
+  const activeFines = fines.filter((f) => f.status === "ACTIVE");
+  const currentTotal = activeFines.reduce((s, f) => s + f.amount, 0);
+  const currency = activeFines[0]?.currency ?? fines[0]?.currency ?? "EUR";
+  const [amount, setAmount] = useState(String(currentTotal));
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await api("/fines/consolidate", {
+        method: "POST",
+        body: JSON.stringify({ ids: activeFines.map((f) => f.id), amount: Number(amount), reason }),
+      });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Грешка"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={handleSubmit}>
+      <p>
+        {t("Консолидиране на {count} активни глоби за задача", { count: activeFines.length })} <strong>{taskTitle}</strong>{" "}
+        ({t("текуща обща сума")} {currentTotal.toFixed(2)} {currency})
+      </p>
+      <p className="muted small">
+        {t("Най-ранната глоба ще получи новата обща сума, останалите ще бъдат анулирани автоматично с бележка — историята остава видима.")}
+      </p>
+      <div className="form-row">
+        <label>
+          {t("Нова обща сума")} ({currency})
+          <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
+        </label>
+      </div>
+      <label>
+        {t("Причина за корекцията")}
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Напр. договорено намаление на общата глоба")} required />
+      </label>
+      {error && <div className="error-text">{error}</div>}
+      <div className="form-row">
+        <button type="submit" disabled={submitting}>
+          {submitting ? t("Записване…") : t("Запази общата сума")}
         </button>
         <button type="button" className="secondary" onClick={onCancel}>
           {t("Отказ")}

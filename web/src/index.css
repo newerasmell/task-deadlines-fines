@@ -642,6 +642,17 @@ button.meet-link-btn-active:hover {
   color: var(--muted);
 }
 
+.fine-task-group-header td {
+  background: #fafbfd;
+  cursor: pointer;
+  font-weight: 500;
+  padding-left: 32px;
+}
+
+.fine-task-group-header:hover td {
+  background: #f2f4f9;
+}
+
 .fine-bulk-bar {
   display: flex;
   align-items: center;

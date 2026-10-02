@@ -259,6 +259,18 @@ export const en: Record<string, string> = {
   "Плати избраните": "Pay selected",
   "Изчисти избора": "Clear selection",
   "Да маркирам {count} избрани глоби като платени — общо {total}?": "Mark {count} selected fines as paid — total {total}?",
+  "Избери всички активни глоби за тази задача": "Select all active fines for this task",
+  "дни": "days",
+  "до ден": "up to day",
+  "Уредено": "Settled",
+  "Редактирай баланс": "Edit balance",
+  "Консолидиране на {count} активни глоби за задача": "Consolidating {count} active fines for task",
+  "текуща обща сума": "current total",
+  "Най-ранната глоба ще получи новата обща сума, останалите ще бъдат анулирани автоматично с бележка — историята остава видима.":
+    "The earliest fine will get the new total amount; the rest will be waived automatically with a note — the history stays visible.",
+  "Нова обща сума": "New total amount",
+  "Напр. договорено намаление на общата глоба": "E.g. agreed reduction of the total fine",
+  "Запази общата сума": "Save total amount",
 
   // Recurring tasks
   "Повтарящи се задачи": "Recurring tasks",

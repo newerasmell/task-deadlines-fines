@@ -216,6 +216,72 @@ finesRouter.post("/mark-paid-bulk", requireAdmin, async (req, res) => {
   res.json({ paidCount: result.count });
 });
 
+const consolidateSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+  amount: z.number().positive(),
+  reason: z.string().min(1),
+});
+
+// Collapses a task's day-by-day ACTIVE fines into one: the earliest keeps
+// the row (updated to the new total), every other active fine in the
+// selection is waived with a note pointing at the consolidation — nothing
+// is deleted, so the original day-by-day breakdown stays fully auditable
+// via the now-waived entries, it's just no longer "owed" as N separate
+// charges. Same permission level as a single fine's amount edit, since
+// this changes what someone owes just the same.
+finesRouter.post("/consolidate", requireSuperAdmin, async (req, res) => {
+  const parsed = consolidateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const fines = await prisma.fine.findMany({
+    where: { id: { in: parsed.data.ids }, status: "ACTIVE" },
+    include: { user: true, task: { select: { title: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  if (fines.length === 0) return res.status(400).json({ error: "No active fines in selection" });
+
+  const [keeper, ...rest] = fines;
+  const oldTotal = fines.reduce((s, f) => s + f.amount, 0);
+  const currency = keeper.currency;
+
+  const updatedKeeper = await prisma.fine.update({
+    where: { id: keeper.id },
+    data: { amount: parsed.data.amount },
+    include: { user: true, task: { select: { title: true } } },
+  });
+
+  for (const f of rest) {
+    await prisma.fine.update({
+      where: { id: f.id },
+      data: {
+        status: "WAIVED",
+        waivedById: req.user!.sub,
+        waivedReason: `Консолидирана в обща сума за задачата (нова обща сума: ${parsed.data.amount} ${currency}). ${parsed.data.reason}`,
+      },
+    });
+  }
+
+  await logAction(
+    req.user!.sub,
+    "FINE_CONSOLIDATED",
+    "Fine",
+    updatedKeeper.id,
+    `Консолидирани ${fines.length} глоби на ${updatedKeeper.user.name}${updatedKeeper.task ? ` за задача "${updatedKeeper.task.title}"` : ""} в обща сума: ${oldTotal.toFixed(2)} ${currency} → ${parsed.data.amount} ${currency}. Причина: ${parsed.data.reason}`,
+    { consolidatedIds: rest.map((f) => f.id), oldTotal, newAmount: parsed.data.amount, reason: parsed.data.reason }
+  );
+
+  await dispatchRespectingBusinessHours(toNotificationTarget(updatedKeeper.user), {
+    subject: "Коригиран общ баланс на глоби",
+    body: `Общата сума на глобите${updatedKeeper.task ? ` за задача "${updatedKeeper.task.title}"` : ""} беше коригирана от ${oldTotal.toFixed(2)} ${currency} на ${parsed.data.amount} ${currency}.\nПричина: ${parsed.data.reason}`,
+  });
+  await broadcastToAdmins({
+    subject: "Консолидиран баланс на глоби",
+    body: `${updatedKeeper.user.name}: ${oldTotal.toFixed(2)} ${currency} → ${parsed.data.amount} ${currency} (от ${req.user!.email}). Причина: ${parsed.data.reason}`,
+  });
+
+  res.json({ keeperId: updatedKeeper.id, waivedCount: rest.length, newAmount: parsed.data.amount });
+});
+
 // One-time cleanup for the repeat-fine bug fixed alongside this route: before
 // the fix, waiving a fine made the scanner treat that day as never-fined
 // again, so it kept recreating an identical fine every scan cycle. This

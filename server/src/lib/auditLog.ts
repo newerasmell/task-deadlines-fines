@@ -8,7 +8,8 @@ export type AdminAction =
   | "FINE_CREATED"
   | "FINE_WAIVED"
   | "FINE_AMOUNT_EDITED"
-  | "FINE_PAID_BULK";
+  | "FINE_PAID_BULK"
+  | "FINE_CONSOLIDATED";
 
 export function logAction(
   actorId: string,
