@@ -1,0 +1,58 @@
+# Render Blueprint: one web service (API + built app, Docker) and a managed Postgres.
+# Secrets are never in this file. Keys marked `sync: false` are entered in the Render dashboard
+# when the Blueprint is created (or later under Environment).
+services:
+  - type: web
+    name: perfume-import
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: perfume-import-db
+          property: connectionString
+      - key: SHOPIFY_TOKEN_PREMIERPARFUMS
+        sync: false
+      - key: SHOPIFY_TOKEN_PARFEMIJA
+        sync: false
+      - key: SHOPIFY_TOKEN_PARFEM4U
+        sync: false
+      - key: SHOPIFY_TOKEN_LUXILLAT
+        sync: false
+      - key: SHOPIFY_TOKEN_SCENTELLAS
+        sync: false
+      - key: SHOPIFY_TOKEN_SENZAROMI
+        sync: false
+      - key: SHOPIFY_TOKEN_TVOJAPARFUM
+        sync: false
+      - key: SHOPIFY_TOKEN_AROMACHIC
+        sync: false
+      - key: SHOPIFY_TOKEN_FRAGRALUX
+        sync: false
+      - key: SHOPIFY_TOKEN_PERFEMIO
+        sync: false
+      - key: SHOPIFY_TOKEN_AROMIZO
+        sync: false
+      - key: SHOPIFY_TOKEN_FRAGRACY
+        sync: false
+      - key: SHOPIFY_TOKEN_LUXAROMI
+        sync: false
+      - key: SHOPIFY_TOKEN_LUXCENTIO
+        sync: false
+      - key: SHOPIFY_TOKEN_SCENTAORO
+        sync: false
+      - key: SHOPIFY_TOKEN_SCENTILOS
+        sync: false
+      - key: SHOPIFY_TOKEN_SCENTILUX
+        sync: false
+      - key: SHOPIFY_TOKEN_SCENTIVIO
+        sync: false
+
+databases:
+  - name: perfume-import-db
+    databaseName: perfume
+    user: perfume
+    plan: basic-256mb
+    postgresMajorVersion: "16"

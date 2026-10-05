@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Партида – таблица</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1A1D21;background:#FFFFFF}
+a{color:#2F5BEA}a:hover{color:#1F44BF}
+button{font-family:inherit}
+.c{padding:0 10px;display:flex;align-items:center;gap:6px;border-right:1px solid #EDEFF2;font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.num{font-variant-numeric:tabular-nums;justify-content:flex-end}
+.s-suggested{background:#EAF0FD}
+.s-fixed{background:#FBF3E2}
+.s-warning{background:#FDEEE1}
+.s-blocked{background:#FBE6E6}
+.s-ok{background:#FFFFFF}
+.sel{outline:2px solid #2F5BEA;outline-offset:-2px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #FFFFFF">
+
+  <header style="height: 56px; display: flex; align-items: center; gap: 24px; padding: 0 20px; border-bottom: 1px solid #E3E6EA">
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 14px">
+      <a href="#" style="text-decoration: none; color: #5B6470">Партиди</a>
+      <span style="color: #9AA2AD">/</span>
+      <span style="font-weight: 600">30 септ., Група 1</span>
+      <span style="color: #5B6470">10 продукта</span>
+    </div>
+    <nav style="display: flex; gap: 2px; margin-left: 12px" aria-label="Сайтове">
+      <button style="height: 32px; padding: 0 12px; border: 1px solid #1A1D21; background: #1A1D21; color: #FFFFFF; border-radius: 6px; font-size: 13px; font-weight: 500">PremierParfums GR</button>
+      <button style="height: 32px; padding: 0 12px; border: 1px solid #E3E6EA; background: #FFFFFF; color: #1A1D21; border-radius: 6px; font-size: 13px">Parfemija HR</button>
+    </nav>
+    <div style="flex-grow: 1"></div>
+    <button style="height: 36px; padding: 0 14px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Експорт CSV</button>
+    <button style="height: 36px; padding: 0 16px; border: 0; background: #2F5BEA; color: #FFFFFF; border-radius: 6px; font-size: 13px; font-weight: 500">Качи 5 готови продукта в GR</button>
+  </header>
+
+  <div style="height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid #E3E6EA; background: #F5F6F8">
+    <sc-for list="{{filters}}" as="f" hint-placeholder-count="5">
+      <button style="{{f.style}}"><span style="{{f.dot}}"></span>{{f.label}}<span style="font-variant-numeric: tabular-nums; color: #5B6470">{{f.count}}</span></button>
+    </sc-for>
+    <div style="flex-grow: 1"></div>
+    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #5B6470">Търси
+      <input type="text" placeholder="марка, име, SKU" style="height: 30px; width: 220px; border: 1px solid #E3E6EA; border-radius: 6px; padding: 0 10px; font-family: inherit; font-size: 13px">
+    </label>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; min-height: 0">
+    <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden">
+      <div style="display: grid; grid-template-columns: 330px 150px 140px 150px 200px 90px 100px 80px; height: 36px; border-bottom: 1px solid #E3E6EA; background: #FFFFFF; font-size: 12px; font-weight: 500; color: #5B6470">
+        <div class="c">Продукт</div><div class="c">SKU</div><div class="c">Пол</div><div class="c">Семейство</div><div class="c">Горни нотки (el + EN)</div><div class="c num">Цена</div><div class="c num">Зачеркната</div><div class="c">Снимка</div>
+      </div>
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+        <div style="display: grid; grid-template-columns: 330px 150px 140px 150px 200px 90px 100px 80px; height: 44px; border-bottom: 1px solid #EDEFF2">
+          <div class="c" style="gap: 10px">
+            <span style="width: 28px; height: 28px; border-radius: 4px; background: #F1F2F4; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+              <svg width="14" height="16" viewBox="0 0 14 16" fill="none" stroke="#9AA2AD" stroke-width="1.3"><rect x="5" y="1" width="4" height="3"></rect><rect x="2" y="4" width="10" height="11" rx="2"></rect></svg>
+            </span>
+            <span style="overflow: hidden; text-overflow: ellipsis">{{r.title}}</span>
+          </div>
+          <div class="{{r.sku.cls}}" style="font-variant-numeric: tabular-nums">{{r.sku.icon}}{{r.sku.v}}</div>
+          <div class="{{r.gender.cls}}">{{r.gender.icon}}{{r.gender.v}}</div>
+          <div class="{{r.family.cls}}">{{r.family.icon}}{{r.family.v}}</div>
+          <div class="{{r.notes.cls}}" style="flex-direction: column; align-items: flex-start; justify-content: center; gap: 0"><span style="max-width: 100%; overflow: hidden; text-overflow: ellipsis">{{r.notes.icon}}{{r.notes.v}}</span><span style="font-size: 11px; color: #5B6470; max-width: 100%; overflow: hidden; text-overflow: ellipsis">EN · {{r.notes.en}}</span></div>
+          <div class="{{r.price.cls}}">{{r.price.icon}}{{r.price.v}}</div>
+          <div class="{{r.cmp.cls}}">{{r.cmp.icon}}{{r.cmp.v}}</div>
+          <div class="{{r.img.cls}}">{{r.img.icon}}{{r.img.v}}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <aside style="width: 400px; flex-shrink: 0; border-left: 1px solid #E3E6EA; background: #FFFFFF; box-shadow: -8px 0 24px rgba(26,29,33,0.06); display: flex; flex-direction: column">
+      <div style="padding: 20px 20px 16px; border-bottom: 1px solid #E3E6EA; display: flex; flex-direction: column; gap: 6px">
+        <div style="font-size: 12px; color: #5B6470">Yves Saint Laurent Libre Le Parfum 90 ml TESTER</div>
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <h2 style="margin: 0; font-size: 20px; font-weight: 600">Семейство</h2>
+          <button aria-label="Затвори" style="width: 32px; height: 32px; border: 0; background: transparent; border-radius: 6px">
+            <svg width="14" height="14" viewBox="0 0 14 14" stroke="#5B6470" stroke-width="1.5"><path d="M2 2l10 10M12 2L2 12"></path></svg>
+          </button>
+        </div>
+      </div>
+      <div style="padding: 20px; display: flex; flex-direction: column; gap: 20px; flex-grow: 1; overflow: hidden">
+        <div style="padding: 14px; background: #EAF0FD; border-radius: 6px; display: flex; flex-direction: column; gap: 6px">
+          <div style="font-size: 12px; color: #1F44BF; font-weight: 500">Предложение от AI · сигурност 82%</div>
+          <div style="font-size: 20px; font-weight: 600">Oriental Floral</div>
+          <div style="font-size: 13px; color: #3A424D; line-height: 1.5">Източниците не са единодушни, затова стойността чака потвърждение.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <h3 style="margin: 0; font-size: 13px; font-weight: 600">Източници</h3>
+          <div style="display: flex; flex-direction: column; border: 1px solid #E3E6EA; border-radius: 6px">
+            <div style="padding: 10px 12px; display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #EDEFF2; font-size: 13px"><a href="#">yslbeauty.com</a><span>Oriental Floral</span></div>
+            <div style="padding: 10px 12px; display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #EDEFF2; font-size: 13px"><a href="#">fragrantica.com</a><span>Amber Floral</span></div>
+            <div style="padding: 10px 12px; display: flex; justify-content: space-between; gap: 12px; font-size: 13px"><a href="#">notino.gr</a><span>Oriental Floral</span></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <h3 style="margin: 0; font-size: 13px; font-weight: 600">Други стойности от речника</h3>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap">
+            <button style="height: 30px; padding: 0 10px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Amber</button>
+            <button style="height: 30px; padding: 0 10px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Floral</button>
+            <button style="height: 30px; padding: 0 10px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Oriental Spicy</button>
+          </div>
+        </div>
+        <div style="font-size: 12px; color: #5B6470; line-height: 1.6">Важи за всички сайтове в Група 1. Промяната тук се прилага и в HR.</div>
+      </div>
+      <div style="padding: 16px 20px; border-top: 1px solid #E3E6EA; display: flex; gap: 8px">
+        <button style="flex-grow: 1; height: 40px; border: 0; background: #2F5BEA; color: #FFFFFF; border-radius: 6px; font-size: 14px; font-weight: 500">Приеми <span style="opacity: 0.7">A</span></button>
+        <button style="height: 40px; padding: 0 14px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 14px">Промени <span style="color: #5B6470">E</span></button>
+        <button style="height: 40px; padding: 0 14px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 14px">Отново</button>
+      </div>
+    </aside>
+  </div>
+
+  <footer style="height: 36px; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-top: 1px solid #E3E6EA; background: #F5F6F8; font-size: 12px; color: #5B6470">
+    <span>GR: 5 готови, 3 чакат преглед, 2 спрени</span>
+    <div style="flex-grow: 1"></div>
+    <span>Стрелки навигация · Enter детайли · A приеми · E промени · Esc затвори</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const chip = (active) => 'height: 30px; padding: 0 10px; display: flex; align-items: center; gap: 6px; border-radius: 6px; font-size: 13px; ' + (active ? 'border: 1px solid #1A1D21; background: #FFFFFF; font-weight: 500' : 'border: 1px solid #E3E6EA; background: #FFFFFF');
+    const dot = (c) => 'width: 8px; height: 8px; border-radius: 2px; background: ' + c;
+    const filters = [
+      { label: 'Всички полета', count: '80', style: chip(false), dot: 'display: none' },
+      { label: 'AI предложения', count: '7', style: chip(true), dot: dot('#2F5BEA') },
+      { label: 'Автоматично поправени', count: '3', style: chip(false), dot: dot('#B7791F') },
+      { label: 'Предупреждения', count: '2', style: chip(false), dot: dot('#D9731A') },
+      { label: 'Спрени', count: '2', style: chip(false), dot: dot('#C62B2B') }
+    ];
+    const ic = { suggested: 'AI · ', fixed: '↺ ', warning: '△ ', blocked: '✕ ', ok: '' };
+    const f = (v, s, extra, en) => ({ v, en: en || '', icon: ic[s || 'ok'], cls: 'c s-' + (s || 'ok') + (extra || '') });
+    const n = (v, s) => ({ v, icon: ic[s || 'ok'], cls: 'c num s-' + (s || 'ok') });
+    const rows = [
+      { title: 'Yves Saint Laurent Libre Le Parfum 90 ml TESTER', sku: f('SK3614273776127'), gender: f("Women's Perfume"), family: f('Oriental Floral', 'suggested', ' sel'), notes: f('τζίντζερ, σαφράν, μανταρίνι', 'suggested', '', 'ginger, saffron, mandarin'), price: n('68.00'), cmp: n('94.90'), img: f('2000 px') },
+      { title: 'Dior Sauvage EDT 100 ml', sku: f('SK3348901250153'), gender: f("Men's Perfume"), family: f('Aromatic'), notes: f('περγαμόντο, πιπέρι', 'ok', '', 'bergamot, pepper'), price: n('89.00'), cmp: n('139.00'), img: f('2400 px') },
+      { title: 'Chanel No 5 EDP 100 ml TESTER', sku: f('SK3145891255300'), gender: f("Women's Perfume"), family: f('Floral'), notes: f('αλδεΰδες, νέρολι, περγαμόντο', 'ok', '', 'aldehydes, neroli, bergamot'), price: n('112.00'), cmp: n('189.00'), img: f('1800 px') },
+      { title: 'Burberry Her EDP 100 ml', sku: f('SK3614226905178'), gender: f("Women's Perfume"), family: f('Fruity', 'fixed'), notes: f('φράουλα, βατόμουρο, κεράσι', 'ok', '', 'strawberry, raspberry, cherry'), price: n('74.00'), cmp: n('118.00'), img: f('2000 px') },
+      { title: "Givenchy L'Interdit EDP 80 ml", sku: f('SK3274872369566'), gender: f("Women's Perfume"), family: f('Floral'), notes: f('αχλάδι, περγαμόντο', 'ok', '', 'pear, bergamot'), price: n('81.00'), cmp: n('129.00'), img: f('720 px', 'warning') },
+      { title: 'Paco Rabanne Lady Million Eau My Gold EDT 80 ml', sku: f('липсва EAN', 'blocked'), gender: f("Women's Perfume"), family: f('Floral Fruity'), notes: f('λεμόνι, μανταρίνι', 'suggested', '', 'lemon, mandarin'), price: n('64.00'), cmp: n('99.00'), img: f('1600 px') },
+      { title: "Armani Prive Rose d'Arabie EDP 100 ml", sku: f('SK3614270154683'), gender: f('Unisex Perfume', 'fixed'), family: f('Oriental', 'suggested'), notes: f('τριαντάφυλλο, κασσία', 'suggested', '', 'rose, cassia'), price: n('235.00'), cmp: n('310.00'), img: f('2000 px') },
+      { title: 'Lancome La Vie Est Belle Intense EDP 75 ml', sku: f('SK3614273069540'), gender: f("Women's Perfume"), family: f('Gourmand'), notes: f('περγαμόντο, μούρα', 'ok', '', 'bergamot, berries'), price: n('79.00'), cmp: n('79.00', 'blocked'), img: f('2000 px') },
+      { title: 'Bvlgari Aqva Marine EDT 100 ml', sku: f('SK0783320403170'), gender: f("Men's Perfume"), family: f('Aquatic'), notes: f('πορτοκάλι, θαλάσσια φύκια', 'ok', '', 'orange, seaweed'), price: n('58.00'), cmp: n('92.00'), img: f('1100 px', 'warning') },
+      { title: 'Hugo Boss Bottled Night EDT 100 ml', sku: f('SK8005610262062'), gender: f("Men's Perfume", 'fixed'), family: f('Woody', 'suggested'), notes: f('σημύδα, κάρδαμο', 'suggested', '', 'birch, cardamom'), price: n('49.00'), cmp: n('82.00'), img: f('2000 px') }
+    ];
+    return { filters, rows };
+  }
+}
+</script>
+</body>
+</html>

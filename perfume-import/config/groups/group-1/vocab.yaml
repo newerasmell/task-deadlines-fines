@@ -1,0 +1,24 @@
+# Canonical values (english, used in all Group 1 stores) and variants auto-fixed to them.
+# Derived from the GR and HR exports, CONFIRM the canonical list before phase 1 ends.
+gender:
+  Women's Perfume: ["Women’s Perfume", "Women's perfume", "Women’s perfume", "Γυναικείο άρωμα", "Ženski parfem"]
+  Men's Perfume: ["Men’s Perfume", "Men's perfume", "Men’s perfume", "Ανδρικό άρωμα", "Muški parfem"]
+  Unisex Perfume: ["Unisex perfume", "Unisex Pefume", "Unsiex", "Unisex", "Unisex άρωμα", "Unisex parfem"]
+fragrance_family:
+  Floral: ["Ανθινος", "Kwiatowy", "Cvjetni"]
+  Floral Fruity: ["Fruity Floral"]
+  Woody: ["Wood"]
+  Amber: []
+  Oriental: ["Ανατολική"]
+  Oriental Floral: ["Oriental-Floral", "Floral-Oriental", "Floral Oriental"]
+  Oriental Spicy: ["Oriental-Spicy"]
+  Fruity: ["Fruit"]
+  Spicy: []
+  Aromatic: []
+  Citrus: []
+  Chypre: []
+  Fougere: []
+  Gourmand: []
+  Aquatic: []
+  Leather: []
+  Green: []

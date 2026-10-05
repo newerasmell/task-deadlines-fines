@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Магазини</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1A1D21;background:#FFFFFF}
+a{color:#2F5BEA}a:hover{color:#1F44BF}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #FFFFFF">
+  <header style="height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 28px; border-bottom: 1px solid #E3E6EA; font-size: 14px">
+    <a href="Batches.dc.html" style="text-decoration: none; color: #5B6470">Партиди</a>
+    <a href="Audit.dc.html" style="text-decoration: none; color: #5B6470">Одит на каталог</a>
+    <span style="font-weight: 600">Магазини</span>
+    <div style="flex-grow: 1"></div>
+    <a href="NewStore.dc.html" style="height: 36px; padding: 0 16px; border: 0; background: #2F5BEA; color: #FFFFFF; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center">Добави магазин</a>
+  </header>
+  <div style="padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+    <div style="display: flex; align-items: baseline; gap: 12px">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 600">18 магазина</h1>
+      <span style="font-size: 13px; color: #5B6470">Всеки магазин има собствен профил, изведен от качения му каталог. Новите продукти се генерират по профила на всеки магазин.</span>
+    </div>
+    <div style="border: 1px solid #E3E6EA; border-radius: 8px; overflow: hidden">
+      <div style="display: grid; grid-template-columns: 200px 70px 150px 110px 170px minmax(0, 1fr) 150px; background: #F5F6F8; font-size: 12px; font-weight: 500; color: #5B6470; border-bottom: 1px solid #E3E6EA">
+        <div style="padding: 9px 14px">Магазин</div><div style="padding: 9px 14px">Група</div><div style="padding: 9px 14px">Държава · език</div><div style="padding: 9px 14px; text-align: right">Продукти</div><div style="padding: 9px 14px">Профил</div><div style="padding: 9px 14px">Каталог</div><div style="padding: 9px 14px"></div>
+      </div>
+      <sc-for list="{{stores}}" as="s" hint-placeholder-count="18">
+        <div style="display: grid; grid-template-columns: 200px 70px 150px 110px 170px minmax(0, 1fr) 150px; align-items: center; border-bottom: 1px solid #EDEFF2; font-size: 13px; height: 37px">
+          <div style="padding: 0 14px; font-weight: 500">{{s.name}}</div>
+          <div style="padding: 0 14px; color: #3A424D">{{s.group}}</div>
+          <div style="padding: 0 14px; color: #3A424D">{{s.loc}}</div>
+          <div style="padding: 0 14px; text-align: right; font-variant-numeric: tabular-nums">{{s.count}}</div>
+          <div style="padding: 0 14px; display: flex; align-items: center; gap: 8px"><span style="{{s.dot}}"></span>{{s.state}}</div>
+          <div style="padding: 0 14px; color: #5B6470">{{s.upload}}</div>
+          <div style="padding: 0 14px; display: flex; justify-content: flex-end"><a href="{{s.href}}" style="height: 32px; padding: 0 12px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px; color: #1A1D21; text-decoration: none; display: inline-flex; align-items: center">{{s.action}}</a></div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dot = (c) => 'width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; background: ' + c;
+    const S = (name, group, loc, has, count) => has
+      ? { name, group, loc, count, state: 'активен', dot: dot('#2E7D4F'), upload: has, action: 'Обнови каталога', href: 'StorePattern.dc.html' }
+      : { name, group, loc, count: '—', state: 'чака каталог', dot: dot('#D9731A'), upload: 'не е качен', action: 'Качи каталог', href: 'NewStore.dc.html' };
+    const stores = [
+      S('PremierParfums', '1', 'GR · гръцки', '30 септ.', '846'),
+      S('Parfemija', '1', 'HR · хърватски', '30 септ.', '870'),
+      S('AromaChic', '1', 'CY · гръцки'), S('Parfem4u', '1', 'CZ · чешки'), S('Luxillat', '1', 'HU · унгарски'),
+      S('Scentellas', '1', 'PL · полски'), S('SenzAromi', '1', 'SI · словенски'), S('TvojaParfum', '1', 'SK · словашки'),
+      S('Fragralux', '1', 'US · английски'), S('Perfemio', '1', 'CA · английски'),
+      S('Scentivio', '2', 'HU · унгарски'), S('Scentilux', '2', 'CZ · чешки'), S('Fragracy', '2', 'PL · полски'),
+      S('Scentaoro', '2', 'SI · словенски'), S('LuxAromi', '2', 'HR · хърватски'), S('Luxcentio', '2', 'LT · литовски'),
+      S('Scentilos', '2', 'LV · латвийски'), S('Aromizo', '2', 'EE · естонски')
+    ];
+    return { stores };
+  }
+}
+</script>
+</body>
+</html>

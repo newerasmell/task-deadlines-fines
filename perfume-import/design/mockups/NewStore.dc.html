@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Нов магазин</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1A1D21;background:#FFFFFF}
+a{color:#2F5BEA}a:hover{color:#1F44BF}
+button{font-family:inherit}
+input,select{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #FFFFFF">
+  <header style="height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 28px; border-bottom: 1px solid #E3E6EA; font-size: 14px"><a href="Stores.dc.html" style="text-decoration: none; color: #5B6470">Магазини</a><span style="color: #9AA2AD">/</span><span style="font-weight: 600">Нов магазин</span></header>
+  <div style="flex-grow: 1; display: flex; justify-content: center; padding: 40px 28px; background: #F5F6F8">
+    <div style="width: 760px; display: flex; flex-direction: column; gap: 28px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 600">Добави магазин</h1>
+        <span style="font-size: 14px; color: #3A424D; line-height: 1.5">Качи експорт на продуктите от Shopify. От него системата прави собствен профил на магазина: език, валута, формат на заглавията, SKU, метаполета, стил на описанията и цени. Може да се качва отново по всяко време, за да се обнови профилът.</span>
+      </div>
+
+      <section style="background: #FFFFFF; border: 1px solid #E3E6EA; border-radius: 8px; padding: 24px; display: flex; flex-direction: column; gap: 18px">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600">Магазин</h2>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500">Име на магазина<input type="text" value="PremierParfums (1-GR)" style="height: 38px; border: 1px solid #E3E6EA; border-radius: 6px; padding: 0 12px; font-size: 14px; background: #FFFFFF"></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500">Shopify адрес<input type="text" value="[магазин].myshopify.com" style="height: 38px; border: 1px solid #E3E6EA; border-radius: 6px; padding: 0 12px; font-size: 14px; background: #FFFFFF"></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500">Държава<select style="height: 38px; border: 1px solid #E3E6EA; border-radius: 6px; padding: 0 12px; font-size: 14px; background: #FFFFFF"><option>Разпознай от файла</option></select></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500">Език<select style="height: 38px; border: 1px solid #E3E6EA; border-radius: 6px; padding: 0 12px; font-size: 14px; background: #FFFFFF"><option>Разпознай от файла</option></select></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500">Валута<select style="height: 38px; border: 1px solid #E3E6EA; border-radius: 6px; padding: 0 12px; font-size: 14px; background: #FFFFFF"><option>Разпознай от файла</option></select></label>
+          <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500">Група<select style="height: 38px; border: 1px solid #E3E6EA; border-radius: 6px; padding: 0 12px; font-size: 14px; background: #FFFFFF"><option>Предложи група</option><option>Група 1</option><option>Група 2</option><option>Нова група</option></select></label>
+        </div>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500">Admin API токен<input type="password" value="shpat_xxxxxxxxxxxx" style="height: 38px; border: 1px solid #E3E6EA; border-radius: 6px; padding: 0 12px; font-size: 14px; background: #FFFFFF"><span style="font-weight: 400; color: #5B6470; font-size: 12px">Нужни права: write_products, write_files. Пази се криптиран, не се показва повече.</span></label>
+      </section>
+
+      <section style="background: #FFFFFF; border: 1px solid #E3E6EA; border-radius: 8px; padding: 24px; display: flex; flex-direction: column; gap: 14px">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600">Експорт на продуктите</h2>
+        <div style="border: 1.5px dashed #B9C0CA; border-radius: 8px; padding: 22px; display: flex; align-items: center; gap: 16px">
+          <svg width="28" height="32" viewBox="0 0 28 32" fill="none" stroke="#5B6470" stroke-width="1.5"><path d="M4 2h14l6 6v22H4z"></path><path d="M18 2v6h6"></path><path d="M9 16h10M9 21h10M9 26h6"></path></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+            <span style="font-size: 14px; font-weight: 500">products_export_1_3_.csv</span>
+            <span style="font-size: 12px; color: #5B6470">849 реда · 78 колони · качен</span>
+          </div>
+          <button style="height: 36px; padding: 0 14px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px; color: #1A1D21; text-decoration: none; display: inline-flex; align-items: center">Смени файла</button>
+        </div>
+        <span style="font-size: 12px; color: #5B6470">Приема .xlsx и .csv. Най-добре пълен експорт от Shopify: Products → Export → All products.</span>
+      </section>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px">
+        <a href="Batches.dc.html" style="height: 36px; padding: 0 14px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px; color: #1A1D21; text-decoration: none; display: inline-flex; align-items: center; height: 40px; font-size: 14px">Откажи</a>
+        <a href="StorePattern.dc.html" style="height: 40px; padding: 0 18px; border: 0; background: #2F5BEA; color: #FFFFFF; border-radius: 6px; font-size: 14px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center">Анализирай магазина</a>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

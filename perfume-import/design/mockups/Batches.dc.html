@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Партиди</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1A1D21;background:#FFFFFF}
+a{color:#2F5BEA}a:hover{color:#1F44BF}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #FFFFFF">
+  <header style="height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 28px; border-bottom: 1px solid #E3E6EA">
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 14px"><span style="font-weight: 600">Партиди</span><a href="Audit.dc.html" style="margin-left: 16px; text-decoration: none; color: #5B6470">Одит на каталог</a><a href="Stores.dc.html" style="margin-left: 16px; text-decoration: none; color: #5B6470">Магазини</a></div>
+    <div style="flex-grow: 1"></div><a href="NewBatch.dc.html" style="height: 36px; padding: 0 16px; border: 0; background: #2F5BEA; color: #FFFFFF; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center">Нова партида</a>
+  </header>
+  <div style="padding: 28px; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; gap: 8px">
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #1A1D21; background: #FFFFFF; border-radius: 6px; font-size: 13px; font-weight: 500">Всички групи</button>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Група 1</button>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Група 2</button>
+      <div style="flex-grow: 1"></div>
+      <button style="height: 30px; padding: 0 10px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Само незавършени</button>
+    </div>
+    <div style="border: 1px solid #E3E6EA; border-radius: 8px; overflow: hidden">
+      <div style="display: grid; grid-template-columns: 200px 120px 140px 110px minmax(0, 1fr) 180px; background: #F5F6F8; font-size: 12px; font-weight: 500; color: #5B6470; border-bottom: 1px solid #E3E6EA">
+        <div style="padding: 10px 16px">Партида</div><div style="padding: 10px 16px">Група</div><div style="padding: 10px 16px">Сайтове</div><div style="padding: 10px 16px; text-align: right">Продукти</div><div style="padding: 10px 16px">Състояние</div><div style="padding: 10px 16px"></div>
+      </div>
+      <sc-for list="{{batches}}" as="b" hint-placeholder-count="6">
+        <div style="display: grid; grid-template-columns: 200px 120px 140px 110px minmax(0, 1fr) 180px; align-items: center; border-bottom: 1px solid #EDEFF2; font-size: 13px; min-height: 56px">
+          <div style="padding: 0 16px; display: flex; flex-direction: column"><span style="font-weight: 500">{{b.date}}</span><span style="font-size: 12px; color: #5B6470">{{b.kind}}</span></div>
+          <div style="padding: 0 16px">{{b.group}}</div>
+          <div style="padding: 0 16px; color: #3A424D">{{b.stores}}</div>
+          <div style="padding: 0 16px; text-align: right; font-variant-numeric: tabular-nums">{{b.count}}</div>
+          <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #EDEFF2; max-width: 360px">
+              <div style="{{b.w1}}"></div><div style="{{b.w2}}"></div><div style="{{b.w3}}"></div>
+            </div>
+            <span style="font-size: 12px; color: #5B6470">{{b.summary}}</span>
+          </div>
+          <div style="padding: 0 16px; display: flex; justify-content: flex-end"><a href="{{b.href}}" style="height: 36px; padding: 0 14px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px; text-decoration: none; color: #1A1D21; display: inline-flex; align-items: center">{{b.action}}</a></div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const bar = (pct, c) => 'width: ' + pct + '%; background: ' + c;
+    const b = (date, kind, group, stores, count, ok, rev, blk, summary, action, href) => ({ date, kind, group, stores, count, summary, action, href, w1: bar(ok, '#2E7D4F'), w2: bar(rev, '#2F5BEA'), w3: bar(blk, '#C62B2B') });
+    const batches = [
+      b('30 септ.', 'нови продукти', 'Група 1', 'GR, HR', '10', 50, 30, 20, '5 готови · 3 чакат преглед · 2 спрени', 'Продължи прегледа', 'Product.dc.html'),
+      b('30 септ.', 'одит на каталог', 'Група 1', 'HR', '870', 0, 64, 36, '314 автоматични поправки · 6 спрени цени', 'Отвори одита', 'Audit.dc.html'),
+      b('23 септ.', 'нови продукти', 'Група 1', 'GR, HR', '24', 100, 0, 0, 'качени в GR и HR като чернови', 'Виж резултата', 'Upload.dc.html'),
+      b('16 септ.', 'нови продукти', 'Група 2', '[сайтове на група 2]', '18', 100, 0, 0, 'качени', 'Виж резултата', 'Upload.dc.html')
+    ];
+    return { batches };
+  }
+}
+</script>
+</body>
+</html>

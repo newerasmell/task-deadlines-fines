@@ -1,0 +1,39 @@
+/* Tokens from docs/DESIGN.md. Light theme only for v1. */
+:root {
+  --ink: #1a1d21;
+  --ink-2: #5b6470;
+  --line: #e3e6ea;
+  --canvas: #ffffff;
+  --surface: #f5f6f8;
+  --accent: #2f5bea;
+
+  --status-ok: #2e7d4f;
+  --status-suggested: #2f5bea;
+  --status-fixed: #b7791f;
+  --status-warning: #d9731a;
+  --status-blocked: #c62b2b;
+
+  --radius: 6px;
+  --row-height: 36px;
+
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

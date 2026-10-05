@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Партида – изглед по продукт</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1A1D21;background:#FFFFFF}
+a{color:#2F5BEA}a:hover{color:#1F44BF}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #FFFFFF">
+
+  <nav aria-label="Продукти" style="width: 300px; flex-shrink: 0; border-right: 1px solid #E3E6EA; display: flex; flex-direction: column; background: #F5F6F8">
+    <div style="padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid #E3E6EA">
+      <a href="Batches.dc.html" style="font-size: 13px; text-decoration: none; color: #5B6470">Партиди</a>
+      <div style="font-size: 16px; font-weight: 600">30 септ., Група 1</div>
+      <div style="font-size: 12px; color: #5B6470">10 продукта · 10 сайта, сравнение GR и HR</div>
+    </div>
+    <sc-for list="{{products}}" as="p" hint-placeholder-count="10">
+      <button style="{{p.style}}">
+        <span style="{{p.mark}}"></span>
+        <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; text-align: left">
+          <span style="font-size: 13px; font-weight: 500; color: #1A1D21; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{p.name}}</span>
+          <span style="font-size: 12px; color: {{p.noteColor}}">{{p.note}}</span>
+        </span>
+      </button>
+    </sc-for>
+  </nav>
+
+  <main style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0">
+    <header style="padding: 20px 28px; display: flex; align-items: flex-end; gap: 16px; border-bottom: 1px solid #E3E6EA">
+      <div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1">
+        <div style="font-size: 13px; color: #5B6470">Yves Saint Laurent · SK3614273776127 · тестер</div>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 600">Yves Saint Laurent Libre Le Parfum 90 ml TESTER</h1>
+      </div>
+      <a href="Queue.dc.html" style="height: 40px; padding: 0 16px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 14px; color: #1A1D21; text-decoration: none; display: inline-flex; align-items: center">Реши чакащите в партидата (12)</a>
+      <a href="Upload.dc.html" style="height: 40px; padding: 0 16px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 14px; color: #1A1D21; text-decoration: none; display: inline-flex; align-items: center">Качи 5 готови</a>
+      <button style="height: 40px; padding: 0 16px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 14px">Приеми всички 2 предложения</button>
+      <button disabled style="height: 40px; padding: 0 16px; border: 0; background: #C9D3F5; color: #FFFFFF; border-radius: 6px; font-size: 14px; font-weight: 500">Одобри продукта</button>
+    </header>
+
+    <div style="flex-grow: 1; display: flex; gap: 28px; padding: 24px 28px; min-height: 0">
+      <section style="width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-size: 14px; font-weight: 600">Основна снимка</h2>
+        <div style="height: 300px; border-radius: 6px; background: #F1F2F4; border: 1px solid #E3E6EA; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 12px; color: #5B6470">
+          <svg width="56" height="72" viewBox="0 0 14 16" fill="none" stroke="#9AA2AD" stroke-width="0.7"><rect x="5" y="1" width="4" height="3"></rect><rect x="2" y="4" width="10" height="11" rx="2"></rect></svg>
+          Готова снимка върху шаблона на групата
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-size: 12px">
+          <div style="padding: 10px; border: 1px solid #E3E6EA; border-radius: 6px; display: flex; flex-direction: column; gap: 2px"><span style="color: #5B6470">Оригинал</span><span style="font-weight: 500">2000 × 2000</span><a href="#">yslbeauty.com</a></div>
+          <div style="padding: 10px; border: 1px solid #E3E6EA; border-radius: 6px; display: flex; flex-direction: column; gap: 2px"><span style="color: #5B6470">Резултат</span><span style="font-weight: 500">1600 × 1600</span><span style="color: #2E7D4F">без увеличаване</span></div>
+        </div>
+        <div style="display: flex; gap: 8px">
+          <button style="flex-grow: 1; height: 36px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Друга снимка</button>
+          <button style="flex-grow: 1; height: 36px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Качи своя</button>
+        </div>
+      </section>
+
+      <section style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid #E3E6EA; border-radius: 8px; overflow: hidden">
+        <div style="display: grid; grid-template-columns: 170px minmax(0, 1fr) minmax(0, 1fr); background: #F5F6F8; border-bottom: 1px solid #E3E6EA; font-size: 12px; font-weight: 600; color: #3A424D">
+          <div style="padding: 10px 14px">Поле</div>
+          <div style="padding: 10px 14px; border-left: 1px solid #E3E6EA">PremierParfums · GR · гръцки</div>
+          <div style="padding: 10px 14px; border-left: 1px solid #E3E6EA">Parfemija · HR · хърватски</div>
+        </div>
+        <sc-for list="{{fields}}" as="f" hint-placeholder-count="9">
+          <div style="display: grid; grid-template-columns: 170px minmax(0, 1fr) minmax(0, 1fr); border-bottom: 1px solid #EDEFF2; font-size: 13px">
+            <div style="padding: 11px 14px; color: #5B6470">{{f.label}}</div>
+            <div style="{{f.gr.style}}"><span style="{{f.gr.tagStyle}}">{{f.gr.tag}}</span><span style="line-height: 1.5">{{f.gr.v}}</span><span style="{{f.gr.enStyle}}">EN · {{f.gr.en}}</span></div>
+            <div style="{{f.hr.style}}"><span style="{{f.hr.tagStyle}}">{{f.hr.tag}}</span><span style="line-height: 1.5">{{f.hr.v}}</span><span style="{{f.hr.enStyle}}">EN · {{f.hr.en}}</span></div>
+          </div>
+        </sc-for>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mark = (c) => 'width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; margin-top: 5px; background: ' + c;
+    const prod = (name, note, color, active) => ({ name, note, noteColor: color === '#2E7D4F' ? '#5B6470' : color, mark: mark(color), style: 'display: flex; gap: 10px; align-items: flex-start; padding: 10px 20px; border: 0; width: 100%; ' + (active ? 'background: #FFFFFF; box-shadow: inset 3px 0 0 #1A1D21' : 'background: transparent') });
+    const products = [
+      prod('Yves Saint Laurent Libre Le Parfum 90 ml TESTER', '2 предложения, 1 спряно', '#C62B2B', true),
+      prod('Dior Sauvage EDT 100 ml', 'готов', '#2E7D4F'),
+      prod('Chanel No 5 EDP 100 ml TESTER', 'готов', '#2E7D4F'),
+      prod('Burberry Her EDP 100 ml', 'готов, 1 поправка', '#2E7D4F'),
+      prod("Givenchy L'Interdit EDP 80 ml", 'снимка 720 px', '#B65A0E'),
+      prod('Paco Rabanne Lady Million Eau My Gold EDT 80 ml', 'липсва EAN', '#C62B2B'),
+      prod("Armani Prive Rose d'Arabie EDP 100 ml", '2 предложения', '#2F5BEA'),
+      prod('Lancome La Vie Est Belle Intense EDP 75 ml', 'зачеркната = цена', '#C62B2B'),
+      prod('Bvlgari Aqva Marine EDT 100 ml', 'снимка 1100 px', '#B65A0E'),
+      prod('Hugo Boss Bottled Night EDT 100 ml', '2 предложения', '#2F5BEA')
+    ];
+    const tints = { ok: '#FFFFFF', suggested: '#EAF0FD', fixed: '#FBF3E2', warning: '#FDEEE1', blocked: '#FBE6E6' };
+    const tagc = { suggested: '#1F44BF', fixed: '#8A5A12', warning: '#B65A0E', blocked: '#A82020' };
+    const tags = { suggested: 'AI предложение', fixed: 'поправено', warning: 'внимание', blocked: 'спряно' };
+    const cell = (v, s, en) => {
+      s = s || 'ok';
+      return { v, en: en || '', enStyle: en ? 'font-size: 12px; color: #5B6470; line-height: 1.5' : 'display: none', tag: tags[s] || '', style: 'padding: 11px 14px; border-left: 1px solid #EDEFF2; display: flex; flex-direction: column; gap: 3px; background: ' + tints[s], tagStyle: s === 'ok' ? 'display: none' : 'font-size: 11px; font-weight: 600; color: ' + tagc[s] };
+    };
+    const fields = [
+      { label: 'Семейство', gr: cell('Oriental Floral', 'suggested'), hr: cell('Oriental Floral', 'suggested') },
+      { label: 'Пол', gr: cell("Women's Perfume"), hr: cell("Women's Perfume") },
+      { label: 'Горни нотки', gr: cell('τζίντζερ, σαφράν, μανταρίνι, περγαμόντο', 'suggested', 'ginger, saffron, mandarin, bergamot'), hr: cell('đumbir, šafran, mandarina, bergamot', 'ok', 'ginger, saffron, mandarin, bergamot') },
+      { label: 'Средни нотки', gr: cell('άνθος πορτοκαλιάς, λεβάντα', 'ok', 'orange blossom, lavender'), hr: cell('cvijet naranče, lavanda', 'ok', 'orange blossom, lavender') },
+      { label: 'Базови нотки', gr: cell('βανίλια, μέλι, σπόρος τόνκα, βέτιβερ', 'ok', 'vanilla, honey, tonka bean, vetiver'), hr: cell('vanilija, med, tonka, vetiver', 'ok', 'vanilla, honey, tonka bean, vetiver') },
+      { label: 'Описание', gr: cell('Το Yves Saint Laurent Libre Le Parfum είναι ένα ανατολίτικο λουλουδάτο άρωμα με τζίντζερ και σαφράν…', 'ok', 'Yves Saint Laurent Libre Le Parfum is an oriental floral fragrance with ginger and saffron…'), hr: cell('Yves Saint Laurent Libre Le Parfum je orijentalno cvjetni miris s notama đumbira i šafrana…', 'ok', 'Yves Saint Laurent Libre Le Parfum is an oriental floral scent with notes of ginger and saffron…') },
+      { label: 'SEO описание', gr: cell('Libre Le Parfum 90 ml TESTER, ανατολίτικο λουλουδάτο άρωμα…', 'ok', 'Libre Le Parfum 90 ml TESTER, oriental floral fragrance…'), hr: cell('Libre Le Parfum 90 ml TESTER, orijentalno cvjetni miris…', 'ok', 'Libre Le Parfum 90 ml TESTER, oriental floral scent…') },
+      { label: 'Цена', gr: cell('68.00'), hr: cell('72.00') },
+      { label: 'Зачеркната', gr: cell('94.90'), hr: cell('220.00 · 3,1 пъти над цената, разрешено до 2,0', 'blocked') }
+    ];
+    return { products, fields };
+  }
+}
+</script>
+</body>
+</html>
