@@ -17,7 +17,7 @@ STORES = ["premierparfums", "parfemija"]
 
 
 def responder(kwargs):
-    if kwargs["tools"]:  # research
+    if kwargs.get("tools"):  # research
         return message(research_answer(), urls=[A, B, C], searches=4)
     system = kwargs["system"]
     if "into Greek" in system:
@@ -36,7 +36,7 @@ def test_batch_builds_and_validates_every_store(rows, monkeypatch):
     monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
     client = FakeClient(responder=responder)
     result = run_batch(client, rows, GROUP, STORES, "test")
-    research_calls = [c for c in client.calls if c["tools"]]
+    research_calls = [c for c in client.calls if c.get("tools")]
     assert len(research_calls) == 2  # once per product, shared by both stores
     assert len(client.calls) == 2 * 4  # research + master + el + hr per product
 
@@ -76,7 +76,7 @@ def test_saved_research_is_reused(rows, monkeypatch):
     raw = first.products[0].research.raw
     client = FakeClient(responder=responder)
     second = run_batch(client, rows[:1], GROUP, STORES, "test", saved_research=lambda ean: raw)
-    assert not [c for c in client.calls if c["tools"]]
+    assert not [c for c in client.calls if c.get("tools")]
     assert second.products[0].reused_research and "research" not in second.products[0].usage
 
 
@@ -108,3 +108,16 @@ def test_image_message_names_the_source_and_size():
     small = image_message({"url": "https://www.theperfumeshop.com/a.jpg", "width": 420, "height": 420})
     assert "theperfumeshop.com" in small and "420×420" in small
     assert "неизвестен" in image_message({"url": "https://fimgs.net/o.1.jpg", "width": 0, "height": 0})
+
+
+def test_texts_go_through_two_message_batches(rows, monkeypatch):
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    monkeypatch.setattr("pipeline.ai.time.sleep", lambda s: None)
+    client = FakeClient(responder=responder)
+    result = run_batch(client, rows, GROUP, STORES, "test", batch_texts=True, max_cost=0.0001)
+    assert client.batches == [["m0", "m1"], ["t0-el", "t0-hr", "t1-el", "t1-hr"]]
+    gr = result.products[0].stores["premierparfums"]
+    assert gr["body_html"].value.startswith("<p>Το Paco")
+    s = result.summary()
+    assert s["max_cost_usd"] == 0.0001 and len(s["over_budget"]) == 2
+    assert set(s["over_budget"][0]["steps"]) >= {"research", "description_en", "text_el", "text_hr"}

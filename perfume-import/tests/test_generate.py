@@ -62,7 +62,8 @@ def test_master_prompt_carries_guide_and_facts():
     assert "300-600 characters" in client.calls[0]["system"]
     assert "Open with the full product name" in client.calls[0]["system"]
     assert "- brand: Paco Rabanne" in client.calls[0]["messages"][0]["content"]
-    assert client.calls[0]["output_config"]["effort"] == "medium" and client.calls[0]["tools"] == []
+    assert client.calls[0]["output_config"]["effort"] == "medium" and "tools" not in client.calls[0]
+    assert client.calls[0]["thinking"] == {"type": "between_tools"}
 
 
 def test_localize_uses_glossary_first_and_marks_new_terms(monkeypatch):
@@ -135,3 +136,43 @@ def test_wrong_language_translation_is_blocked_after_retries():
     t = localize(client, master, "el", GROUP, tester=False)
     assert ("blocked", "language_body") == t.problems[0][:2]
     assert json.loads(json.dumps(t.notes))  # serialisable
+
+
+def test_batch_rounds_retry_only_the_failed_language(monkeypatch):
+    from pipeline.generate import generate_texts
+
+    monkeypatch.setattr(
+        "pipeline.generate.load_glossary", lambda lang: {t: t for t in ["lemon", "rose", "vanilla", "akigalawood"]}
+    )
+    monkeypatch.setattr("pipeline.ai.time.sleep", lambda s: None)
+    croatian_attempts = []
+
+    def respond(body):
+        system = body["system"]
+        if "into Greek" in system:
+            return text(EL)
+        if "into Croatian" in system:
+            croatian_attempts.append(1)
+            return text(EN if len(croatian_attempts) == 1 else HR)  # first answer in the wrong language
+        return master_message()
+
+    client = FakeClient(responder=respond)
+    ((master, texts),) = generate_texts(client, [(FACTS, False)], GROUP, ["el", "hr"], batch=True)
+    assert client.batches == [["m0"], ["t0-el", "t0-hr"], ["t0-hr"]]
+    assert texts["hr"].description == HR and texts["hr"].problems == []
+    assert texts["el"].usage.cost_usd < texts["hr"].usage.cost_usd  # hr paid for two attempts
+
+
+def test_refused_master_blocks_its_languages_only():
+    from pipeline.generate import generate_texts
+
+    def respond(body):
+        if "Lady Million" in body["messages"][0]["content"]:
+            return message(stop_reason="refusal", text="")
+        return master_message()
+
+    out = generate_texts(
+        FakeClient(responder=respond), [(FACTS, False), ({"brand": "X", "name": "Y"}, False)], GROUP, ["en"]
+    )
+    assert out[0][0].problems[0][1] == "generation_failed" and out[0][1]["en"].description == ""
+    assert out[1][1]["en"].description == EN
