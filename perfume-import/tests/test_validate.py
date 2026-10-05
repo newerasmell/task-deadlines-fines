@@ -11,8 +11,10 @@ from tests.conftest import FIXTURES
 GREEK_BODY = (
     "<p>Το Tom Ford Orchid Soleil EDP 100 ml είναι ένα ανατολίτικο λουλουδάτο άρωμα με νότες από ροζ πιπέρι, "
     "πικρό πορτοκάλι και κυπαρίσσι στην κορυφή, τουμπερόζα και κόκκινο κρίνο στην καρδιά, και βανίλια με "
-    "πατσουλί στη βάση. Ιδανικό για βραδινές εξόδους και ξεχωριστές στιγμές.</p>"
+    "πατσουλί στη βάση. Ιδανικό για βραδινές εξόδους και ξεχωριστές στιγμές, για όσους αγαπούν τα ζεστά, "
+    "αισθησιακά και κομψά αρώματα με λουλουδένιο χαρακτήρα.</p>"
 )
+EL_TESTER = "Η έκδοση TESTER περιέχει την ίδια αρωματική σύνθεση και προορίζεται κυρίως για πρακτική χρήση."
 
 
 @pytest.fixture(scope="module")
@@ -57,10 +59,11 @@ def test_vocab_variants_are_auto_fixed(ctx):
     assert (p["fragrance_family"].value, p["fragrance_family"].origin) == ("Woody", "auto_fix")
     p = run(ctx, gender="Men’s Perfume ")
     assert p["gender"].value == "Men's Perfume"
+    assert run(ctx, fragrance_family="Spicy Woody")["fragrance_family"].value == "Woody Spicy"
 
 
 def test_value_outside_vocab_is_a_warning_with_alternatives(ctx):
-    p = run(ctx, fragrance_family="Woody Spicy")
+    p = run(ctx, fragrance_family="Floral Lavender")
     assert p["fragrance_family"].status == "warning"
     assert "Woody" in p["fragrance_family"].alternatives
 
@@ -72,31 +75,35 @@ def test_spacing_and_ml_are_auto_fixed(ctx):
     assert p["product_milliliters"].value == "100 ml"
 
 
-@pytest.mark.parametrize(
-    ("ean_value", "rule"),
-    [("", "ean_missing"), ("692753569784", "ean_invalid"), ("ABC123", "ean_invalid")],
-)
-def test_bad_ean_is_blocked(ctx, ean_value, rule):
-    p = run(ctx, ean=ean_value, sku="SK1")
-    assert p["ean"].status == "blocked"
-    assert p["ean"].rule == rule
-
-
-def test_ean_found_in_sku_is_offered_but_still_blocked(ctx):
+def test_ean_is_read_from_the_sku(ctx):
     p = run(ctx, ean="")
-    assert p["ean"].status == "blocked"
-    assert p["ean"].alternatives == ["692753569783"]
+    assert (p["ean"].value, p["ean"].status) == ("692753569783", "ok")
 
 
-def test_sku_rules(ctx):
-    assert run(ctx, sku="NAN")["sku"].status == "blocked"
-    p = run(ctx, sku="SK692753569783N")
-    assert (p["sku"].status, p["sku"].alternatives) == ("warning", ["SK692753569783"])
+@pytest.mark.parametrize(
+    ("sku", "field", "rule"),
+    [
+        ("SK1000000034912N", "ean", "ean_invalid"),  # letter after the EAN
+        ("SK692753569784", "ean", "ean_invalid"),  # wrong check digit
+        ("SK73348901116817", "ean", "ean_invalid"),  # extra leading digit
+        ("XX692753569783", "sku", "sku_formula"),  # does not follow SK{ean}
+        ("NAN", "sku", "sku_missing"),
+        ("", "sku", "sku_missing"),
+    ],
+)
+def test_bad_sku_or_ean_is_blocked(ctx, sku, field, rule):
+    p = run(ctx, ean="", sku=sku)
+    assert (p[field].status, p[field].rule) == ("blocked", rule)
+
+
+def test_sku_must_match_given_ean(ctx):
+    p = run(ctx, sku="SK3614273776127")
+    assert (p["sku"].status, p["sku"].alternatives) == ("blocked", ["SK692753569783"])
 
 
 @pytest.mark.parametrize(
     ("price", "compare", "rule"),
-    [("", "149", "price_missing"), ("99", "99", "compare_at_not_above"), ("99", "250", "compare_at_ratio")],
+    [("", "149", "price_missing"), ("99", "99", "compare_at_not_above"), ("99", "258", "compare_at_ratio")],
 )
 def test_price_rules_block(ctx, price, compare, rule):
     p = run(ctx, price=price, compare_at=compare)
@@ -106,6 +113,16 @@ def test_price_rules_block(ctx, price, compare, rule):
 
 def test_missing_compare_at_is_fine(ctx):
     assert run(ctx, compare_at="")["compare_at"].status == "ok"
+
+
+def test_compare_at_range_is_1_2_to_2_5(ctx):
+    assert run(ctx, compare_at="237.60")["compare_at"].status == "ok"  # 2.4x
+    assert run(ctx, compare_at="118.80")["compare_at"].status == "ok"  # 1.2x
+
+
+def test_empty_paragraph_is_removed(ctx):
+    p = run(ctx, body_html=GREEK_BODY + "<p></p>")
+    assert (p["body_html"].value, p["body_html"].status) == (GREEK_BODY, "fixed")
 
 
 def test_language_and_description_rules(ctx):
@@ -118,12 +135,14 @@ def test_language_and_description_rules(ctx):
     assert run(ctx, body_html="<p>Σύντομο.</p>")["body_html"].rule == "description_length"
 
 
-def test_tester_needs_tester_sentence(ctx):
-    p = run(ctx, title="Tom Ford Orchid Soleil EDP 100 ml TESTER")
-    assert p["body_html"].rule == "tester_sentence"
-    body = GREEK_BODY.replace("</p>", " Η έκδοση TESTER περιέχει την ίδια αρωματική σύνθεση.</p>")
-    p = run(ctx, title="Tom Ford Orchid Soleil EDP 100 ml TESTER", body_html=body)
-    assert p["body_html"].status == "ok"
+def test_tester_needs_the_fixed_sentence_of_the_store_language(ctx):
+    title = "Tom Ford Orchid Soleil EDP 100 ml TESTER"
+    p = run(ctx, title=title)
+    assert (p["body_html"].rule, p["body_html"].alternatives) == ("tester_sentence", [EL_TESTER])
+    almost = GREEK_BODY.replace("</p>", " Η έκδοση TESTER περιέχει την ίδια αρωματική σύνθεση.</p>")
+    assert run(ctx, title=title, body_html=almost)["body_html"].rule == "tester_sentence"
+    exact = GREEK_BODY.replace("</p>", f" {EL_TESTER}</p>")
+    assert run(ctx, title=title, body_html=exact)["body_html"].status == "ok"
 
 
 def test_missing_image_is_blocked(ctx):

@@ -10,8 +10,10 @@ def test_group_1_loads():
     group = load_group("group-1")
     assert group.spec is not None
     assert group.spec.sku == "SK{ean}"
-    assert group.spec.description.length == (200, 450)
-    assert group.spec.rules.compare_at_ratio == (1.3, 2.0)
+    assert group.spec.description.length == (300, 600)
+    assert group.spec.rules.compare_at_ratio == (1.2, 2.5)
+    assert set(group.spec.tester_sentence) >= {"en", "el", "hr"}
+    assert "sklad" not in group.spec.metafields
     assert len(group.stores) == 10
     assert group.store("parfemija").language == "hr"
     assert group.store("parfemija").price.rounding == "00"  # inherited from defaults

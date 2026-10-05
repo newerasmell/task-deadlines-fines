@@ -58,11 +58,12 @@ def compare(profile: dict, group: Group) -> list[Check]:
         rate("sku_pattern"),
     )
     ean_mf = next((k for k, v in spec.metafields.items() if v == "{ean}"), None)
+    expected_location = f"metafield custom.{ean_mf}" if ean_mf else "Variant SKU"
     add(
         "ean_location",
-        f"metafield custom.{ean_mf}" if ean_mf else None,
+        expected_location,
         items["ean_location"]["value"],
-        items["ean_location"]["value"] == f"metafield custom.{ean_mf}",
+        items["ean_location"]["value"] == expected_location,
         rate("ean_location"),
     )
     add(

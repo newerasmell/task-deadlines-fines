@@ -98,3 +98,16 @@ def render(formula: str, values: dict) -> str:
         return "" if value is None else str(value)
 
     return collapse_spaces(TOKEN.sub(sub, formula))
+
+
+def ean_from_sku(sku: str | None, formula: str) -> str | None:
+    """Read the EAN back out of a SKU built with `formula` ("SK{ean}" + "SK701666400035" -> "701666400035").
+
+    Returns whatever stands where {ean} is, even if it is not a valid EAN ("1000000034912N"), so the caller can
+    say exactly what is wrong; None when the SKU does not follow the formula at all."""
+    if "{ean}" not in formula:
+        return None
+    prefix, suffix = formula.split("{ean}", 1)
+    value = (sku or "").strip().lstrip("'")
+    m = re.fullmatch(re.escape(prefix) + r"(.+?)" + re.escape(suffix), value)
+    return m.group(1) if m else None

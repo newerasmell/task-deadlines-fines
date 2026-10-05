@@ -128,8 +128,8 @@ def detect_handle(export: Export) -> dict:
 
 def detect_ean_and_sku(export: Export) -> dict:
     candidates = {}
-    for col in ["Variant Barcodes", *(mf.column for mf in export.metafields)]:
-        values = [ean.clean(p.get(col)) for p in export.products]
+    for col in ["Variant SKU", "Variant Barcodes", *(mf.column for mf in export.metafields)]:
+        values = [_digits(p.get(col)) if col == "Variant SKU" else ean.clean(p.get(col)) for p in export.products]
         filled = [v for v in values if v]
         if not filled or sum(v.isdigit() for v in filled) / len(filled) < 0.8:
             continue
@@ -142,7 +142,7 @@ def detect_ean_and_sku(export: Export) -> dict:
 
     templates, off = Counter(), []
     for p in export.products:
-        code = ean.clean(p.get(location))
+        code = _digits(p.get(location)) if location == "Variant SKU" else ean.clean(p.get(location))
         if not code:
             continue
         sku = ean.clean(p.get("Variant SKU"))
@@ -163,6 +163,12 @@ def detect_ean_and_sku(export: Export) -> dict:
         ),
         "sku_pattern": item(top, _share(templates, top), off, variants=dict(templates)),
     }
+
+
+def _digits(sku: str | None) -> str:
+    """The digit run inside a SKU like SK3614273776127 (prefix/suffix letters dropped)."""
+    m = re.fullmatch(r"[A-Za-z]*(\d+)[A-Za-z]*", ean.clean(sku))
+    return m.group(1) if m else ""
 
 
 def _location_name(column: str) -> str:
@@ -311,9 +317,10 @@ def detect_description(export: Export, content_language: str | None) -> dict:
 
 
 def _html_shape(html: str) -> str:
-    tags = re.findall(r"<\s*(\w+)", html or "")
+    html = re.sub(r"<p[^>]*>(?:\s|&nbsp;|<br\s*/?>)*</p>", "", html or "", flags=re.IGNORECASE)
+    tags = re.findall(r"<\s*(\w+)", html)
     if not tags:
-        return "без HTML" if (html or "").strip() else "празно"
+        return "без HTML" if html.strip() else "празно"
     paragraphs = tags.count("p")
     others = sorted({t for t in tags if t != "p"})
     shape = f"{paragraphs} × <p>" if paragraphs else "без <p>"

@@ -7,7 +7,7 @@ Read before any work: `docs/SPEC.md` (architecture, data model, rules) and, for 
 ## Core principles
 1. Every store has its own profile, learned from its uploaded product export (`detect_store.py`), stored in the DB and editable in the app. New products are always rendered by the profile of the target store. Groups are only an organizing label plus shared defaults (vocab, description guide) used when a store has no profile yet; a store's profile always wins. Research is done once per product and reused by all stores. Nothing store-specific is hardcoded.
 2. Every field value carries provenance: `origin`, `status`, `confidence`, `sources`, `alternatives`, `previous` (see SPEC §3). Never write a bare value.
-3. Deterministic fields are built by code from the group template, never by the AI: title, handle, SKU, ml, product type, sklad, fixed columns. The AI only researches facts and writes prose.
+3. Deterministic fields are built by code from the group template, never by the AI: title, handle, SKU (which carries the EAN, `SK{ean}`), ml, product type, fixed columns, the tester sentence. The AI only researches facts and writes prose.
 4. Controlled fields (gender, fragrance family) are picked from `vocab.yaml`. Free text is never written into them.
 5. English is the master for all localized content; every localized field stores and shows its English reference (`value_en`).
 6. The AI never guesses an EAN or a price. Missing ones are `blocked`.

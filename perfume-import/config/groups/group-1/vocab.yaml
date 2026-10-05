@@ -22,3 +22,12 @@ fragrance_family:
   Aquatic: []
   Leather: []
   Green: []
+  # Compound families used by >= 8 products in the GR/HR exports (decision 6, docs/decisions.md).
+  Woody Oriental: ["Oriental Woody", "Oriental-Woody", "Woody-Oriental"]
+  Woody Spicy: ["Woody-Spicy", "Spicy Woody", "Woody and Spicy"]
+  Woody Aromatic: ["Aromatic-Woody", "Aromatic-woody", "Woody-Aromatic", "Aromatic Woody"]
+  Woody Floral: ["Floral Woody", "Woody-Floral", "Floral-Woody"]
+  Amber Woody: ["Woody Amber"]
+  Amber Floral: ["Floral Amber"]
+  Aromatic Fougere: ["Aromatic-Fougere", "Aromatic Fougère"]
+  Floral Woody Musk: ["Woody Floral Musk", "Floral-Woody-Musk"]

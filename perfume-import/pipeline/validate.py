@@ -15,7 +15,7 @@ from pipeline.config import Group, StoreConfig
 from pipeline.export import Export
 from pipeline.fields import SEVERITY, Field, worst
 from pipeline.text import collapse_spaces, space_ml, strip_html
-from pipeline.titles import parse_title, render
+from pipeline.titles import ean_from_sku, parse_title, render
 from pipeline.vocab import VocabMatcher, is_latin
 
 CONTROLLED = ("gender", "fragrance_family")
@@ -91,44 +91,30 @@ def _controlled(fields: dict[str, Field], ctx: Context) -> None:
 
 
 def _ean_and_sku(fields: dict[str, Field], ctx: Context) -> None:
-    code_field = fields["ean"]
-    code = ean.clean(code_field.value)
-    if not code:
-        found = [c for c in _ean_candidates(fields) if ean.is_valid(c)]
-        if found:
-            code_field.alternatives = found
-            code_field.flag(
-                "blocked",
-                f"Полето за EAN е празно, но {found[0]} (валиден EAN) стои в SKU/баркода. Потвърди го и го попълни.",
-                "ean_in_other_field",
-            )
-        else:
-            code_field.flag("blocked", "Липсва EAN. Въведи го от опаковката.", "ean_missing")
-    elif problem := ean.problem(code):
-        code_field.flag("blocked", problem, "ean_invalid")
-    elif code != code_field.value:
-        code_field.fix(code, f"Почистен EAN: „{code_field.value}“ → „{code}“.", "ean_format")
-
-    sku = fields["sku"]
+    """The EAN lives in the SKU (group.yaml `sku`, e.g. SK{ean}); the old sklad metafield is not used."""
+    sku, code_field = fields["sku"], fields["ean"]
     raw = (sku.value or "").strip()
     if not raw or raw.upper() == "NAN":
-        sku.flag("blocked", "Липсва SKU.", "sku_missing")
+        sku.flag("blocked", "Липсва SKU, затова няма и EAN.", "sku_missing")
         return
-    if ean.is_valid(code):
-        expected = render(ctx.spec.sku, {"ean": code})
-        if raw != expected:
-            sku.alternatives = [expected]
-            sku.flag("warning", f"SKU „{raw}“ не следва {ctx.spec.sku}; очаквано „{expected}“.", "sku_formula")
-
-
-def _ean_candidates(fields: dict[str, Field]) -> list[str]:
-    out = []
-    sku = ean.clean((fields.get("sku") or Field("sku", "", "input", "ok")).value)
-    if m := re.fullmatch(r"[A-Za-z]*(\d+)[A-Za-z]*", sku):
-        out.append(m.group(1))
-    if barcode := fields.get("barcode"):
-        out.append(ean.clean(barcode.value))
-    return [c for c in dict.fromkeys(out) if c]
+    if not (code_field.value or "").strip():
+        found = ean_from_sku(raw, ctx.spec.sku)
+        if found is None:
+            sku.flag(
+                "blocked",
+                f"SKU „{raw}“ не следва {ctx.spec.sku}, затова EAN не може да се прочете от него.",
+                "sku_formula",
+            )
+            return
+        code_field.value = found
+    code = ean.clean(code_field.value)
+    if problem := ean.problem(code):
+        code_field.flag("blocked", f"{problem} (от SKU „{raw}“)", "ean_invalid")
+        return
+    expected = render(ctx.spec.sku, {"ean": code})
+    if raw != expected:
+        sku.alternatives = [expected]
+        sku.flag("blocked", f"SKU „{raw}“ не съвпада с EAN {code}; очаквано „{expected}“.", "sku_formula")
 
 
 def _title(fields: dict[str, Field], ctx: Context) -> None:
@@ -184,31 +170,39 @@ def _language(fields: dict[str, Field], ctx: Context) -> None:
             )
 
 
+EMPTY_P = re.compile(r"<p[^>]*>(?:\s|&nbsp;|<br\s*/?>)*</p>", re.IGNORECASE)
+
+
 def _description(fields: dict[str, Field], ctx: Context) -> None:
     body = fields.get("body_html")
     if body is None:
         return
+    if body.value and EMPTY_P.search(body.value):
+        cleaned = EMPTY_P.sub("", body.value).strip()
+        body.fix(cleaned, "Премахнат празен параграф <p></p>.", "empty_paragraph")
     text = strip_html(body.value or "")
     if not text:
         body.flag("warning", "Липсва описание.", "description_missing")
         return
     lo, hi = ctx.spec.description.length
     if not lo <= len(text) <= hi:
+        body.flag("warning", f"Описанието е {len(text)} знака; групата иска {lo}–{hi}.", "description_length")
+    if not parse_title(fields["title"].value or "").tester:
+        return
+    sentence = ctx.spec.tester_sentence.get(ctx.store.language)
+    if sentence:
+        if sentence not in text:
+            body.alternatives = [sentence]
+            body.flag("warning", f"Тестер без фиксираното изречение: „{sentence}“", "tester_sentence")
+        return
+    title_text = fields["title"].value or ""
+    rest = text.replace(fields["title"].previous or title_text, "").replace(title_text, "")
+    if "tester" not in rest.casefold():
         body.flag(
             "warning",
-            f"Описанието е {len(text)} знака; групата иска {lo}–{hi}.",
-            "description_length",
+            f"Тестер без изречение за тестер; за език „{ctx.store.language}“ още няма одобрен превод (Фаза 2).",
+            "tester_sentence",
         )
-    parsed = parse_title(fields["title"].value or "")
-    if parsed.tester:
-        rest = text.replace(fields["title"].previous or fields["title"].value or "", "")
-        rest = rest.replace(fields["title"].value or "", "")
-        if parsed.tester.casefold() not in rest.casefold():
-            body.flag(
-                "warning",
-                "Тестер без изречение, че е същият аромат в по-проста опаковка (description.md).",
-                "tester_sentence",
-            )
 
 
 def _money(value) -> float | None:
@@ -294,12 +288,11 @@ def fields_from_export(p: dict, export: Export, ctx: Context) -> dict[str, Field
         col = export.metafield_column(key)
         return p.get(col, "") if col else None
 
-    ean_key = next((k for k, v in ctx.spec.metafields.items() if v == "{ean}"), None)
     out = {
         "title": f("title", p.get("Title", "")),
         "handle": f("handle", p.get("Handle", "")),
         "sku": f("sku", p.get("Variant SKU", "")),
-        "ean": f("ean", mf(ean_key) if ean_key else p.get("Variant Barcodes", "")),
+        "ean": f("ean", ""),  # read from the SKU by _ean_and_sku
         "vendor": f("vendor", p.get("Vendor", "")),
         "body_html": f("body_html", p.get("Body (HTML)", "")),
         "seo_title": f("seo_title", p.get("SEO Title", "")),
@@ -308,8 +301,6 @@ def fields_from_export(p: dict, export: Export, ctx: Context) -> dict[str, Field
         "compare_at": f("compare_at", p.get("Variant Compare At Price", "")),
         "image": f("image", p.get("Image Src", "")),
     }
-    if ean_key:
-        out["barcode"] = f("barcode", p.get("Variant Barcodes", ""))
     for key in (*CONTROLLED, *NOTES, "ingredients", "product_milliliters", "product_type"):
         value = mf(key)
         if value is not None:

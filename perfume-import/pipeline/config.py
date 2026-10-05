@@ -40,6 +40,7 @@ class GroupSpec(BaseModel):
     seo: dict[str, Any] = Field(default_factory=dict)
     description: DescriptionSpec = Field(default_factory=DescriptionSpec)
     rules: RulesSpec = Field(default_factory=RulesSpec)
+    tester_sentence: dict[str, str] = Field(default_factory=dict)  # language -> fixed sentence, "en" is master
 
 
 class PriceRules(BaseModel):

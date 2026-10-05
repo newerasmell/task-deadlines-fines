@@ -36,7 +36,7 @@ def test_builds_every_deterministic_field(group):
     assert f["sku"].value == "SK692753569783"
     assert f["custom.product_milliliters"].value == "100 ml"
     assert f["custom.product_type"].value == "EDP"
-    assert f["custom.sklad"].value == "692753569783"
+    assert "custom.sklad" not in f  # legacy field, no longer written (docs/decisions.md #8)
     assert f["seo_title"].value == f["title"].value
     assert f["fixed.Variant Grams"].value == 300
     assert f["google.product_category"].value == 479

@@ -1,7 +1,7 @@
 name: Група 1
 title: "{brand} {name} {concentration_short} {ml} ml{tester: ' TESTER'}"
 handle: slug(title)
-sku: "SK{ean}"
+sku: "SK{ean}"                # the EAN is read from the SKU; the old sklad metafield is no longer written
 title_language: en            # titles are not translated
 concentration_short: {Eau de Parfum: EDP, Eau de Toilette: EDT, Eau de Cologne: EDC}   # Extrait de Parfum, Parfum, Elixir stay full
 auto_accept_generated: false
@@ -14,7 +14,6 @@ metafields:                   # namespace custom
   ingredients:      {source: research.ingredients, suffix_localized: true}
   product_milliliters: "{ml} ml"
   product_type:     "{concentration_short}"
-  sklad:            "{ean}"
 google:
   gender: {Women's Perfume: Women, Men's Perfume: Men, Unisex Perfume: Unisex}
   condition: new
@@ -36,8 +35,14 @@ seo:
   description: generated, max 160 chars, store language
 description:
   guide: description.md
-  length: [200, 450]
+  length: [300, 600]
   html: single <p>
+# Appended by code to every tester description, in the store language. English is the master;
+# other languages are translated in phase 2 and confirmed before use.
+tester_sentence:
+  en: "The TESTER version contains the same fragrance composition and is intended primarily for practical use."
+  el: "Η έκδοση TESTER περιέχει την ίδια αρωματική σύνθεση και προορίζεται κυρίως για πρακτική χρήση."
+  hr: "TESTER varijanta sadrži istu mirisnu kompoziciju i prvenstveno je namijenjena praktičnoj uporabi."
 rules:
-  compare_at_ratio: [1.3, 2.0]
+  compare_at_ratio: [1.2, 2.5]
   image_min_height: 1000

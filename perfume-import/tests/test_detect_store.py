@@ -152,7 +152,8 @@ def test_vocab_matcher():
     assert m.match("Wood") == ("Woody", "variant")
     assert m.match("Fruity-Floral") == ("Floral Fruity", "normalized")
     assert m.match("Oriental Florall")[0] == "Oriental Floral"
-    assert m.match("Woody Spicy") == (None, "none")
+    assert m.match("Woody-Spicy") == ("Woody Spicy", "variant")
+    assert m.match("Floral Lavender") == (None, "none")
     g = VocabMatcher(load_group("group-1").vocab["gender"])
     assert g.match("Men’s perfume") == ("Men's Perfume", "variant")
     assert g.match("Women's Perfumes")[0] == "Women's Perfume"
