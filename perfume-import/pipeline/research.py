@@ -33,25 +33,27 @@ Rules:
 - If the EAN or name in the request clearly belongs to a different product, set matches_input=false and explain."""
 
 
-def _fact(value_schema: dict) -> dict:
-    return {
+SOURCES = {
+    "type": "array",
+    "items": {
         "type": "object",
         "properties": {
-            "value": value_schema,
-            "sources": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "url": {"type": "string"},
-                        "says": {"type": "string"},
-                        "supports": {"type": "boolean"},
-                    },
-                    "required": ["url", "says", "supports"],
-                    "additionalProperties": False,
-                },
-            },
+            "url": {"type": "string"},
+            "says": {"type": "string"},
+            "supports": {"type": "boolean"},
         },
+        "required": ["url", "says", "supports"],
+        "additionalProperties": False,
+    },
+}
+
+
+def _fact(value_schema: dict) -> dict:
+    # The sources list is shared through $defs: inlined nine times, the API rejects the schema
+    # ("compiled grammar is too large").
+    return {
+        "type": "object",
+        "properties": {"value": value_schema, "sources": {"$ref": "#/$defs/sources"}},
         "required": ["value", "sources"],
         "additionalProperties": False,
     }
@@ -86,7 +88,13 @@ def schema(group: Group) -> dict:
         "matches_input": {"type": "boolean"},
         "problem": {"type": "string"},
     }
-    return {"type": "object", "properties": props, "required": list(props), "additionalProperties": False}
+    return {
+        "type": "object",
+        "properties": props,
+        "required": list(props),
+        "additionalProperties": False,
+        "$defs": {"sources": SOURCES},
+    }
 
 
 def prompt(row: InputRow) -> str:

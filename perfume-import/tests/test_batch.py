@@ -100,3 +100,11 @@ def test_batch_is_saved(rows, monkeypatch):
         with Session(engine()) as session, session.begin():
             session.execute(delete(Event).where(Event.batch_id == batch_id))
             session.execute(delete(Batch).where(Batch.id == batch_id))
+
+
+def test_image_message_names_the_source_and_size():
+    from pipeline.batch import image_message
+
+    small = image_message({"url": "https://www.theperfumeshop.com/a.jpg", "width": 420, "height": 420})
+    assert "theperfumeshop.com" in small and "420×420" in small
+    assert "неизвестен" in image_message({"url": "https://fimgs.net/o.1.jpg", "width": 0, "height": 0})

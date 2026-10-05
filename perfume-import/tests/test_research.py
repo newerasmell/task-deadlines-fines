@@ -71,6 +71,30 @@ def test_ask_turns_bad_endings_into_clear_errors(msg, text):
         ask(FakeClient(msg), system="s", prompt="p", schema=SCHEMA)
 
 
+def test_ask_turns_api_errors_into_ai_error():
+    import anthropic
+    import httpx
+
+    class Failing(FakeClient):
+        def _stream(self, **kwargs):
+            raise anthropic.APIConnectionError(request=httpx.Request("POST", "https://api.anthropic.com"))
+
+    with pytest.raises(AIError, match="Claude API"):
+        ask(Failing(), system="s", prompt="p", schema=SCHEMA)
+    r = research_product(Failing(), ROW, load_group("group-1"))
+    assert r.error and all(f.status == "blocked" for f in r.fields.values())
+
+
+def test_schema_shares_the_sources_list():
+    # Inlining the sources list in every fact made the API reject the schema ("compiled grammar is too large").
+    from pipeline.research import schema
+
+    s = schema(load_group("group-1"))
+    assert "items" in s["$defs"]["sources"]
+    facts = [v for v in s["properties"].values() if "sources" in v.get("properties", {})]
+    assert len(facts) == 9 and all(f["properties"]["sources"] == {"$ref": "#/$defs/sources"} for f in facts)
+
+
 def test_status_rules_for_facts():
     seen = {A, B, C}
     two = fact_field("name", {"value": "X", "sources": [src(A), src(B)]}, seen)

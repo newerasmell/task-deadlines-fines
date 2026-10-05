@@ -9,6 +9,7 @@ from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
+from urllib.parse import urlparse
 
 from pipeline.ai import AIError, Usage
 from pipeline.build import ProductInput, build_store_fields, google_gender
@@ -21,6 +22,15 @@ from pipeline.validate import Context, validate_batch, validate_product
 
 MAX_PARALLEL = 10  # SPEC: one researcher per product, at most 10 at a time
 SHARED = ("name", "concentration", "gender", "fragrance_family", "ingredients")
+
+
+def image_message(image: dict) -> str:
+    """Say where the picture comes from and how big it is: it may be a retailer's thumbnail, not a packshot."""
+    host = urlparse(image["url"]).netloc.lower().removeprefix("www.")
+    size = (
+        f"{image['width']}×{image['height']} px" if image.get("width") and image.get("height") else "размер неизвестен"
+    )
+    return f"Снимка от {host} ({size}). Провери, че е официална; обработката е във Фаза 3."
 
 
 @dataclass
@@ -118,7 +128,7 @@ def store_fields(result: ProductResult, group: Group, store_key: str) -> dict[st
             "ai_research",
             "suggested" if image else "blocked",
             sources=research.images[:3],
-            message="Официална снимка; обработката е във Фаза 3." if image else "Не е намерена снимка.",
+            message=image_message(research.images[0]) if image else "Не е намерена снимка.",
         )
 
     text = result.texts.get(store.language)

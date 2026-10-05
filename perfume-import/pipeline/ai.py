@@ -118,6 +118,18 @@ def ask(
     max_tokens: int = 32000,
 ) -> Result:
     """One structured answer. Raises AIError with a Bulgarian message the field can show."""
+    import anthropic
+
+    try:
+        return _ask(client, system, prompt, schema, effort, web, max_tokens)
+    except anthropic.APIError as exc:
+        # One product's API failure (400, overload, network) blocks that product, not the whole batch.
+        detail = getattr(exc, "body", None)
+        detail = detail.get("error", {}).get("message") if isinstance(detail, dict) else None
+        raise AIError(f"Грешка от Claude API: {detail or exc}") from exc
+
+
+def _ask(client, system: str, prompt: str, schema: dict, effort: str, web: bool, max_tokens: int) -> Result:
     messages: list[dict] = [{"role": "user", "content": prompt}]
     usage, sources = Usage(), []
     for _ in range(MAX_RESUMES + 1):
