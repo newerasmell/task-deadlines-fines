@@ -19,6 +19,8 @@ services:
         fromDatabase:
           name: perfume-import-db
           property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false
       - key: SHOPIFY_TOKEN_PREMIERPARFUMS
         sync: false
       - key: SHOPIFY_TOKEN_PARFEMIJA
