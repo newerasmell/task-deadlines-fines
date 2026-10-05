@@ -3,7 +3,7 @@
 from sqlalchemy import create_engine, insert, select
 from sqlalchemy.orm import Session
 
-from db.models import Batch, Event, FieldRow, Product, Store, StoreProduct
+from db.models import Batch, Event, FieldRow, Product, Store, StoreProduct, VocabLearned
 from pipeline.batch import BatchResult, row_dict
 from pipeline.config import load_group
 from pipeline.settings import get_settings
@@ -170,3 +170,29 @@ def batch_counts(batch_id: int) -> dict[str, int]:
         for status in session.execute(stmt).scalars():
             counts[status] = counts.get(status, 0) + 1
         return counts
+
+
+def save_vocab_suggestions(group_key: str, suggestions: dict[str, list[dict]]) -> int:
+    """Store AI vocab proposals as suggested; never touch a variant a person already accepted or rejected."""
+    saved = 0
+    with Session(engine()) as session, session.begin():
+        for field_key, items in suggestions.items():
+            for item in items:
+                if not item["canonical"]:
+                    continue
+                row = session.execute(
+                    select(VocabLearned).where(
+                        VocabLearned.group_key == group_key,
+                        VocabLearned.field_key == field_key,
+                        VocabLearned.variant == item["variant"],
+                    )
+                ).scalar_one_or_none()
+                if row is None:
+                    row = VocabLearned(group_key=group_key, field_key=field_key, variant=item["variant"])
+                    session.add(row)
+                elif row.status != "suggested":
+                    continue
+                row.canonical, row.source, row.status = item["canonical"], "ai", "suggested"
+                row.hits, row.confidence, row.reason = item.get("count", 1), item["confidence"], item["reason"]
+                saved += 1
+    return saved

@@ -142,7 +142,10 @@ class Event(Base):
 
 class VocabLearned(Created, Base):
     __tablename__ = "vocab_learned"
-    __table_args__ = (UniqueConstraint("group_key", "field_key", "variant"),)
+    __table_args__ = (
+        UniqueConstraint("group_key", "field_key", "variant"),
+        CheckConstraint(_in("status", ("suggested", "accepted", "rejected")), name="vocab_status_valid"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     group_key: Mapped[str] = mapped_column(String(64))
     field_key: Mapped[str] = mapped_column(String(64))
@@ -150,3 +153,7 @@ class VocabLearned(Created, Base):
     canonical: Mapped[str]
     source: Mapped[str | None]
     hits: Mapped[int] = mapped_column(Integer, default=1)
+    # AI proposals start as suggested; a person accepts them once in the app (docs/decisions.md #5).
+    status: Mapped[str] = mapped_column(String(16), default="suggested", server_default="suggested")
+    confidence: Mapped[float | None] = mapped_column(Float)
+    reason: Mapped[str | None] = mapped_column(Text)
