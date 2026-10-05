@@ -8,7 +8,6 @@ doubtful ones go to config/glossary/pending-<a>-<b>.yaml for a person to check.
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -16,6 +15,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from pipeline.ai import api_key  # noqa: E402
 from pipeline.settings import ROOT  # noqa: E402
 
 
@@ -35,8 +35,8 @@ def main() -> int:
     lang_a, lang_b = Path(args.pairs).stem.split("-")
     pairs = yaml.safe_load(Path(args.pairs).read_text(encoding="utf-8"))
     print(f"{len(pairs)} двойки {lang_a} ↔ {lang_b}.")
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("Липсва ANTHROPIC_API_KEY. Добави го като променлива на средата (не в репото) и пусни отново.")
+    if not api_key():
+        print("Липсва ключ: задай PERFUME_ANTHROPIC_API_KEY (или ANTHROPIC_API_KEY) в средата, не в репото.")
         return 2
 
     from pipeline.ai import default_client

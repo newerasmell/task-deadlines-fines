@@ -10,13 +10,13 @@ expected cost without calling the API.
 
 import argparse
 import json
-import os
 import sys
 from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from pipeline.ai import api_key  # noqa: E402
 from pipeline.config import load_group  # noqa: E402
 from pipeline.input import InputError, read_input  # noqa: E402
 
@@ -63,8 +63,8 @@ def main() -> int:
     )
     if args.estimate:
         return 0
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("Липсва ANTHROPIC_API_KEY. Добави го като променлива на средата (не в репото) и пусни отново.")
+    if not api_key():
+        print("Липсва ключ: задай PERFUME_ANTHROPIC_API_KEY (или ANTHROPIC_API_KEY) в средата, не в репото.")
         return 2
 
     from pipeline.ai import default_client

@@ -32,7 +32,7 @@ make test                 # тестове; тези с маркер db иска
 3. `DATABASE_URL` идва автоматично от базата. Миграциите се пускат при всеки старт.
 
 ## Нова партида (Фаза 2)
-Нужна е променлива `ANTHROPIC_API_KEY` (в `.env` локално, в Render като env var; никога в репото).
+Нужна е променлива `PERFUME_ANTHROPIC_API_KEY` (в `.env` локално, в средата на Claude Code; в Render може и `ANTHROPIC_API_KEY`). Никога в репото. Claude Code облачните среди не подават `ANTHROPIC_API_KEY` към сесиите.
 
 ```bash
 python scripts/new_batch.py input/sample-5.csv --group group-1 --stores premierparfums,parfemija --estimate  # без AI

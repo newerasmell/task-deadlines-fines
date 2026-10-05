@@ -6,6 +6,7 @@ Tests pass a fake client with the same `beta.messages.stream(...)` shape.
 """
 
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -95,11 +96,15 @@ def default_client():
 
     The base URL is pinned: a host tool (e.g. a Claude Code session) may set ANTHROPIC_BASE_URL for itself, and
     the SDK would otherwise send our requests there. PERFUME_ANTHROPIC_BASE_URL overrides it deliberately."""
-    import os
-
     import anthropic
 
-    return anthropic.Anthropic(base_url=os.environ.get("PERFUME_ANTHROPIC_BASE_URL", API_URL))
+    return anthropic.Anthropic(api_key=api_key(), base_url=os.environ.get("PERFUME_ANTHROPIC_BASE_URL", API_URL))
+
+
+def api_key() -> str | None:
+    """PERFUME_ANTHROPIC_API_KEY first: Claude Code cloud environments reserve the name ANTHROPIC_API_KEY and do
+    not pass it to sessions. On Render either name works."""
+    return os.environ.get("PERFUME_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or None
 
 
 def ask(

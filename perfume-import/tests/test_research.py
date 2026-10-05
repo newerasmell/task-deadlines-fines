@@ -118,3 +118,13 @@ def test_default_client_ignores_a_host_base_url(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
     monkeypatch.delenv("PERFUME_ANTHROPIC_BASE_URL", raising=False)
     assert str(default_client().base_url).rstrip("/") == API_URL
+
+
+def test_api_key_prefers_the_project_variable(monkeypatch):
+    from pipeline.ai import api_key
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "generic")
+    monkeypatch.setenv("PERFUME_ANTHROPIC_API_KEY", "project")
+    assert api_key() == "project"
+    monkeypatch.delenv("PERFUME_ANTHROPIC_API_KEY")
+    assert api_key() == "generic"

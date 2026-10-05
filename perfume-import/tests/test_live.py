@@ -1,10 +1,8 @@
 """One real product through the real API. Opt-in: pytest -m live (needs ANTHROPIC_API_KEY, ~$0.40)."""
 
-import os
-
 import pytest
 
-from pipeline.ai import default_client
+from pipeline.ai import api_key, default_client
 from pipeline.batch import run_batch
 from pipeline.config import load_group
 from pipeline.input import read_input
@@ -12,7 +10,7 @@ from pipeline.settings import ROOT
 
 pytestmark = [
     pytest.mark.live,
-    pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY is not set"),
+    pytest.mark.skipif(not api_key(), reason="no PERFUME_ANTHROPIC_API_KEY / ANTHROPIC_API_KEY"),
 ]
 
 
