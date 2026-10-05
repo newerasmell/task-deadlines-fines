@@ -1,0 +1,13 @@
+# Group 2 ("Second Group Perfumes"). group.yaml, vocab.yaml and import_template.csv are derived
+# with detect_store.py / /new-group from the first Group 2 export.
+defaults:
+  status: draft
+stores:
+  aromizo:   {label: "Aromizo (EST)",   country: EE, language: et, currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_AROMIZO}
+  fragracy:  {label: "Fragracy (PL)",   country: PL, language: pl, currency: PLN, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_FRAGRACY}
+  luxaromi:  {label: "Luxaromi (HR)",   country: HR, language: hr, currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_LUXAROMI}
+  luxcentio: {label: "Luxcentio (LT)",  country: LT, language: lt, currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_LUXCENTIO}
+  scentaoro: {label: "Scentaoro (SL)",  country: SI, language: sl, currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_SCENTAORO}
+  scentilos: {label: "Scentilos (LV)",  country: LV, language: lv, currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_SCENTILOS}
+  scentilux: {label: "Scentilux (CZ)",  country: CZ, language: cs, currency: CZK, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_SCENTILUX}
+  scentivio: {label: "Scentivio (HU)",  country: HU, language: hu, currency: HUF, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_SCENTIVIO}

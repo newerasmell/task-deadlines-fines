@@ -1,0 +1,43 @@
+name: Група 1
+title: "{brand} {name} {concentration_short} {ml} ml{tester: ' TESTER'}"
+handle: slug(title)
+sku: "SK{ean}"
+title_language: en            # titles are not translated
+concentration_short: {Eau de Parfum: EDP, Eau de Toilette: EDT, Eau de Cologne: EDC}   # Extrait de Parfum, Parfum, Elixir stay full
+auto_accept_generated: false
+metafields:                   # namespace custom
+  fragrance_family: {source: vocab.fragrance_family}        # english, same in all stores
+  gender:           {source: vocab.gender}                  # english, same in all stores
+  top_note:         {source: notes.top, localized: true}
+  middle_note:      {source: notes.middle, localized: true}
+  base_note:        {source: notes.base, localized: true}
+  ingredients:      {source: research.ingredients, suffix_localized: true}
+  product_milliliters: "{ml} ml"
+  product_type:     "{concentration_short}"
+  sklad:            "{ean}"
+google:
+  gender: {Women's Perfume: Women, Men's Perfume: Men, Unisex Perfume: Unisex}
+  condition: new
+  product_category: 479
+fixed:
+  Product Category: "Health & Beauty > Personal Care > Cosmetics > Perfumes & Colognes"
+  Variant Grams: 300
+  Variant Weight Unit: kg
+  Variant Inventory Tracker: shopify
+  Variant Inventory Policy: deny
+  Variant Fulfillment Service: manual
+  Variant Requires Shipping: true
+  Variant Taxable: false
+  Option1 Name: Title
+  Option1 Value: Default Title
+  Gift Card: false
+seo:
+  title: "{title}"
+  description: generated, max 160 chars, store language
+description:
+  guide: description.md
+  length: [200, 450]
+  html: single <p>
+rules:
+  compare_at_ratio: [1.3, 2.0]
+  image_min_height: 1000

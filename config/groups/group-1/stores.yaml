@@ -1,0 +1,17 @@
+# Group 1 ("First Group Perfumes"). Price columns in the input template come from these keys.
+# shop: fill the *.myshopify.com domain; token lives in .env under token_env.
+defaults:
+  status: draft
+  price: {rounding: "00"}
+stores:
+  premierparfums: {label: "PremierParfums (1-GR)", country: GR, language: el, currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_PREMIERPARFUMS}
+  parfemija:      {label: "Parfemija (1-HR)",      country: HR, language: hr, currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_PARFEMIJA}
+  parfem4u:       {label: "Parfem4u (1-CZ)",       country: CZ, language: cs, currency: CZK, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_PARFEM4U}
+  luxillat:       {label: "Luxillat (1-HU)",       country: HU, language: hu, currency: HUF, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_LUXILLAT}
+  scentellas:     {label: "Scentellas (1-PL)",     country: PL, language: pl, currency: PLN, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_SCENTELLAS}
+  senzaromi:      {label: "SenzAromi (1-SL)",      country: SI, language: sl, currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_SENZAROMI}
+  tvojaparfum:    {label: "TvojaParfum (1-SK)",    country: SK, language: sk, currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_TVOJAPARFUM}
+  aromachic:      {label: "AromaChic (1-EUR)",     country: CY, language: el,   currency: EUR, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_AROMACHIC}
+  fragralux:      {label: "Fragralux (US)",        country: US, language: en, currency: USD, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_FRAGRALUX}
+  perfemio:       {label: "Perfemio (CA)",         country: CA, language: en,   currency: CAD, shop: CHANGE_ME, token_env: SHOPIFY_TOKEN_PERFEMIO}
+# language/currency above are inferred from the country code; detect_store.py confirms them from each export.

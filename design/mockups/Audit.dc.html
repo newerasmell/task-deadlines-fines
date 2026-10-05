@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Одит на каталог</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1A1D21;background:#FFFFFF}
+a{color:#2F5BEA}a:hover{color:#1F44BF}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #FFFFFF">
+  <header style="height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 28px; border-bottom: 1px solid #E3E6EA">
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 14px"><a href="Batches.dc.html" style="text-decoration: none; color: #5B6470">Партиди</a><span style="color: #9AA2AD">/</span><span style="font-weight: 600">Одит: HR каталог, Група 1</span><span style="color: #5B6470">870 продукта</span></div>
+    <div style="flex-grow: 1"></div><button style="height: 36px; padding: 0 14px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Отвори в таблица</button><button style="height: 36px; padding: 0 16px; border: 0; background: #2F5BEA; color: #FFFFFF; border-radius: 6px; font-size: 13px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center">Експорт CSV с 314 поправки</button>
+  </header>
+  <div style="flex-grow: 1; display: flex; min-height: 0">
+    <section style="width: 620px; flex-shrink: 0; border-right: 1px solid #E3E6EA; display: flex; flex-direction: column">
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 70px 190px; background: #F5F6F8; font-size: 12px; font-weight: 500; color: #5B6470; border-bottom: 1px solid #E3E6EA">
+        <div style="padding: 10px 20px">Проблем</div><div style="padding: 10px 12px; text-align: right">Брой</div><div style="padding: 10px 20px">Какво прави системата</div>
+      </div>
+      <sc-for list="{{issues}}" as="i" hint-placeholder-count="8">
+        <button style="{{i.style}}">
+          <span style="display: flex; gap: 10px; align-items: center; padding: 0 20px; text-align: left"><span style="{{i.dot}}"></span>{{i.label}}</span>
+          <span style="padding: 0 12px; text-align: right; font-variant-numeric: tabular-nums">{{i.count}}</span>
+          <span style="padding: 0 20px; text-align: left; color: #3A424D">{{i.action}}</span>
+        </button>
+      </sc-for>
+    </section>
+    <section style="flex-grow: 1; padding: 24px 28px; display: flex; flex-direction: column; gap: 16px; min-width: 0">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h2 style="margin: 0; font-size: 18px; font-weight: 600">Зачеркната цена под или равна на цената</h2>
+        <span style="font-size: 13px; color: #5B6470; line-height: 1.5">Системата не знае коя от двете цени е грешната, затова само ги показва. Поправи ги тук или в Shopify.</span>
+      </div>
+      <div style="border: 1px solid #E3E6EA; border-radius: 8px; overflow: hidden">
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 100px 120px 140px; background: #F5F6F8; font-size: 12px; font-weight: 500; color: #5B6470; border-bottom: 1px solid #E3E6EA">
+          <div style="padding: 10px 14px">Продукт</div><div style="padding: 10px 14px; text-align: right">Цена</div><div style="padding: 10px 14px; text-align: right">Зачеркната</div><div style="padding: 10px 14px"></div>
+        </div>
+        <sc-for list="{{prices}}" as="p" hint-placeholder-count="3">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) 100px 120px 140px; border-bottom: 1px solid #EDEFF2; font-size: 13px; align-items: center">
+            <div style="padding: 10px 14px">{{p.title}}</div>
+            <div style="padding: 10px 14px; text-align: right; font-variant-numeric: tabular-nums">{{p.price}}</div>
+            <div style="padding: 10px 14px; text-align: right; font-variant-numeric: tabular-nums; background: #FBE6E6; color: #A82020; font-weight: 500">{{p.cmp}}</div>
+            <div style="padding: 6px 14px"><button style="height: 30px; padding: 0 10px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Поправи</button></div>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size: 12px; color: #5B6470">Показани са 3 от 6.</span>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dot = (c) => 'width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; background: ' + c;
+    const row = (on) => 'display: grid; grid-template-columns: minmax(0, 1fr) 70px 190px; align-items: center; min-height: 48px; border: 0; border-bottom: 1px solid #EDEFF2; font-size: 13px; width: 100%; ' + (on ? 'background: #EAF0FD; box-shadow: inset 3px 0 0 #2F5BEA' : 'background: #FFFFFF');
+    const i = (label, count, action, c, on) => ({ label, count, action, dot: dot(c), style: row(on) });
+    const issues = [
+      i('Зачеркната цена ≤ цена', '6', 'спира, решава човек', '#C62B2B', true),
+      i('Пол извън речника', '250', 'поправя автоматично', '#B7791F'),
+      i('Семейство на полски (Kwiatowy)', '14', 'поправя автоматично', '#B7791F'),
+      i('ml без интервал (100ml)', '50', 'поправя автоматично', '#B7791F'),
+      i('Зачеркната над 2 пъти цената', '115', 'предупреждава', '#D9731A'),
+      i('Липсва EAN в метаполето sklad', '334', 'предупреждава', '#D9731A'),
+      i('Без снимка', '20', 'предупреждава', '#D9731A'),
+      i('Празно SEO описание', '847', 'AI предлага текст', '#2F5BEA')
+    ];
+    const prices = [
+      { title: 'Zadig & Voltaire This Is Him! Undressed EDP 100 ml', price: '65.00', cmp: '45.00' },
+      { title: 'Nishane Zenne Extrait de Parfum 100 ml', price: '152.00', cmp: '108.00' },
+      { title: 'Dior Addict EDP 100 ml TESTER', price: '71.00', cmp: '70.00' }
+    ];
+    return { issues, prices };
+  }
+}
+</script>
+</body>
+</html>
