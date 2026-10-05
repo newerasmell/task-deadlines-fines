@@ -52,7 +52,7 @@ def test_batch_builds_and_validates_every_store(rows, monkeypatch):
     assert rows[0].tester and GROUP.spec.tester_sentence["el"] in gr["body_html"].value
     assert gr["top_note"].value == "sicilian lemon-el" and gr["top_note"].value_en == "sicilian lemon"
     assert gr["price"].value == rows[0].prices["premierparfums"]
-    assert gr["image"].status == "suggested"
+    assert gr["image"].status == "suggested" and "1200×1200" in gr["image"].message  # downloaded and measured
     assert "custom.sklad" not in gr
     blocked = {k: f.message for k, f in gr.items() if f.status == "blocked"}
     assert blocked == {}, blocked
@@ -100,11 +100,3 @@ def test_batch_is_saved(rows, monkeypatch):
         with Session(engine()) as session, session.begin():
             session.execute(delete(Event).where(Event.batch_id == batch_id))
             session.execute(delete(Batch).where(Batch.id == batch_id))
-
-
-def test_image_message_names_the_source_and_size():
-    from pipeline.batch import image_message
-
-    small = image_message({"url": "https://www.theperfumeshop.com/a.jpg", "width": 420, "height": 420})
-    assert "theperfumeshop.com" in small and "420×420" in small
-    assert "неизвестен" in image_message({"url": "https://fimgs.net/o.1.jpg", "width": 0, "height": 0})

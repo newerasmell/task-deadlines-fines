@@ -9,28 +9,19 @@ from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
-from urllib.parse import urlparse
 
 from pipeline.ai import AIError, Usage
 from pipeline.build import ProductInput, build_store_fields, google_gender
 from pipeline.config import Group
 from pipeline.fields import SEVERITY, Field, worst
 from pipeline.generate import NOTE_KEYS, Text, generate_all, text_fields
+from pipeline.images import Checked, check_all, image_field
 from pipeline.input import InputRow
 from pipeline.research import Research, from_saved, research_product
 from pipeline.validate import Context, validate_batch, validate_product
 
 MAX_PARALLEL = 10  # SPEC: one researcher per product, at most 10 at a time
 SHARED = ("name", "concentration", "gender", "fragrance_family", "ingredients")
-
-
-def image_message(image: dict) -> str:
-    """Say where the picture comes from and how big it is: it may be a retailer's thumbnail, not a packshot."""
-    host = urlparse(image["url"]).netloc.lower().removeprefix("www.")
-    size = (
-        f"{image['width']}×{image['height']} px" if image.get("width") and image.get("height") else "размер неизвестен"
-    )
-    return f"Снимка от {host} ({size}). Провери, че е официална; обработката е във Фаза 3."
 
 
 @dataclass
@@ -42,6 +33,7 @@ class ProductResult:
     texts: dict[str, Text] = field(default_factory=dict)
     stores: dict[str, dict[str, Field]] = field(default_factory=dict)
     usage: dict[str, dict] = field(default_factory=dict)  # step -> Usage.to_dict()
+    images: list[Checked] = field(default_factory=list)  # downloaded and measured, shared by all stores
 
     @property
     def cost_usd(self) -> float:
@@ -121,15 +113,7 @@ def store_fields(result: ProductResult, group: Group, store_key: str) -> dict[st
                 fields[key] = copy.deepcopy(research.fields[key])
         gender = research.value("gender")
         fields["google.gender"] = Field("google.gender", google_gender(gender, group), "template", "ok")
-        image = research.images[0]["url"] if research.images else ""
-        fields["image"] = Field(
-            "image",
-            image,
-            "ai_research",
-            "suggested" if image else "blocked",
-            sources=research.images[:3],
-            message=image_message(research.images[0]) if image else "Не е намерена снимка.",
-        )
+        fields["image"] = image_field(result.images, group.spec.rules.image_min_height)
 
     text = result.texts.get(store.language)
     if text and result.master:
@@ -148,6 +132,7 @@ def process_product(
     stores: list[str],
     saved_research: Callable[[str], dict | None] = lambda ean: None,
     refresh: bool = False,
+    fetch_image: Callable[[str], bytes] | None = None,
 ) -> ProductResult:
     result = ProductResult(row=row)
     raw = None if refresh or not row.ean else saved_research(row.ean)
@@ -158,6 +143,7 @@ def process_product(
         result.usage["research"] = result.research.usage.to_dict()
 
     if not result.research.error:
+        result.images = check_all(result.research.images, fetch_image)
         languages = [group.store(s).language for s in stores]
         try:
             result.master, result.texts = generate_all(
@@ -186,9 +172,12 @@ def run_batch(
     saved_research: Callable[[str], dict | None] = lambda ean: None,
     refresh: bool = False,
     workers: int = MAX_PARALLEL,
+    fetch_image: Callable[[str], bytes] | None = None,
 ) -> BatchResult:
     with ThreadPoolExecutor(max_workers=max(1, min(workers, MAX_PARALLEL))) as pool:
-        products = list(pool.map(lambda r: process_product(client, r, group, stores, saved_research, refresh), rows))
+        products = list(
+            pool.map(lambda r: process_product(client, r, group, stores, saved_research, refresh, fetch_image), rows)
+        )
     for store in stores:
         validate_batch([p.stores[store] for p in products])
     return BatchResult(name=name, group=group.key, stores=stores, products=products)
