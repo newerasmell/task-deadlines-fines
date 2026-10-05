@@ -1,6 +1,6 @@
 PY := .venv/bin/python
 
-.PHONY: setup db migrate api app test lint
+.PHONY: setup db migrate api app test lint report
 
 setup:            ## venv + Python and app dependencies
 	python3.12 -m venv .venv
@@ -24,3 +24,6 @@ test:
 
 lint:
 	.venv/bin/ruff check . && .venv/bin/ruff format --check .
+
+report:           ## docs/phase1-report.md: detect_store vs seed + audit of both fixtures
+	$(PY) scripts/phase1_report.py
