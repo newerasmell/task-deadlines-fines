@@ -147,12 +147,8 @@ def upgrade() -> None:
             "origin in ('input', 'template', 'vocab', 'ai_research', 'ai_generated', 'auto_fix')",
             name="origin_valid",
         ),
-        sa.CheckConstraint(
-            "status in ('ok', 'suggested', 'fixed', 'warning', 'blocked')", name="status_valid"
-        ),
-        sa.CheckConstraint(
-            "confidence is null or (confidence >= 0 and confidence <= 1)", name="confidence_range"
-        ),
+        sa.CheckConstraint("status in ('ok', 'suggested', 'fixed', 'warning', 'blocked')", name="status_valid"),
+        sa.CheckConstraint("confidence is null or (confidence >= 0 and confidence <= 1)", name="confidence_range"),
         sa.ForeignKeyConstraint(["store_product_id"], ["store_products.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("store_product_id", "key"),

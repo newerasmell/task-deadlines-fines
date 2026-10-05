@@ -57,26 +57,20 @@ def test_structure_matches_seed(checks):
 
 def test_seed_vocab_canonicals_are_found(checks):
     failed = [
-        c
-        for c in checks
-        if c.item.startswith("vocab.") and c.config == c.item.split(": ", 1)[-1] and not c.agrees
+        c for c in checks if c.item.startswith("vocab.") and c.config == c.item.split(": ", 1)[-1] and not c.agrees
     ]
     assert not failed, [(c.item, c.detected, c.note) for c in failed]
 
 
 def test_seed_spelling_variants_map_to_their_canonical(checks):
-    spelling = [
-        c for c in checks if c.item.startswith("vocab.") and c.note in ("вариант", "съпоставен различно")
-    ]
+    spelling = [c for c in checks if c.item.startswith("vocab.") and c.note in ("вариант", "съпоставен различно")]
     assert spelling, "no seed variants found in the export"
     failed = [c for c in spelling if not c.agrees]
     assert not failed, [(c.item, c.config, c.detected) for c in failed]
 
 
 def test_profile_items_carry_rate_examples_and_status(group):
-    profile = detect_profile(
-        load_export(FIXTURES / "premierparfums_export.csv"), "premierparfums", group=group
-    )
+    profile = detect_profile(load_export(FIXTURES / "premierparfums_export.csv"), "premierparfums", group=group)
     items = dict(profile["items"])
     nested = {**items.pop("fixed_columns"), **{f"vocab.{k}": v for k, v in items.pop("vocab").items()}}
     for key, value in {**items, **nested}.items():

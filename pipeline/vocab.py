@@ -83,9 +83,7 @@ class LearnedVocab:
                     in_compound[t] += n
         # A token that qualifies most values ("perfume" in "Women's Perfume") carries no meaning for grouping.
         # A value that simply dominates on its own ("Floral") is not such a token.
-        self.stopwords = {
-            t for t, n in token_weight.items() if n / total >= 0.5 and in_compound[t] / n >= 0.8
-        }
+        self.stopwords = {t for t, n in token_weight.items() if n / total >= 0.5 and in_compound[t] / n >= 0.8}
         self.token_spread = Counter(t for v in self.values for t in set(raw_tokens(v)))
         self.dominant_latin = sum(n for v, n in self.values.items() if is_latin(v)) >= total / 2
         self.clusters: list[Cluster] = []
@@ -228,9 +226,7 @@ class LearnedVocab:
             # share of filled values already spelled exactly as their canonical
             "exact_rate": round(exact / filled, 3) if filled else 0.0,
             # share of filled values that resolve to a canonical (spelling variant or mapped translation)
-            "resolved_rate": round((in_vocab + sum(c.total for c in mapped_local)) / filled, 3)
-            if filled
-            else 0.0,
+            "resolved_rate": round((in_vocab + sum(c.total for c in mapped_local)) / filled, 3) if filled else 0.0,
         }
 
 

@@ -77,11 +77,7 @@ def sku_key(product: dict) -> str:
 
 def unique_by_sku(export: Export) -> dict[str, dict]:
     counts = Counter(sku_key(p) for p in export.products)
-    return {
-        sku_key(p): p
-        for p in export.products
-        if sku_key(p) and counts[sku_key(p)] == 1 and sku_key(p) != "NAN"
-    }
+    return {sku_key(p): p for p in export.products if sku_key(p) and counts[sku_key(p)] == 1 and sku_key(p) != "NAN"}
 
 
 # ---- individual detectors ------------------------------------------------------------------------
@@ -116,8 +112,7 @@ def detect_title(export: Export) -> dict:
         ),
         "concentration_short": item(
             short,
-            sum(forms[a] for a in short.values())
-            / max(1, sum(forms[a] + forms[f] for f, a in short.items())),
+            sum(forms[a] for a in short.values()) / max(1, sum(forms[a] + forms[f] for f, a in short.items())),
             kept_full=kept_full,
             forms=dict(forms.most_common()),
         ),
@@ -192,9 +187,7 @@ def detect_metafields(export: Export) -> dict:
         )
     used = [m for m in out if m["filled_rate"] > 0]
     return {
-        "metafields": item(
-            out, len(used) / max(1, len(out)), used_keys=[f"{m['namespace']}.{m['key']}" for m in used]
-        )
+        "metafields": item(out, len(used) / max(1, len(out)), used_keys=[f"{m['namespace']}.{m['key']}" for m in used])
     }
 
 
@@ -451,9 +444,7 @@ def _normal(value: str) -> str:
     return v
 
 
-def detect_note_pairs(
-    export: Export, reference: Export | None, here_lang: str | None, ref_lang: str | None
-) -> dict:
+def detect_note_pairs(export: Export, reference: Export | None, here_lang: str | None, ref_lang: str | None) -> dict:
     """Same product in two stores -> its notes in two languages, position by position.
 
     A store writes notes either in English or in its own language, and that varies per product. Each side
@@ -487,9 +478,7 @@ def detect_note_pairs(
         for term, partners in pairs.items():
             partner, n = partners.most_common(1)[0]
             count = sum(partners.values())
-            rows.append(
-                {"term": term, "translation": partner, "count": count, "consistency": round(n / count, 3)}
-            )
+            rows.append({"term": term, "translation": partner, "count": count, "consistency": round(n / count, 3)})
             consistent += n / count >= CONFIRM_BELOW
             total += 1
         rows.sort(key=lambda r: (-r["count"], r["term"]))
@@ -541,14 +530,10 @@ def detect_profile(
     items.update(detect_description(export, items["content_language"]["value"]))
     items.update(detect_prices(export))
     gender_col = export.metafield_column("gender")
-    gender_vocab = (
-        LearnedVocab(Counter(p.get(gender_col, "") for p in export.products)) if gender_col else None
-    )
+    gender_vocab = LearnedVocab(Counter(p.get(gender_col, "") for p in export.products)) if gender_col else None
     items.update(detect_fixed(export, gender_vocab))
     if reference is not None:
-        ref_store = next(
-            (k for k in (group.stores if group else {}) if reference.path.name.startswith(k)), None
-        )
+        ref_store = next((k for k in (group.stores if group else {}) if reference.path.name.startswith(k)), None)
         ref_lang = local_language(reference, group.stores[ref_store].language if ref_store else None)
         here_lang = local_language(export, store.language if store else None)
         items.update(detect_note_pairs(export, reference, here_lang, ref_lang))

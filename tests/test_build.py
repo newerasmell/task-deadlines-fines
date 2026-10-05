@@ -45,9 +45,7 @@ def test_builds_every_deterministic_field(group):
 
 
 def test_tester_and_full_concentrations(group):
-    f = build_store_fields(
-        product(concentration="Parfum", ml="90", tester=True, name="Libre Le"), group, "parfemija"
-    )
+    f = build_store_fields(product(concentration="Parfum", ml="90", tester=True, name="Libre Le"), group, "parfemija")
     assert f["title"].value == "Tom Ford Libre Le Parfum 90 ml TESTER"
     assert f["handle"].value == "tom-ford-libre-le-parfum-90-ml-tester"
     assert f["custom.product_type"].value == "Parfum"  # Parfum, Extrait, Elixir stay full
@@ -75,9 +73,7 @@ def test_reproduces_real_products(group, store):
     for p in load_export(FIXTURES / f"{store}_export.csv").products:
         parsed = parse_title(p["Title"], p["Vendor"])
         code = ean.clean(p["Sklad (product.metafields.custom.sklad)"])
-        if not (
-            parsed.brand and parsed.concentration and parsed.ml and parsed.ml_spaced and ean.is_valid(code)
-        ):
+        if not (parsed.brand and parsed.concentration and parsed.ml and parsed.ml_spaced and ean.is_valid(code)):
             continue
         if parsed.tester not in (None, "TESTER"):
             continue

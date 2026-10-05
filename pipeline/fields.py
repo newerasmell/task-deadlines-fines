@@ -22,7 +22,8 @@ class Field:
     previous: Any = None
     value_en: str | None = None
     message: str | None = None
-    rule: str | None = None  # which validation rule set this status; not persisted as a column
+    rule: str | None = None  # the rule behind the current status/message
+    issues: list[dict] = field(default_factory=list)  # every rule that fired: {status, rule, message}
     decided_by: str | None = None
     decided_at: str | None = None
 
@@ -30,13 +31,19 @@ class Field:
         return asdict(self)
 
     def fix(self, new_value: Any, message: str, rule: str) -> None:
-        """auto_fix: keep the old value in `previous`, status fixed."""
-        self.previous, self.value = self.value, new_value
-        self.origin, self.status, self.message, self.rule = "auto_fix", "fixed", message, rule
+        """auto_fix: keep the original value in `previous`, status fixed (unless something worse is open)."""
+        if self.previous is None:
+            self.previous = self.value
+        self.value, self.origin = new_value, "auto_fix"
+        self._record("fixed", message, rule)
 
     def flag(self, status: Status, message: str, rule: str) -> None:
-        """Raise the status (never lower it) and record why."""
-        if SEVERITY[status] >= SEVERITY[self.status]:
+        """Raise the status (never lower it) and record why. The worst issue's message is shown first."""
+        self._record(status, message, rule)
+
+    def _record(self, status: Status, message: str, rule: str) -> None:
+        self.issues.append({"status": status, "rule": rule, "message": message})
+        if self.status == "ok" or SEVERITY[status] > SEVERITY[self.status]:
             self.status, self.message, self.rule = status, message, rule
 
 

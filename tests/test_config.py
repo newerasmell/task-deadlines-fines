@@ -48,12 +48,9 @@ def test_ean_checksum():
 
 
 def test_text_helpers():
+    assert slugify("Louis Vuitton L'immensite EDP 100 ml TESTER") == "louis-vuitton-limmensite-edp-100-ml-tester"
     assert (
-        slugify("Louis Vuitton L'immensite EDP 100 ml TESTER") == "louis-vuitton-limmensite-edp-100-ml-tester"
-    )
-    assert (
-        slugify("Jo Malone Nectarine Blossom & Honey EDC 100 ml")
-        == "jo-malone-nectarine-blossom-and-honey-edc-100-ml"
+        slugify("Jo Malone Nectarine Blossom & Honey EDC 100 ml") == "jo-malone-nectarine-blossom-and-honey-edc-100-ml"
     )
     assert slugify("Lancôme Idôle EDP 50 ml") == "lancome-idole-edp-50-ml"
     assert space_ml("Xerjoff Opera EDP 100ml TESTER") == "Xerjoff Opera EDP 100 ml TESTER"

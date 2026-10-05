@@ -96,9 +96,7 @@ def compare(profile: dict, group: Group) -> list[Check]:
         )
 
     # Metafields: the export's metafield columns are the template's, and every group.yaml metafield is used.
-    template_mf = {
-        f"{m['namespace']}.{m['key']}" for c in group.template_columns if (m := METAFIELD_COLUMN.match(c))
-    }
+    template_mf = {f"{m['namespace']}.{m['key']}" for c in group.template_columns if (m := METAFIELD_COLUMN.match(c))}
     detected_mf = {f"{m['namespace']}.{m['key']}" for m in items["metafields"]["value"]}
     add("metafield_set", sorted(template_mf), sorted(detected_mf), template_mf == detected_mf)
     used = set(items["metafields"]["used_keys"])
@@ -219,9 +217,7 @@ def compare_vocab(field: str, seed: dict[str, list[str]], detected: dict | None)
         else:
             n = count_in_data(c) + sum(count_in_data(v) for v in variants)
             note = "рядко в данните (< 3)" if n < 3 else "не е открита като каноничнa стойност"
-            checks.append(
-                Check(f"vocab.{field}: {c}", c, seen_as.get(c), n < 3, note=f"{note}; {n} продукта")
-            )
+            checks.append(Check(f"vocab.{field}: {c}", c, seen_as.get(c), n < 3, note=f"{note}; {n} продукта"))
         for v in variants:
             if count_in_data(v) == 0:
                 continue  # variant not used in this store

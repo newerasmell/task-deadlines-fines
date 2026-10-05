@@ -5,9 +5,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-METAFIELD_COLUMN = re.compile(
-    r"^(?P<label>.*) \(product\.metafields\.(?P<namespace>[\w-]+)\.(?P<key>[\w-]+)\)$"
-)
+METAFIELD_COLUMN = re.compile(r"^(?P<label>.*) \(product\.metafields\.(?P<namespace>[\w-]+)\.(?P<key>[\w-]+)\)$")
 MARKET_COLUMN = re.compile(r"^(?P<kind>Included|Price|Compare At Price) / (?P<market>.+)$")
 
 

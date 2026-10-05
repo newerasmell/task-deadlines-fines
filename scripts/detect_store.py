@@ -33,9 +33,7 @@ def main() -> int:
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(text, encoding="utf-8")
-        print(
-            f"Профилът е записан в {args.out}. За потвърждение: {', '.join(profile['to_confirm']) or 'нищо'}"
-        )
+        print(f"Профилът е записан в {args.out}. За потвърждение: {', '.join(profile['to_confirm']) or 'нищо'}")
     else:
         print(text)
     return 0

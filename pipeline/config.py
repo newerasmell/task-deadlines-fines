@@ -70,9 +70,7 @@ class Group:
 
     def store(self, key: str) -> StoreConfig:
         if key not in self.stores:
-            raise KeyError(
-                f"Магазин „{key}“ не е в {self.path / 'stores.yaml'}. Налични: {', '.join(self.stores)}"
-            )
+            raise KeyError(f"Магазин „{key}“ не е в {self.path / 'stores.yaml'}. Налични: {', '.join(self.stores)}")
         return self.stores[key]
 
 
@@ -98,10 +96,7 @@ def load_group(key: str, base: Path | None = None) -> Group:
     for store_key, values in (raw_stores.get("stores") or {}).items():
         stores[store_key] = StoreConfig.model_validate({**defaults, **values, "key": store_key})
 
-    vocab = {
-        f: {c: list(v or []) for c, v in (m or {}).items()}
-        for f, m in (_yaml(path / "vocab.yaml") or {}).items()
-    }
+    vocab = {f: {c: list(v or []) for c, v in (m or {}).items()} for f, m in (_yaml(path / "vocab.yaml") or {}).items()}
     guide_path = path / (spec.description.guide if spec else "description.md")
     template_path = path / "import_template.csv"
     template_columns: list[str] = []

@@ -54,9 +54,7 @@ def build_store_fields(
 ) -> dict[str, Field]:
     spec = group.spec
     if spec is None:
-        raise ValueError(
-            f"Група „{group.key}“ още няма group.yaml; качи каталог на магазин от нея (SPEC §2)."
-        )
+        raise ValueError(f"Група „{group.key}“ още няма group.yaml; качи каталог на магазин от нея (SPEC §2).")
     group.store(store_key)  # unknown store -> clear error
     f = formulas(group, profile)
 
@@ -75,9 +73,7 @@ def build_store_fields(
     values["title"] = title
     fields: dict[str, Field] = {
         "title": template("title", title),
-        "handle": template(
-            "handle", slugify(title) if f["handle"] == "slug(title)" else render(f["handle"], values)
-        ),
+        "handle": template("handle", slugify(title) if f["handle"] == "slug(title)" else render(f["handle"], values)),
         "sku": template("sku", render(f["sku"], values)),
         "vendor": Field(key="vendor", value=product.brand, origin="input", status="ok"),
         "ean": Field(key="ean", value=product.ean, origin="input", status="ok"),
@@ -92,9 +88,7 @@ def build_store_fields(
     for column, value in spec.fixed.items():
         fields[f"fixed.{column}"] = template(f"fixed.{column}", value)
     if "product_category" in spec.google:
-        fields["google.product_category"] = template(
-            "google.product_category", spec.google["product_category"]
-        )
+        fields["google.product_category"] = template("google.product_category", spec.google["product_category"])
     if "condition" in spec.google:
         fields["google.condition"] = template("google.condition", spec.google["condition"])
 

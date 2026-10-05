@@ -103,9 +103,7 @@ class FieldRow(Base):
         UniqueConstraint("store_product_id", "key"),
         CheckConstraint(_in("origin", ORIGINS), name="origin_valid"),
         CheckConstraint(_in("status", STATUSES), name="status_valid"),
-        CheckConstraint(
-            "confidence is null or (confidence >= 0 and confidence <= 1)", name="confidence_range"
-        ),
+        CheckConstraint("confidence is null or (confidence >= 0 and confidence <= 1)", name="confidence_range"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     store_product_id: Mapped[int] = mapped_column(ForeignKey("store_products.id", ondelete="CASCADE"))
@@ -119,6 +117,8 @@ class FieldRow(Base):
     previous: Mapped[object | None] = mapped_column(JSONB)
     value_en: Mapped[str | None] = mapped_column(Text)
     message: Mapped[str | None] = mapped_column(Text)
+    # Every rule that fired on this field ({status, rule, message}); `message` is the worst one.
+    issues: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     decided_by: Mapped[str | None]
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
