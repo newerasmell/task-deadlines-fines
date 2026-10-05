@@ -109,3 +109,12 @@ def test_mismatch_and_refusal_block_the_product():
     assert r.fields["name"].status == "blocked" and "Black XS" in r.fields["name"].message
     r = research_product(FakeClient(message(stop_reason="refusal", text="")), ROW, load_group("group-1"))
     assert r.error and all(f.status == "blocked" for f in r.fields.values())
+
+
+def test_default_client_ignores_a_host_base_url(monkeypatch):
+    from pipeline.ai import API_URL, default_client
+
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://host-tool.invalid")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.delenv("PERFUME_ANTHROPIC_BASE_URL", raising=False)
+    assert str(default_client().base_url).rstrip("/") == API_URL

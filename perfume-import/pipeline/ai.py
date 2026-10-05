@@ -87,10 +87,19 @@ def _sources(content) -> list[dict]:
     return found
 
 
+API_URL = "https://api.anthropic.com"
+
+
 def default_client():
+    """ANTHROPIC_API_KEY from the environment, never from the repo.
+
+    The base URL is pinned: a host tool (e.g. a Claude Code session) may set ANTHROPIC_BASE_URL for itself, and
+    the SDK would otherwise send our requests there. PERFUME_ANTHROPIC_BASE_URL overrides it deliberately."""
+    import os
+
     import anthropic
 
-    return anthropic.Anthropic()  # ANTHROPIC_API_KEY from the environment, never from the repo
+    return anthropic.Anthropic(base_url=os.environ.get("PERFUME_ANTHROPIC_BASE_URL", API_URL))
 
 
 def ask(
