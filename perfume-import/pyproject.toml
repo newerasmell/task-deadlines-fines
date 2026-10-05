@@ -36,4 +36,5 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["db: needs a running Postgres at DATABASE_URL"]
+markers = ["db: needs a running Postgres at DATABASE_URL", "live: calls the real Claude API (needs ANTHROPIC_API_KEY, costs money)"]
+addopts = "-m 'not live'"

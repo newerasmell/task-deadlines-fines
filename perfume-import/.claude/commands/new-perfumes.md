@@ -1,11 +1,10 @@
 ---
 description: Create a batch of new perfumes for a store group
-argument-hint: <input.csv> --group <group> [--stores a,b] [--upload]
+argument-hint: <input.csv> --group <group> [--stores a,b] [--limit N]
 ---
 Input: $ARGUMENTS
-1. Load config for the group (docs/SPEC.md §2). Validate the input file: required columns, one price column per selected store, EAN checksum. Report problems and stop if the file is unusable.
-2. Normalize each row (brand, name, concentration, ml, tester).
-3. Launch one `perfume-researcher` subagent per product, in parallel (max 10 at a time).
-4. Build store fields, generate descriptions and localized notes, run the image pipeline.
-5. Run validate.py, save the batch to the DB, print: batch link, counts ok / suggested / blocked per store.
-6. Only with --upload and only for products with no blocked or unaccepted fields: upload as drafts.
+1. Run `python scripts/new_batch.py $ARGUMENTS --estimate` and show the user the input problems and the expected cost.
+2. Only after the user confirms the cost, run `python scripts/new_batch.py $ARGUMENTS` (needs ANTHROPIC_API_KEY in the
+   environment). Research, texts, per-store fields and validation all run in `pipeline/` (see docs/SPEC.md §1, §4, §5).
+3. Report the batch number, counts ok / for review / blocked per store and the real cost per product from the output.
+Upload to Shopify is phase 5; never upload from here.

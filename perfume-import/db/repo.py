@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, insert, select
 from sqlalchemy.orm import Session
 
 from db.models import Batch, Event, FieldRow, Product, Store, StoreProduct
+from pipeline.batch import BatchResult, row_dict
 from pipeline.config import load_group
 from pipeline.settings import get_settings
 from pipeline.validate import AuditReport
@@ -70,28 +71,86 @@ def save_audit(report: AuditReport, author: str | None = None) -> int:
             .scalars()
             .all()
         )
-        rows = []
-        for sp_id, p in zip(store_products, report.products, strict=True):
-            for f in p.fields.values():
-                rows.append(
-                    {
-                        "store_product_id": sp_id,
-                        "key": f.key,
-                        "value": f.value,
-                        "origin": f.origin,
-                        "status": f.status,
-                        "confidence": f.confidence,
-                        "sources": f.sources,
-                        "alternatives": f.alternatives,
-                        "previous": f.previous,
-                        "value_en": f.value_en,
-                        "message": f.message,
-                        "issues": f.issues,
-                    }
-                )
+        rows = [
+            row
+            for sp_id, p in zip(store_products, report.products, strict=True)
+            for row in _field_rows(sp_id, p.fields)
+        ]
         session.execute(insert(FieldRow), rows)
         session.add(Event(actor=author, kind="audit_created", batch_id=batch.id, payload=report.summary()))
         return batch.id
+
+
+def _field_rows(store_product_id: int, fields: dict) -> list[dict]:
+    return [
+        {
+            "store_product_id": store_product_id,
+            "key": f.key,
+            "value": f.value,
+            "origin": f.origin,
+            "status": f.status,
+            "confidence": f.confidence,
+            "sources": f.sources,
+            "alternatives": f.alternatives,
+            "previous": f.previous,
+            "value_en": f.value_en,
+            "message": f.message,
+            "issues": f.issues,
+        }
+        for f in fields.values()
+    ]
+
+
+def save_batch(result: BatchResult, author: str | None = None) -> int:
+    """A new batch: products with their input and research, one store_product per store, every field."""
+    with Session(engine()) as session, session.begin():
+        for store in result.stores:
+            ensure_store(session, result.group, store)
+        batch = Batch(kind="new", name=result.name, group_key=result.group, author=author)
+        session.add(batch)
+        session.flush()
+        for p in result.products:
+            product = Product(
+                batch_id=batch.id,
+                ean=(p.row.ean or None) and p.row.ean[:14],
+                input=row_dict(p.row),
+                research=p.research.raw if p.research and p.research.raw else None,
+            )
+            session.add(product)
+            session.flush()
+            for store, fields in p.stores.items():
+                sp = StoreProduct(product_id=product.id, store_key=store)
+                session.add(sp)
+                session.flush()
+                session.execute(insert(FieldRow), _field_rows(sp.id, fields))
+            session.add(
+                Event(
+                    actor=author,
+                    kind="ai_usage",
+                    batch_id=batch.id,
+                    payload={
+                        "ean": p.row.ean,
+                        "name": p.row.name,
+                        "reused_research": p.reused_research,
+                        "steps": p.usage,
+                        "cost_usd": p.cost_usd,
+                    },
+                )
+            )
+        session.add(Event(actor=author, kind="batch_created", batch_id=batch.id, payload=result.summary()))
+        return batch.id
+
+
+def find_research(ean: str) -> dict | None:
+    """The latest successful research for this EAN, so the same product is never paid for twice."""
+    with Session(engine()) as session:
+        stmt = (
+            select(Product.research)
+            .where(Product.ean == ean, Product.research.is_not(None))
+            .order_by(Product.id.desc())
+            .limit(1)
+        )
+        return session.execute(stmt).scalar_one_or_none()
 
 
 def _ean(p) -> str:

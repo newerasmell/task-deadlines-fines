@@ -185,8 +185,10 @@ def _description(fields: dict[str, Field], ctx: Context) -> None:
         body.flag("warning", "Липсва описание.", "description_missing")
         return
     lo, hi = ctx.spec.description.length
-    if not lo <= len(text) <= hi:
-        body.flag("warning", f"Описанието е {len(text)} знака; групата иска {lo}–{hi}.", "description_length")
+    sentence = ctx.spec.tester_sentence.get(ctx.store.language) or ""
+    prose = collapse_spaces(text.replace(sentence, "")) if sentence else text  # the fixed sentence is extra
+    if not lo <= len(prose) <= hi:
+        body.flag("warning", f"Описанието е {len(prose)} знака; групата иска {lo}–{hi}.", "description_length")
     if not parse_title(fields["title"].value or "").tester:
         return
     sentence = ctx.spec.tester_sentence.get(ctx.store.language)
