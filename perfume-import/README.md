@@ -26,6 +26,7 @@ make test                 # тестове; тези с маркер db иска
 
 ## Деплой в Render
 `render.yaml` е Blueprint: web service (Docker, API + app) и Postgres база.
-1. Render → New → Blueprint → избери това репо.
+1. Render → New → Blueprint → избери репото `task-deadlines-fines` и посочи пътя `perfume-import/render.yaml`
+   (проектът е в подпапка; deploy се пуска само при промени в `perfume-import/`).
 2. Render пита за всеки `SHOPIFY_TOKEN_*` (`sync: false`). Попълни ги там. Токени никога не влизат в репото.
 3. `DATABASE_URL` идва автоматично от базата. Миграциите се пускат при всеки старт.

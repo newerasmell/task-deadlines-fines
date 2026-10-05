@@ -1,4 +1,6 @@
 # Render Blueprint: one web service (API + built app, Docker) and a managed Postgres.
+# This project lives in perfume-import/ of a repo that also hosts other apps, so the Blueprint path is
+# perfume-import/render.yaml (set it explicitly when creating the Blueprint), and paths below are repo-relative.
 # Secrets are never in this file. Keys marked `sync: false` are entered in the Render dashboard
 # when the Blueprint is created (or later under Environment).
 services:
@@ -6,7 +8,11 @@ services:
     name: perfume-import
     runtime: docker
     plan: starter
-    dockerfilePath: ./Dockerfile
+    dockerContext: ./perfume-import
+    dockerfilePath: ./perfume-import/Dockerfile
+    buildFilter:
+      paths:
+        - perfume-import/**
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
