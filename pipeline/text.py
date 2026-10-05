@@ -1,5 +1,6 @@
 """Small, deterministic text helpers shared by detection, building and validation."""
 
+import html
 import re
 import unicodedata
 
@@ -16,8 +17,8 @@ def collapse_spaces(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def strip_html(html: str) -> str:
-    return collapse_spaces(TAG.sub(" ", html or ""))
+def strip_html(markup: str) -> str:
+    return collapse_spaces(html.unescape(TAG.sub(" ", markup or "")))
 
 
 def ascii_fold(s: str) -> str:
