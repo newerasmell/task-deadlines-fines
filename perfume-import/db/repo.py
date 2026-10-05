@@ -196,3 +196,21 @@ def save_vocab_suggestions(group_key: str, suggestions: dict[str, list[dict]]) -
                 row.hits, row.confidence, row.reason = item.get("count", 1), item["confidence"], item["reason"]
                 saved += 1
     return saved
+
+
+def measured_costs(last: int = 50) -> dict[str, float]:
+    """Average cost per step over the last products that were really researched (for --estimate)."""
+    with Session(engine()) as session:
+        rows = session.execute(
+            select(Event.payload).where(Event.kind == "ai_usage").order_by(Event.id.desc()).limit(last)
+        ).scalars()
+        sums: dict[str, list[float]] = {"research": [], "description_en": [], "language": []}
+        for payload in rows:
+            steps = payload.get("steps", {})
+            if payload.get("reused_research") or "research" not in steps:
+                continue
+            sums["research"].append(steps["research"]["cost_usd"])
+            if "description_en" in steps:
+                sums["description_en"].append(steps["description_en"]["cost_usd"])
+            sums["language"] += [u["cost_usd"] for k, u in steps.items() if k.startswith("text_")]
+    return {k: sum(v) / len(v) for k, v in sums.items() if v}

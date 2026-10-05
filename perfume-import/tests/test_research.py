@@ -37,16 +37,25 @@ def research_answer(**overrides):
 ROW = InputRow(line=2, name="Paco Rabanne Lady Million Empire EDP", ml=80, tester=False, ean="3349668571970", prices={})
 
 
-def test_ask_sends_model_fallback_effort_schema_and_web_tools():
+def test_ask_sends_model_fallback_effort_schema_and_search_only():
     client = FakeClient(message({"ok": True}))
-    result = ask(client, system="s", prompt="p", schema=SCHEMA, effort="high", web=True)
+    result = ask(client, system="s", prompt="p", schema=SCHEMA, effort="low", web=True)
     call = client.calls[0]
-    assert call["model"] == MODEL
+    assert call["model"] == MODEL == "claude-sonnet-5-5"
     assert call["betas"] == [FALLBACK_BETA] and call["fallbacks"] == "default"
-    assert call["output_config"]["effort"] == "high"
+    assert call["output_config"]["effort"] == "low"
     assert call["output_config"]["format"]["schema"] == SCHEMA
-    assert {t["name"] for t in call["tools"]} == {"web_search", "web_fetch"}
+    assert call["cache_control"] == {"type": "ephemeral"}
+    assert call["tools"] == [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}]
+    assert "thinking" not in call
     assert result.data == {"ok": True}
+
+
+def test_ask_without_web_sends_no_tools_and_can_turn_thinking_off():
+    client = FakeClient(message({"ok": True}))
+    ask(client, system="s", prompt="p", schema=SCHEMA, thinking={"type": "between_tools"})
+    assert "tools" not in client.calls[0]
+    assert client.calls[0]["thinking"] == {"type": "between_tools"}
 
 
 def test_ask_resumes_pause_turn_and_sums_usage():
@@ -55,7 +64,7 @@ def test_ask_resumes_pause_turn_and_sums_usage():
     assert len(client.calls) == 2
     assert client.calls[1]["messages"][1]["role"] == "assistant"  # paused turn resent, no extra user message
     assert result.usage.web_searches == 5
-    assert result.usage.cost_usd == pytest.approx(2 * (1000 * 4 + 500 * 20) / 1e6 + 5 * 0.01)
+    assert result.usage.cost_usd == pytest.approx(2 * (1000 * 2 + 500 * 10) / 1e6 + 5 * 0.01)  # Sonnet 5.5
 
 
 @pytest.mark.parametrize(
@@ -152,3 +161,31 @@ def test_api_key_prefers_the_project_variable(monkeypatch):
     assert api_key() == "project"
     monkeypatch.delenv("PERFUME_ANTHROPIC_API_KEY")
     assert api_key() == "generic"
+
+
+def test_ask_batch_matches_results_by_id_and_halves_token_cost():
+    from pipeline.ai import ask_batch, params
+
+    client = FakeClient(responder=lambda body: message({"echo": body["messages"][0]["content"]}))
+    body = params(system="s", prompt="a", schema=SCHEMA, effort="low", max_tokens=100)
+    results = ask_batch(
+        client, {"x": body, "y": {**body, "messages": [{"role": "user", "content": "b"}]}}, poll_seconds=0
+    )
+    assert results["x"].data == {"echo": "a"} and results["y"].data == {"echo": "b"}
+    assert results["x"].usage.cost_usd == pytest.approx((1000 * 2 + 500 * 10) / 1e6 * 0.5)
+    assert client.batches == [["x", "y"]]
+
+
+def test_brand_is_removed_from_the_name():
+    client = FakeClient(
+        message(
+            research_answer(
+                brand={"value": "Giorgio Armani", "sources": [src(A, says="Giorgio Armani"), src(B, says="Armani")]},
+                name={"value": "Armani Code Profumo", "sources": [src(A), src(B)]},
+            ),
+            urls=[A, B, C],
+        )
+    )
+    r = research_product(client, ROW, load_group("group-1"))
+    assert r.fields["name"].value == "Code Profumo"
+    assert (r.fields["name"].status, r.fields["name"].previous) == ("fixed", "Armani Code Profumo")
