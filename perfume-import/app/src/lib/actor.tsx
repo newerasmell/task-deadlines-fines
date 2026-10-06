@@ -1,12 +1,11 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../components/ui/button'
 import { Dialog } from '../components/ui/dialog'
+import { ActorContext } from './actorContext'
 import { getActor, setActor } from './api'
 
 // Every decision is recorded with who made it (SPEC §3 decided_by). Until the team login is connected the name
 // is asked once and kept in this browser.
-type Ctx = { actor: string; ensure: () => Promise<string | null>; change: () => void }
-const ActorContext = createContext<Ctx | null>(null)
 
 export function ActorProvider({ children }: { children: ReactNode }) {
   const [actor, setActorState] = useState(getActor())
@@ -70,10 +69,4 @@ export function ActorProvider({ children }: { children: ReactNode }) {
       </Dialog>
     </ActorContext.Provider>
   )
-}
-
-export function useActor(): Ctx {
-  const ctx = useContext(ActorContext)
-  if (!ctx) throw new Error('useActor outside ActorProvider')
-  return ctx
 }

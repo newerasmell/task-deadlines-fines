@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useActor } from './actor'
+import { useActor } from './actorContext'
 import { api, type Batch, type Product } from './api'
 
 export const useBatches = () => useQuery({ queryKey: ['batches'], queryFn: api.batches })

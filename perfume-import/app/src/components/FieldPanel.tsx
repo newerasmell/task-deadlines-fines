@@ -4,7 +4,7 @@ import type { Batch, FieldRecord, Product, Status } from '../lib/api'
 import { cn } from '../lib/cn'
 import { display, fieldLabel, host, LOCALIZED, storeShort, stripHtml } from '../lib/labels'
 import { useDecide, useVocab } from '../lib/queries'
-import { TAG_TEXT, TINT } from './StatusMark'
+import { TAG_TEXT, TINT } from '../lib/status'
 import { Button } from './ui/button'
 
 // Field panel (SPEC §8.3, Main.dc.html): value, origin, confidence, sources, alternatives, previous value;
