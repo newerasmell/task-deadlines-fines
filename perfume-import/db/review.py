@@ -237,6 +237,15 @@ def get_product(product_id: int) -> dict:
         return {"batch_id": product.batch_id, **_product_json(session, product_id)}
 
 
+def get_research(product_id: int) -> dict:
+    """What research returned for a product, as saved: answer, every URL search showed, costs and errors."""
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        return {"product_id": product.id, "research": product.research}
+
+
 def _media_json(m: Media) -> dict:
     return {
         "id": m.id,

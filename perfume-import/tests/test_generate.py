@@ -176,3 +176,12 @@ def test_refused_master_blocks_its_languages_only():
     )
     assert out[0][0].problems[0][1] == "generation_failed" and out[0][1]["en"].description == ""
     assert out[1][1]["en"].description == EN
+
+
+def test_notes_research_did_not_find_are_a_warning_not_done(monkeypatch):
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {"lemon": "λεμόνι"})
+    master = english_master(FakeClient(master_message()), {**FACTS, "middle_note": [], "base_note": []}, GROUP)
+    t = localize(FakeClient(text(EL)), master, "el", GROUP, tester=False)
+    f = text_fields(t, master, GROUP)
+    assert f["top_note"].status == "ok"
+    assert f["middle_note"].status == "warning" and "не намери нотки" in f["middle_note"].message

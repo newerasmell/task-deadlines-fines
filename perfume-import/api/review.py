@@ -54,6 +54,11 @@ def product(product_id: int):
     return _call(review.get_product, product_id)
 
 
+@router.get("/products/{product_id}/research")
+def research(product_id: int):
+    return _call(review.get_research, product_id)
+
+
 @router.post("/fields/{field_id}/decision")
 def decide(field_id: int, body: Decision, x_actor: str | None = Header(default=None)):
     return _call(review.decide, field_id, body.action, actor_name(x_actor), body.value)

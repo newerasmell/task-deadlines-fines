@@ -170,8 +170,10 @@ def fact_field(key: str, fact: dict, seen_urls: set[str], origin: str = "ai_rese
             )
         elif supporting:
             f.message = f"Само един източник ({next(iter(supporting))}). Провери."
-        else:
+        elif fact["sources"]:
             f.message = "Няма проверим източник."
+        else:
+            f.message = "Без нито един източник: вероятно по памет на модела. Провери."
     dropped = len(fact["sources"]) - len(verified)
     if dropped:
         f.issues.append(

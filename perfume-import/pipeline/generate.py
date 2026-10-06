@@ -362,6 +362,12 @@ def text_fields(text: Text, master: Text, group: Group) -> dict[str, Field]:
         )
         if new:
             f.message = "Нови преводи (влизат в глосара след приемане): " + "; ".join(new)
+        elif not en_terms:  # research found none: never shown as done
+            f.flag(
+                "warning",
+                "Проучването не намери нотки. Попълни ги или проучи продукта задълбочено.",
+                "notes_missing",
+            )
         fields[key] = f
     return fields
 

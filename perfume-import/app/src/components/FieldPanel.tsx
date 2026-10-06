@@ -247,6 +247,17 @@ export function FieldPanel({
           </div>
         )}
 
+        {field.origin === 'ai_research' && (
+          <a
+            href={`/api/products/${product.id}/research`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-ink-2"
+          >
+            Виж суровото проучване (какво върна търсенето)
+          </a>
+        )}
+
         {shared && (
           <div className="text-xs leading-relaxed text-ink-2">
             Важи за всички сайтове в партидата. Промяната тук се прилага и в {others.map(storeShort).join(', ')}.
