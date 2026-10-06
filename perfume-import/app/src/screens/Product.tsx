@@ -25,7 +25,7 @@ import {
   storeShort,
   stripHtml,
 } from '../lib/labels'
-import { useAcceptAll, useApprove, useBatch } from '../lib/queries'
+import { useAcceptAll, useApprove, useBatch, useDecide } from '../lib/queries'
 
 // Main review screen (Product.dc.html): product list, the finished picture, every store side by side.
 
@@ -51,7 +51,10 @@ export function ProductScreen() {
         <div className="flex min-h-0 grow">
           <div className="flex min-h-0 min-w-0 grow flex-col gap-6 overflow-y-auto px-7 py-6 xl:flex-row xl:items-start xl:gap-7">
             {!open && <ImageSection product={product} onOpen={(store) => setOpen({ store, key: 'image' })} />}
-            <FieldsTable batch={batch.data} product={product} open={open} onOpen={setOpen} />
+            <div className="flex min-w-0 grow flex-col gap-6">
+              <PricesSection batch={batch.data} product={product} />
+              <FieldsTable batch={batch.data} product={product} open={open} onOpen={setOpen} />
+            </div>
           </div>
           {open && (
             <FieldPanel
@@ -361,4 +364,129 @@ function Cell({ field, selected, onClick }: { field?: FieldRecord; selected: boo
       {en && <span className="line-clamp-2 max-w-full text-xs leading-normal text-ink-2">EN · {en}</span>}
     </button>
   )
+}
+
+/** Every store of the batch: whether it can be published to (template + Shopify access), and its price and
+ * compare-at price, editable here (decisions #16: without a price the product goes up only as a draft). */
+function PricesSection({ batch, product }: { batch: Batch; product: Product }) {
+  return (
+    <section className="flex flex-col gap-2" aria-label="Цени и магазини">
+      <h2 className="m-0 text-base font-semibold">Цени и магазини</h2>
+      <div className="flex flex-col rounded-lg border border-line" role="table">
+        <div
+          role="row"
+          className="grid grid-cols-[minmax(0,1.4fr)_120px_120px_minmax(0,1fr)_90px] gap-3 border-b border-line bg-surface px-4 py-2 text-xs font-medium text-ink-2"
+        >
+          <span role="columnheader">Магазин</span>
+          <span role="columnheader">Цена</span>
+          <span role="columnheader">Зачеркната</span>
+          <span role="columnheader">Състояние</span>
+          <span role="columnheader" />
+        </div>
+        {batch.stores.map((s) =>
+          product.stores[s.key] ? <PriceRow key={`${product.id}-${s.key}-${display(product.stores[s.key].fields.price?.value)}-${display(product.stores[s.key].fields.compare_at?.value)}`} batch={batch} product={product} store={s} /> : null,
+        )}
+      </div>
+    </section>
+  )
+}
+
+function PriceRow({ batch, product, store }: { batch: Batch; product: Product; store: StoreInfo }) {
+  const fields = product.stores[store.key].fields
+  const price = fields.price
+  const compare = fields.compare_at
+  const initial = { price: money(price?.value), compare: money(compare?.value) }
+  const [draft, setDraft] = useState(initial)
+  const decide = useDecide(batch.id)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const changed = draft.price !== initial.price || draft.compare !== initial.compare
+  const ready = store.template && !store.access
+  const why = !store.template ? 'няма шаблон: качи каталога му в „Магазини“' : shortReason(store.access)
+  const issue = [price, compare].find((f) => f && f.status !== 'ok' && f.message)
+
+  const save = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      if (price && draft.price !== initial.price)
+        await decide.mutateAsync({ fieldId: price.id, action: 'edit', value: draft.price.replace(',', '.') })
+      if (compare && draft.compare !== initial.compare)
+        await decide.mutateAsync({ fieldId: compare.id, action: 'edit', value: draft.compare.replace(',', '.') })
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const input = 'tabular h-8 w-full rounded-md border border-line bg-canvas px-2 text-sm'
+  return (
+    <form
+      role="row"
+      className="grid grid-cols-[minmax(0,1.4fr)_120px_120px_minmax(0,1fr)_90px] items-center gap-3 border-b border-line-2 px-4 py-2 text-sm last:border-b-0"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void save()
+      }}
+    >
+      <span role="cell" className="flex min-w-0 items-center gap-2" title={ready ? 'Може да се публикува' : (why ?? undefined)}>
+        <span
+          aria-hidden
+          className={cn('size-2.5 shrink-0 rounded-full', ready ? 'bg-ok' : store.template ? 'bg-warning' : 'bg-line')}
+        />
+        <span className="truncate">
+          {store.label} · {storeShort(store)}
+          {store.currency ? ` · ${store.currency}` : ''}
+        </span>
+      </span>
+      <input
+        role="cell"
+        aria-label={`Цена ${store.label}`}
+        inputMode="decimal"
+        placeholder="без цена"
+        value={draft.price}
+        onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+        className={input}
+      />
+      <input
+        role="cell"
+        aria-label={`Зачеркната цена ${store.label}`}
+        inputMode="decimal"
+        placeholder="—"
+        value={draft.compare}
+        onChange={(e) => setDraft({ ...draft, compare: e.target.value })}
+        className={input}
+      />
+      <span role="cell" className="min-w-0 text-xs leading-snug">
+        {error ? (
+          <span className="text-blocked-text">{error}</span>
+        ) : !ready ? (
+          <span className="text-ink-2">{why}</span>
+        ) : issue ? (
+          <span className={TAG_TEXT[issue.status]}>{issue.message}</span>
+        ) : (
+          <span className="text-ok">може да се публикува</span>
+        )}
+      </span>
+      <span role="cell" className="flex justify-end">
+        <Button type="submit" size="sm" disabled={!changed || saving}>
+          Запази
+        </Button>
+      </span>
+    </form>
+  )
+}
+
+function money(value: unknown): string {
+  const text = display(value)
+  return text === 'None' ? '' : text
+}
+
+/** The upload blocker in a few words; the full message is in Магазини → the store. */
+function shortReason(access: string | null | undefined): string | null {
+  if (!access) return null
+  if (access.includes('домейн')) return 'няма Shopify адрес (Магазини → магазина)'
+  if (access.includes('достъп')) return 'няма Shopify ключове (Магазини → магазина)'
+  return access
 }

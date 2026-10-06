@@ -137,3 +137,10 @@ def test_api_round_trip_with_actor_header(batch):
     with Session(engine()) as session:
         kinds = session.execute(select(Event.kind).where(Event.batch_id == batch["id"])).scalars().all()
         assert "field_accept" in kinds and "field_edit" in kinds
+
+
+def test_each_store_says_whether_it_can_be_published(batch):
+    """The product screen lights a store when it has a template (accepted profile) and Shopify access."""
+    for store in batch["stores"]:
+        assert set(store) >= {"template", "access"}
+        assert store["access"]  # the seed's stores have no domain: what stops the upload is said

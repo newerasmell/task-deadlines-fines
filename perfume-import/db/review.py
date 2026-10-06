@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.models import Batch, Event, FieldRow, Media, Product, Store, StoreProduct
+from db.models import Batch, Event, FieldRow, Media, Product, Store, StoreProduct, StoreProfile
 from pipeline.build import google_gender
 from pipeline.config import load_group
 from pipeline.fields import SEVERITY, Field
@@ -153,6 +153,25 @@ def _store_json(store: Store | None, key: str) -> dict:
     }
 
 
+def _readiness(group_key: str | None, keys: list[str], with_template: set[str]) -> dict[str, dict]:
+    """Per store: has an accepted template (profile) and what, if anything, stops an upload to it."""
+    from pipeline.config import load_group
+    from pipeline.shopify import missing_settings
+
+    try:
+        group = load_group(group_key) if group_key else None
+    except FileNotFoundError:
+        group = None
+    out = {}
+    for key in keys:
+        store = group.stores.get(key) if group else None
+        out[key] = {
+            "template": key in with_template,
+            "access": missing_settings(store) if store else "Магазинът не е в група.",
+        }
+    return out
+
+
 def get_batch(batch_id: int) -> dict:
     with Session(_engine()) as session:
         batch = session.get(Batch, batch_id)
@@ -191,6 +210,14 @@ def get_batch(batch_id: int) -> dict:
             pictures.setdefault(m.product_id, []).append(m)
 
         out_products = [_product_dict(p, by_product.get(p.id, []), by_sp, pictures.get(p.id, [])) for p in products]
+        with_template = set(
+            session.execute(
+                select(StoreProfile.store_key).where(
+                    StoreProfile.state == "accepted", StoreProfile.store_key.in_(store_order)
+                )
+            ).scalars()
+        )
+        readiness = _readiness(batch.group_key, store_order, with_template)
         return {
             "id": batch.id,
             "kind": batch.kind,
@@ -198,7 +225,7 @@ def get_batch(batch_id: int) -> dict:
             "group": batch.group_key,
             "created_at": batch.created_at.isoformat(),
             "author": batch.author,
-            "stores": [_store_json(store_rows.get(k), k) for k in store_order],
+            "stores": [{**_store_json(store_rows.get(k), k), **readiness[k]} for k in store_order],
             "products": out_products,
         }
 

@@ -59,6 +59,8 @@ export type StoreInfo = {
   country: string | null
   language: string | null
   currency: string | null
+  template?: boolean // an accepted store profile: products are built by its pattern
+  access?: string | null // what stops an upload to this store (domain or Shopify access); null = can publish
 }
 
 export type BatchSummary = {
