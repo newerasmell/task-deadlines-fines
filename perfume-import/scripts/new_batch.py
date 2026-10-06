@@ -63,6 +63,10 @@ def main() -> int:
     ap.add_argument("--deep", default="", help="EAN-и, разделени със запетая, които да се проучат задълбочено")
     args = ap.parse_args()
 
+    if not args.no_save:
+        from db.stores import install
+
+        install()  # stores and Shopify domains set in the app count too
     group = load_group(args.group)
     stores = args.stores.split(",") if args.stores else list(group.stores)
     try:
@@ -117,6 +121,11 @@ def main() -> int:
 
         saved = find_research
     name = args.name or f"{date.today().isoformat()} · {Path(args.input).stem}"
+    profiles = {}
+    if not args.no_save:
+        from db.stores import accepted_profiles
+
+        profiles = accepted_profiles(stores)  # each store's own formulas (CLAUDE.md principle 1)
     result = run_batch(
         default_client(),
         rows,
@@ -129,6 +138,7 @@ def main() -> int:
         max_cost=args.max_cost,
         default_tier=args.tier,
         deep_eans=deep_eans,
+        profiles=profiles,
     )
 
     summary = result.summary()

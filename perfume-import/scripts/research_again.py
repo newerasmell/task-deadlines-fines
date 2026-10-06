@@ -70,7 +70,18 @@ def main() -> int:
 
     row = row_from_saved(saved, tier.name)
     name = f"{'Задълбочено' if tier.name == 'deep' else 'Повторно'}: {row.name}"
-    result = run_batch(default_client(), [row], load_group(saved["group"]), stores, name, refresh=True)
+    from db.stores import accepted_profiles, install
+
+    install()
+    result = run_batch(
+        default_client(),
+        [row],
+        load_group(saved["group"]),
+        stores,
+        name,
+        refresh=True,
+        profiles=accepted_profiles(stores),
+    )
     summary = result.summary()
     for store, counts in summary["stores"].items():
         print(f"  {store}: " + " · ".join(f"{n} {LABELS[s]}" for s, n in counts["fields"].items() if n) + " полета")

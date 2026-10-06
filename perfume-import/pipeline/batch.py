@@ -127,7 +127,8 @@ def _value_blocked(f: Field) -> bool:
     return not rules or any(r != "research_mismatch" for r in rules)
 
 
-def store_fields(result: ProductResult, group: Group, store_key: str) -> dict[str, Field]:
+def store_fields(result: ProductResult, group: Group, store_key: str, profile: dict | None = None) -> dict[str, Field]:
+    """profile: the store's accepted profile (title, handle, SKU formulas win over the group's)."""
     row, research = result.row, result.research
     store = group.store(store_key)
     brand = research.value("brand") if research else None
@@ -141,7 +142,7 @@ def store_fields(result: ProductResult, group: Group, store_key: str) -> dict[st
         ean=row.ean,
         prices=row.prices,
     )
-    fields = build_store_fields(item, group, store_key)
+    fields = build_store_fields(item, group, store_key, profile)
     if not brand or not name:
         fields["title"].flag(
             "blocked", "Проучването не намери марка и име; заглавието не може да се сглоби.", "title_parts"
@@ -312,11 +313,14 @@ def run_batch(
     fetch_image: Callable[[str], bytes] | None = None,
     default_tier: str = DEFAULT_TIER,
     deep_eans: set[str] = frozenset(),
+    profiles: dict[str, dict] | None = None,
 ) -> BatchResult:
     """Research every product (parallel, interactive: it needs web search), then all texts at once
     (English masters in one round, every product x language in the next). Each product has a tier
     (resolve_tier): economy texts go through one Message Batch per round, deep texts are interactive.
-    batch_texts=True/False forces all texts one way. max_cost overrides every tier's own limit."""
+    batch_texts=True/False forces all texts one way. max_cost overrides every tier's own limit.
+    profiles: accepted store profiles by store key (db.stores.accepted_profiles); a store without one uses the
+    group's formulas."""
     tiers = [resolve_tier(r, default_tier, deep_eans) for r in rows]
     languages = [group.store(s).language for s in stores]
     n_texts = 1 + len(set(languages) - {"en"})
@@ -345,7 +349,7 @@ def run_batch(
 
     for p in products:
         for store in stores:
-            p.stores[store] = store_fields(p, group, store)
+            p.stores[store] = store_fields(p, group, store, (profiles or {}).get(store))
     for store in stores:
         validate_batch([p.stores[store] for p in products])
     return BatchResult(name=name, group=group.key, stores=stores, products=products, max_cost=max_cost)

@@ -1,6 +1,7 @@
 """Load group and store configuration from config/ (SPEC §2b)."""
 
 import csv
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -83,6 +84,12 @@ def _yaml(path: Path) -> Any:
     return yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
+# Store settings made in the app (a new store, a Shopify domain) live in the database, not in the repo.
+# db.stores installs a loader here; it returns {store_key: {field: value}} for a group, merged over
+# stores.yaml. Without a database (tests, scripts that do not need it) only stores.yaml counts.
+store_overrides: Callable[[str], dict[str, dict]] | None = None
+
+
 def load_group(key: str, base: Path | None = None) -> Group:
     path = (base or config_dir()) / "groups" / key
     if not path.is_dir():
@@ -94,7 +101,15 @@ def load_group(key: str, base: Path | None = None) -> Group:
     raw_stores = _yaml(path / "stores.yaml") or {}
     defaults = raw_stores.get("defaults") or {}
     stores = {}
-    for store_key, values in (raw_stores.get("stores") or {}).items():
+    raw = {k: dict(v or {}) for k, v in (raw_stores.get("stores") or {}).items()}
+    if store_overrides is not None and base is None:
+        try:
+            extra = store_overrides(key)
+        except Exception:  # no database here: the files alone
+            extra = {}
+        for store_key, values in extra.items():
+            raw[store_key] = {**raw.get(store_key, {}), **{k: v for k, v in values.items() if v not in (None, "")}}
+    for store_key, values in raw.items():
         stores[store_key] = StoreConfig.model_validate({**defaults, **values, "key": store_key})
 
     vocab = {f: {c: list(v or []) for c, v in (m or {}).items()} for f, m in (_yaml(path / "vocab.yaml") or {}).items()}

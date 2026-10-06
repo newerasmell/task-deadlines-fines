@@ -44,6 +44,8 @@ class Store(Created, Base):
     shop_domain: Mapped[str | None]
     # Name of the env var holding the Admin API token, never the token itself.
     token_env: Mapped[str | None]
+    # What a person set in the app (a new store, the Shopify domain...): merged over stores.yaml by load_group.
+    settings: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
 
 
 class StoreProfile(Created, Base):
