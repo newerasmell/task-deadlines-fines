@@ -134,3 +134,21 @@ def test_no_price_goes_up_only_as_a_draft(fields):
     with pytest.raises(ShopifyError, match="чернова"):
         upload_product(shop(FakeShopify()), no_price, "active", None, None)
     assert upload_product(shop(FakeShopify()), no_price, "draft", None, None).status == "DRAFT"
+
+
+def test_metafields_go_in_the_type_the_store_defined(fields):
+    """A live store defined the notes as multi-line text: one-line text was rejected."""
+    definitions = {
+        ("custom", "top_note"): "multi_line_text_field",
+        ("custom", "middle_note"): "list.single_line_text_field",
+        ("custom", "product_milliliters"): "number_integer",
+    }
+    fake = FakeShopify(definitions=definitions)
+    assert upload_product(shop(fake), fields, "draft", None, None).action == "created"
+    sent = {(m["namespace"], m["key"]): m for m in next(iter(fake.products.values()))["input"]["metafields"]}
+    assert sent[("custom", "top_note")]["type"] == "multi_line_text_field"
+    assert sent[("custom", "top_note")]["value"] == fields["top_note"].value
+    middle = sent[("custom", "middle_note")]
+    assert middle["type"] == "list.single_line_text_field" and middle["value"].startswith('["')
+    assert sent[("custom", "product_milliliters")]["value"] == "110"
+    assert sent[("custom", "gender")]["type"] == "single_line_text_field"  # no definition

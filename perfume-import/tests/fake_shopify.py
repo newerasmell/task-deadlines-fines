@@ -9,7 +9,14 @@ CATEGORY_ID = "gid://shopify/TaxonomyCategory/hb-3-2-7-3"
 
 
 class FakeShopify:
-    def __init__(self, products: list[dict] | None = None, throttle: int = 0, reject: str | None = None):
+    def __init__(
+        self,
+        products: list[dict] | None = None,
+        throttle: int = 0,
+        reject: str | None = None,
+        definitions: dict[tuple[str, str], str] | None = None,
+    ):
+        self.definitions = definitions or {}  # (namespace, key) -> type, enforced like Shopify does
         self.products = {p["id"]: p for p in (products or [])}  # id -> {id, handle, title, sku, ...}
         self.calls: list[dict] = []
         self.uploads: list[bytes] = []
@@ -46,6 +53,11 @@ class FakeShopify:
         if "product(id:" in query:
             found = self.products.get(variables["id"])
             return self.ok({"product": found and {"id": found["id"]}})
+        if "metafieldDefinitions" in query:
+            nodes = [{"namespace": n, "key": k, "type": {"name": t}} for (n, k), t in self.definitions.items()]
+            return self.ok(
+                {"metafieldDefinitions": {"nodes": nodes, "pageInfo": {"hasNextPage": False, "endCursor": None}}}
+            )
         if "taxonomy" in query:
             node = {"id": CATEGORY_ID, "name": "Perfumes & Colognes", "fullName": "Perfumes & Colognes"}
             return self.ok({"taxonomy": {"categories": {"nodes": [node]}}})
@@ -61,6 +73,15 @@ class FakeShopify:
                 error = {"field": ["input", "metafields"], "message": self.reject, "code": "INVALID"}
                 return self.ok({"productSet": {"product": None, "userErrors": [error]}})
             data = variables["input"]
+            wrong = [
+                f"input.metafields.{i}.type: Type '{m['type']}' must be consistent with the definition's type: "
+                f"'{self.definitions[(m['namespace'], m['key'])]}'."
+                for i, m in enumerate(data.get("metafields", []))
+                if self.definitions.get((m["namespace"], m["key"]), m["type"]) != m["type"]
+            ]
+            if wrong:
+                error = {"field": ["input", "metafields"], "message": "; ".join(wrong), "code": "INVALID"}
+                return self.ok({"productSet": {"product": None, "userErrors": [error]}})
             identifier = variables["identifier"]
             if identifier:
                 pid = identifier["id"]

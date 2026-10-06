@@ -6,7 +6,9 @@ a SKU or handle that already exists in the store but was not uploaded from here 
 The token comes from the environment variable named in stores.yaml (token_env), never from the repo.
 """
 
+import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -102,6 +104,7 @@ class Shopify:
         self.headers = {"X-Shopify-Access-Token": token, "Content-Type": "application/json"}
         self.sleep = sleep
         self._category: str | None | bool = False  # False = not looked up yet
+        self._metafield_types: dict[tuple[str, str], str] | None = None
 
     def graphql(self, query: str, variables: dict | None = None) -> dict:
         """One call; waits and retries while Shopify throttles (HTTP 429 or a THROTTLED error)."""
@@ -166,6 +169,25 @@ class Shopify:
             exact = [n for n in nodes if n["name"] == PERFUME_CATEGORY]
             self._category = (exact or nodes or [{"id": None}])[0]["id"]
         return self._category or None
+
+    def metafield_types(self) -> dict[tuple[str, str], str]:
+        """(namespace, key) -> type of the store's product metafield definitions, looked up once. A metafield
+        must be sent with its definition's type (a store may define notes as multi-line text or a list)."""
+        if self._metafield_types is None:
+            types, after = {}, None
+            for _ in range(10):
+                data = self.graphql(
+                    """query($after: String) { metafieldDefinitions(ownerType: PRODUCT, first: 250, after: $after) {
+                         nodes { namespace key type { name } } pageInfo { hasNextPage endCursor } } }""",
+                    {"after": after},
+                )
+                page = data["metafieldDefinitions"]
+                types.update({(n["namespace"], n["key"]): n["type"]["name"] for n in page["nodes"]})
+                if not page["pageInfo"]["hasNextPage"]:
+                    break
+                after = page["pageInfo"]["endCursor"]
+            self._metafield_types = types
+        return self._metafield_types
 
     # ---- writes ----
 
@@ -253,10 +275,46 @@ def _bool(value, default: bool) -> bool:
     return str(value).strip().lower() in ("true", "1", "yes", "да")
 
 
-def product_input(fields: dict, status: str, category: str | None, image: str | None) -> dict:
+def metafield(namespace: str, key: str, value: str, types: dict[tuple[str, str], str]) -> dict | None:
+    """A metafield in the type the store defined for it; plain one-line text where it has no definition.
+    None when the value cannot be written in that type (it is left out rather than rejected)."""
+    kind = types.get((namespace, key), "single_line_text_field")
+    if kind.startswith("list."):
+        items = [i.strip() for i in value.split(",") if i.strip()]
+        if kind in ("list.number_integer", "list.number_decimal"):
+            return None
+        out = json.dumps(items, ensure_ascii=False)
+    elif kind in ("number_integer", "number_decimal"):
+        number = re.search(r"\d+(?:[.,]\d+)?", value)
+        if not number:
+            return None
+        n = number.group().replace(",", ".")
+        out = str(int(float(n))) if kind == "number_integer" else n
+    elif kind == "boolean":
+        out = "true" if _bool(value, False) else "false"
+    elif kind in ("single_line_text_field", "multi_line_text_field", "rich_text_field") or kind.endswith("_text_field"):
+        out = value
+    else:
+        return None  # a reference, date, dimension…: nothing here can fill it safely
+    if kind == "rich_text_field":
+        out = json.dumps(
+            {"type": "root", "children": [{"type": "paragraph", "children": [{"type": "text", "value": value}]}]}
+        )
+    return {"namespace": namespace, "key": key, "type": kind, "value": out}
+
+
+def product_input(
+    fields: dict,
+    status: str,
+    category: str | None,
+    image: str | None,
+    metafield_types: dict[tuple[str, str], str] | None = None,
+) -> dict:
     """ProductSetInput from one store product's fields (field records with .value), nothing invented.
 
-    image: a staged resourceUrl or a public URL; None leaves the product without media."""
+    image: a staged resourceUrl or a public URL; None leaves the product without media.
+    metafield_types: the store's definitions (Shopify.metafield_types); missing ones go as one-line text."""
+    types = metafield_types or {}
     sku = _text(_value(fields, "sku"))
     ean = _text(_value(fields, "ean"))
     option_name = _text(_value(fields, "fixed.Option1 Name")) or "Title"
@@ -285,14 +343,10 @@ def product_input(fields: dict, status: str, category: str | None, image: str | 
         variant["barcodes"] = [{"value": ean}]  # the EAN also as the variant barcode (GTIN for Google)
 
     metafields = []
-    for key, mf_key in CUSTOM_METAFIELDS.items():
-        if value := _text(_value(fields, key)):
-            metafields.append({"namespace": "custom", "key": mf_key, "type": "single_line_text_field", "value": value})
-    for key, mf_key in GOOGLE_METAFIELDS.items():
-        if value := _text(_value(fields, key)):
-            metafields.append(
-                {"namespace": GOOGLE_NAMESPACE, "key": mf_key, "type": "single_line_text_field", "value": value}
-            )
+    for namespace, mapping in (("custom", CUSTOM_METAFIELDS), (GOOGLE_NAMESPACE, GOOGLE_METAFIELDS)):
+        for key, mf_key in mapping.items():
+            if (value := _text(_value(fields, key))) and (mf := metafield(namespace, mf_key, value, types)):
+                metafields.append(mf)
 
     product: dict[str, Any] = {
         "title": _text(_value(fields, "title")),
@@ -348,7 +402,7 @@ def upload_product(
     category = shop.category()
     if not category:
         notes.append("Категорията Perfumes & Colognes не е намерена в таксономията; продуктът е без категория.")
-    result = shop.product_set(product_input(fields, status, category, source), target)
+    result = shop.product_set(product_input(fields, status, category, source, shop.metafield_types()), target)
     return Uploaded(
         product_id=result["id"],
         handle=result["handle"],
