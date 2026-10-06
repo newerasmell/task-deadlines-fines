@@ -211,6 +211,49 @@ export type AuditItem = {
   decided_by: string | null
 }
 
+export type GroupInfo = {
+  key: string
+  name: string
+  ready: boolean
+  stores: { key: string; label: string; country: string | null; language: string | null; currency: string | null }[]
+}
+
+export type CheckedRow = {
+  line: number
+  name: string
+  ml: number | null
+  tester: boolean
+  ean: string
+  prices: Record<string, string | null>
+  tier: string | null
+  problems: string[]
+}
+
+export type CheckResult = {
+  rows: CheckedRow[]
+  ready: number
+  api_key: boolean
+  estimate: {
+    products: number
+    stores: number
+    languages: string[]
+    total: number
+    tiers: { tier: string; label: string; products: number; per_product: number; limit: number; ceiling: number; measured: boolean }[]
+  }
+}
+
+export type Job = {
+  id: string
+  running: boolean
+  stage: string
+  stage_label: string
+  done: number
+  total: number
+  error: string | null
+  batch_id: number | null
+  cost_usd: number | null
+}
+
 const ACTOR_KEY = 'perfume-import.actor'
 
 export function getActor(): string {
@@ -286,6 +329,10 @@ export const api = {
   acceptAll: (productId: number, store?: string) => post<Product>(`/api/products/${productId}/accept-all`, { store }),
   approve: (productId: number) => post<Product>(`/api/products/${productId}/approve`, {}),
   stores: () => request<StoreRow[]>('/api/stores'),
+  groups: () => request<GroupInfo[]>('/api/groups'),
+  checkBatch: (form: FormData) => upload<CheckResult>('/api/batches/check', form),
+  startBatch: (form: FormData) => upload<{ job_id: string }>('/api/batches/start', form),
+  job: (id: string) => request<Job>(`/api/jobs/${id}`),
   audit: (batchId: number) => request<AuditSummary>(`/api/batches/${batchId}/audit`),
   auditItems: (batchId: number, rule: string, limit: number) =>
     request<{ rule: string; label: string; total: number; items: AuditItem[] }>(

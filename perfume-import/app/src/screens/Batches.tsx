@@ -75,6 +75,9 @@ export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
         >
           {actor ? `Преглежда: ${actor}` : 'Кой преглежда?'}
         </button>
+        <Button variant="primary" asChild>
+          <Link to="/batches/new">Нова партида</Link>
+        </Button>
       </header>
 
       <main className="flex flex-col gap-4 p-7">
@@ -103,7 +106,7 @@ export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
               ? 'Няма партиди по този филтър.'
               : kind === 'audit'
                 ? 'Още няма одит. Качи каталог на магазин от „Магазини“.'
-                : 'Още няма партиди. Създай първата с scripts/new_batch.py или /new-perfumes.'}
+                : 'Още няма партиди. Създай първата с „Нова партида“ горе вдясно.'}
           </Empty>
         ) : (
           <div className="overflow-hidden rounded-lg border border-line" role="table" aria-label="Партиди">

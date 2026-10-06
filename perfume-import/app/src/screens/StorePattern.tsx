@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { Failure, Loading } from '../components/States'
 import { Button } from '../components/ui/button'
+import { Dialog } from '../components/ui/dialog'
 import { api, type GroupScore, type StoreProfile } from '../lib/api'
 import { cn } from '../lib/cn'
 import { groupLabel, languageName, shortDate } from '../lib/labels'
@@ -29,6 +30,7 @@ function Pattern({ p }: { p: StoreProfile }) {
     p.group ?? scores.find((s) => s.recommended)?.group ?? null,
   )
   const [editing, setEditing] = useState<string | null>(null)
+  const [confirmReject, setConfirmReject] = useState(false)
   const [draft, setDraft] = useState('')
   const edit = useStoreMutation(({ key, value }: { key: string; value: unknown }) => api.editProfileItem(p.id, key, value))
   const accept = useStoreMutation(() => api.acceptProfile(p.id, group))
@@ -83,7 +85,7 @@ function Pattern({ p }: { p: StoreProfile }) {
               <PatternRow
                 key={r.key}
                 r={r}
-                editing={editing === r.key}
+                editing={proposed && editing === r.key}
                 draft={draft}
                 setDraft={setDraft}
                 canEdit={proposed && r.editable}
@@ -151,17 +153,42 @@ function Pattern({ p }: { p: StoreProfile }) {
               >
                 {accept.isPending ? 'Записвам и пускам одита…' : group ? 'Запази профила и пусни одит' : 'Избери група'}
               </Button>
-              <Button variant="ghost" disabled={reject.isPending} onClick={() => reject.mutate(undefined)}>
+              <Button variant="ghost" disabled={reject.isPending} onClick={() => setConfirmReject(true)}>
                 Отхвърли тази версия
               </Button>
             </div>
-          ) : (
+          ) : p.state === 'accepted' ? (
             p.audit_batch_id && (
               <Button variant="primary" size="lg" asChild>
                 <Link to={`/batches/${p.audit_batch_id}/audit`}>Отвори одита</Link>
               </Button>
             )
+          ) : (
+            <div className="flex flex-col gap-2 text-sm leading-normal text-ink-3">
+              <span>Тази версия е отхвърлена и не се ползва. Качи каталога отново за нова версия.</span>
+              <Button variant="primary" size="lg" asChild>
+                <Link to={`/stores/new?store=${p.store}`}>Качи каталога отново</Link>
+              </Button>
+            </div>
           )}
+          <Dialog
+            open={confirmReject}
+            onOpenChange={setConfirmReject}
+            title="Да отхвърля ли тази версия?"
+            description="Профилът няма да се ползва и одит няма да се пусне. За нов профил трябва да качиш каталога отново."
+            footer={
+              <>
+                <Button onClick={() => setConfirmReject(false)}>Откажи</Button>
+                <Button
+                  variant="primary"
+                  disabled={reject.isPending}
+                  onClick={() => reject.mutate(undefined, { onSuccess: () => setConfirmReject(false) })}
+                >
+                  Отхвърли версията
+                </Button>
+              </>
+            }
+          />
         </aside>
       </div>
     </div>
