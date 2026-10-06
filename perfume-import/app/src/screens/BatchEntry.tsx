@@ -8,7 +8,7 @@ export function BatchEntry() {
   const batch = useBatch(batchId)
   if (batch.isPending) return <Loading what="партидата" />
   if (batch.isError) return <Failure error={batch.error} retry={() => batch.refetch()} />
-  if (batch.data.kind === 'audit') return <Navigate replace to={`/batches/${batchId}/grid`} />
+  if (batch.data.kind === 'audit') return <Navigate replace to={`/batches/${batchId}/audit`} />
   const first = batch.data.products.find((p) => p.state !== 'ready') ?? batch.data.products[0]
   if (!first) return <Empty>Партидата няма продукти.</Empty>
   return <Navigate replace to={`/batches/${batchId}/products/${first.id}`} />

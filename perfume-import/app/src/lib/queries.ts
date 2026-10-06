@@ -76,3 +76,25 @@ export function useStartUpload(batchId: number) {
     },
   })
 }
+
+export const useStores = () => useQuery({ queryKey: ['stores'], queryFn: api.stores })
+
+export const useProfile = (id: number) => useQuery({ queryKey: ['profile', id], queryFn: () => api.profile(id) })
+
+/** Writes that need a name, then refresh the stores list and this profile. */
+export function useStoreMutation<A, R>(fn: (args: A) => Promise<R>) {
+  const client = useQueryClient()
+  const { ensure } = useActor()
+  return useMutation({
+    mutationFn: async (args: A) => {
+      if (!(await ensure())) throw new Error('Без име промяната не се записва.')
+      return fn(args)
+    },
+    onSuccess: (result) => {
+      client.invalidateQueries({ queryKey: ['stores'] })
+      client.invalidateQueries({ queryKey: ['batches'] })
+      if (result && typeof result === 'object' && 'id' in result && 'store' in result)
+        client.setQueryData(['profile', (result as { id: number }).id], result)
+    },
+  })
+}
