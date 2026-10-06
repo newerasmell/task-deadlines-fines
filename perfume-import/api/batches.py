@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from api.review import actor_name
 from db import newbatch
@@ -134,3 +135,23 @@ def latest_job():
 @router.get("/jobs/{job_id}")
 def job(job_id: str):
     return _call(newbatch.job, job_id)
+
+
+@router.get("/batches/{batch_id}/stores/options")
+def store_options(batch_id: int):
+    """Stores that can still be added to a batch, and what it costs (texts only: research is reused)."""
+    from db import extend
+
+    return _call(extend.options, batch_id)
+
+
+class AddStores(BaseModel):
+    stores: list[str]
+    fast: bool = True
+
+
+@router.post("/batches/{batch_id}/stores", status_code=202)
+def add_stores(batch_id: int, body: AddStores, x_actor: str | None = Header(default=None)):
+    from db import extend
+
+    return {"job_id": _call(extend.start, batch_id, body.stores, actor_name(x_actor), body.fast)}

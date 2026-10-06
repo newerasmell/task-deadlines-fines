@@ -91,7 +91,7 @@ function JobBanner() {
           <span className="size-2 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden />
           <div className="flex min-w-0 grow flex-col gap-0.5">
             <span className="font-medium">
-              Проучва се нова партида · {j.stage_label}
+              {j.kind === 'extend' ? 'Добавят се магазини към партида' : 'Проучва се нова партида'} · {j.stage_label}
               {j.stage === 'research' ? ` · ${j.done} от ${j.total}` : '…'}
             </span>
             <span className="text-xs text-ink-2">

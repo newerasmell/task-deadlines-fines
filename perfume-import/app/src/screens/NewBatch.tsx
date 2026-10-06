@@ -452,7 +452,9 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) 
         <span className="font-semibold">Нова партида</span>
       </header>
       <main className="flex max-w-[640px] flex-col gap-4 p-7">
-        <h1 className="m-0 text-[22px] font-semibold">Проучването върви</h1>
+        <h1 className="m-0 text-[22px] font-semibold">
+          {j?.kind === 'extend' ? 'Добавят се магазини (без ново проучване)' : 'Проучването върви'}
+        </h1>
         {job.isError ? (
           <Failure error={job.error} />
         ) : !j ? (

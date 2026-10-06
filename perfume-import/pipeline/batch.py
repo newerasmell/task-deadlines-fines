@@ -410,3 +410,56 @@ def usage_total(result: BatchResult) -> Usage:
         for u in p.usage.values():
             total.add(Usage(**{k: v for k, v in u.items() if k != "cost_usd"}, cost=u["cost_usd"]))
     return total
+
+
+def extend_batch(
+    client,
+    items: list[tuple[InputRow, dict, Checked | None]],
+    group: Group,
+    stores: list[str],
+    profiles: dict[str, dict] | None = None,
+    batch_texts: bool | None = None,
+    progress: Callable[[str, int, int], None] | None = None,
+) -> list[ProductResult | None]:
+    """New stores for products already researched: (row, saved research, stored original picture) per product.
+    No research is paid again; each new store gets its picture composed, its own text (its style, or its
+    language's translation) and its fields. A product without saved research gives None."""
+    report = progress or (lambda stage, done, total: None)
+    products: list[ProductResult | None] = []
+    report("images", 0, len(items))
+    for row, raw, original in items:
+        if not raw:
+            products.append(None)
+            continue
+        p = ProductResult(row=row, research=from_saved(raw), reused_research=True)
+        p.research.raw = raw
+        if original is not None:
+            p.images = [original]
+            compose_step(p, group, stores)
+        products.append(p)
+
+    ready = [p for p in products if p is not None]
+    styles = [st for s in stores if (st := store_style(group.store(s), (profiles or {}).get(s), group))]
+    styled = {st.key for st in styles}
+    languages = [group.store(s).language for s in stores if s not in styled]
+    report("texts", 0, len(ready))
+    texts = generate_texts(
+        client,
+        [(facts_for_text(p.research), p.row.tester, p.tier) for p in ready],
+        group,
+        languages,
+        batch=batch_texts,
+        styles=styles,
+    )
+    for p, (master, by_target) in zip(ready, texts, strict=True):
+        p.master, p.texts = master, by_target
+        p.usage["description_en"] = master.usage.to_dict()
+        for target, t in by_target.items():
+            if target != "en":
+                p.usage[f"text_{target.removeprefix('store:')}"] = t.usage.to_dict()
+
+    report("fields", 0, len(ready))
+    for p in ready:
+        for store in stores:
+            p.stores[store] = store_fields(p, group, store, (profiles or {}).get(store))
+    return products

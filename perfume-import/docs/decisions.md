@@ -29,3 +29,13 @@ Users with scrypt password hashes, sessions as random HttpOnly cookies (only the
 admins create the others and enter Shopify access per store. Access is encrypted with Fernet; the key lives on
 the persistent media disk (or `PERFUME_SECRET_KEY`), not in the database, so a database copy reveals nothing.
 Values are write-only: the app shows only who set them and when, plus a "check connection" call.
+
+
+## 18. One text per store; adding stores reuses research
+
+A store with an accepted profile (example descriptions, HTML shape, length) gets its own description written
+from the English master in its own style, so two competitors in one language never share a text; stores without
+a profile share their language's translation. Its length is validated against the store's own range.
+Stores can be added to a researched batch (Product → „Добави магазини“): saved research and the stored
+original picture are reused, only the texts are paid (≈ $0.01 per text), and facts a person decided (EAN,
+vendor, gender…) are carried over to the new stores.

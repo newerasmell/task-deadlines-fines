@@ -1,12 +1,14 @@
 import { ImageOff } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { FieldPanel } from '../components/FieldPanel'
 import { Failure, Loading } from '../components/States'
 import { StatusMark } from '../components/StatusMark'
 import { BAR, TAG_TEXT, TINT } from '../lib/status'
 import { Button } from '../components/ui/button'
-import type { Batch, FieldRecord, Product, StoreInfo } from '../lib/api'
+import { Dialog } from '../components/ui/dialog'
+import { useQuery } from '@tanstack/react-query'
+import { api, type Batch, type FieldRecord, type Product, type StoreInfo } from '../lib/api'
 import { cn } from '../lib/cn'
 import {
   allFields,
@@ -371,7 +373,10 @@ function Cell({ field, selected, onClick }: { field?: FieldRecord; selected: boo
 function PricesSection({ batch, product }: { batch: Batch; product: Product }) {
   return (
     <section className="flex flex-col gap-2" aria-label="Цени и магазини">
-      <h2 className="m-0 text-base font-semibold">Цени и магазини</h2>
+      <div className="flex items-center gap-3">
+        <h2 className="m-0 grow text-base font-semibold">Цени и магазини</h2>
+        <AddStores batch={batch} />
+      </div>
       <div className="flex flex-col rounded-lg border border-line" role="table">
         <div
           role="row"
@@ -489,4 +494,89 @@ function shortReason(access: string | null | undefined): string | null {
   if (access.includes('домейн')) return 'няма Shopify адрес (Магазини → магазина)'
   if (access.includes('достъп')) return 'няма Shopify ключове (Магазини → магазина)'
   return access
+}
+
+/** More stores of the group for the whole batch: research is reused, only texts and pictures are made. */
+function AddStores({ batch }: { batch: Batch }) {
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [starting, setStarting] = useState(false)
+  const options = useQuery({ queryKey: ['store-options', batch.id], queryFn: () => api.storeOptions(batch.id), enabled: open })
+  if (batch.kind !== 'new') return null
+  const cost = options.data ? options.data.cost_per_text * (1 + picked.length) : 0
+
+  const start = async () => {
+    setStarting(true)
+    setError(null)
+    try {
+      const r = await api.addStores(batch.id, picked, true)
+      navigate(`/batches/new?job=${r.job_id}`)
+    } catch (e) {
+      setError((e as Error).message)
+      setStarting(false)
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" onClick={() => setOpen(true)}>
+        Добави магазини
+      </Button>
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Добави магазини към партидата"
+        description="Проучването се използва наново, без да се плаща. Всеки нов магазин получава своята снимка, свой текст по шаблона си и полетата си. Решенията ти за EAN, марка, пол и т.н. се пренасят."
+        footer={
+          <>
+            <Button onClick={() => setOpen(false)}>Откажи</Button>
+            <Button variant="primary" disabled={!picked.length || starting} onClick={() => void start()}>
+              {picked.length ? `Добави ${picked.length} за ≈ $${cost.toFixed(2)}` : 'Добави'}
+            </Button>
+          </>
+        }
+      >
+        {options.isPending ? (
+          <Loading what="магазините" />
+        ) : options.isError ? (
+          <Failure error={options.error} />
+        ) : !options.data.stores.length ? (
+          <span className="text-sm text-ink-2">Всички магазини от групата вече са в партидата.</span>
+        ) : (
+          <div className="flex max-h-[320px] flex-col gap-1.5 overflow-y-auto">
+            {options.data.stores.map((s) => {
+              const ready = s.template && !s.access
+              return (
+                <label key={s.key} className="flex items-start gap-2.5 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={picked.includes(s.key)}
+                    onChange={(e) => setPicked(e.target.checked ? [...picked, s.key] : picked.filter((k) => k !== s.key))}
+                  />
+                  <span
+                    aria-hidden
+                    className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', ready ? 'bg-ok' : s.template ? 'bg-warning' : 'bg-line')}
+                  />
+                  <span className="flex flex-col">
+                    {s.label} · {languageName(s.language)}
+                    <span className="text-xs text-ink-2">
+                      {!s.template
+                        ? 'без шаблон: текстът е общ превод на езика, заглавието по формулата на групата'
+                        : s.access
+                          ? `шаблон ✓ · ${shortReason(s.access)}`
+                          : 'шаблон ✓ · може да се публикува'}
+                    </span>
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        )}
+        {error && <span className="text-sm text-blocked-text">{error}</span>}
+      </Dialog>
+    </>
+  )
 }

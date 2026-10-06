@@ -259,11 +259,21 @@ export type Job = {
   batch_id: number | null
   cost_usd: number | null
   fast?: boolean
+  kind?: 'extend' // adding stores to a researched batch (db/extend.py)
+  target_batch_id?: number
   started_at?: number // unix seconds
   finished_at?: number | null
 }
 
 export type AccessInfo = { kind: 'client' | 'token'; updated_by: string | null; updated_at: string | null }
+
+export type StoreOptions = {
+  batch_id: number
+  products: number
+  present: string[]
+  stores: (StoreInfo & { template: boolean; access: string | null })[]
+  cost_per_text: number
+}
 
 export type User = { id: number; name: string; is_admin: boolean; disabled: boolean }
 
@@ -356,6 +366,9 @@ export const api = {
   startBatch: (form: FormData) => upload<{ job_id: string }>('/api/batches/start', form),
   job: (id: string) => request<Job>(`/api/jobs/${id}`),
   latestJob: () => request<Job | null>('/api/jobs/latest'),
+  storeOptions: (batchId: number) => request<StoreOptions>(`/api/batches/${batchId}/stores/options`),
+  addStores: (batchId: number, stores: string[], fast: boolean) =>
+    post<{ job_id: string }>(`/api/batches/${batchId}/stores`, { stores, fast }),
   audit: (batchId: number) => request<AuditSummary>(`/api/batches/${batchId}/audit`),
   auditItems: (batchId: number, rule: string, limit: number) =>
     request<{ rule: string; label: string; total: number; items: AuditItem[] }>(
