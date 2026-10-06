@@ -1,6 +1,6 @@
 """One way to call Claude for the whole pipeline (research, generation, vocab/glossary suggestions).
 
-Every call: Claude Sonnet 5.5 (cost target $0.10 per product, docs/decisions.md), effort per task, structured
+Every call: Claude Sonnet 5.5 (cost target $0.125 per product, docs/decisions.md), effort per task, structured
 JSON output, automatic prompt caching, and its cost recorded. Interactive calls stream, resume `pause_turn` and
 use the server-side fallback on a refusal. Texts can go through the Message Batches API at half price
 (`ask_batch`; batches do not accept `fallbacks`, so a refusal there just blocks the field).

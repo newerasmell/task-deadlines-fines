@@ -42,4 +42,4 @@ python scripts/research_again.py --ean 3614270581656 --tier deep                
 python scripts/suggest_vocab.py --audit <export.csv> --group group-1 --store <key> [--save]                # решение #5
 python scripts/build_glossary.py config/glossary/pairs/el-hr.yaml                                         # решение #7
 ```
-Режими: евтин (Sonnet 5.5, ≤ $0.10/продукт, по подразбиране) и задълбочен (Opus 5.5, ≤ $0.50); колона `research` във входа избира за всеки ред. Цената на всяко повикване се записва (`events.kind = ai_usage`). `pytest -m live` пуска един реален продукт.
+Режими: евтин (Sonnet 5.5, ≤ $0.125/продукт (таван $0.15), по подразбиране) и задълбочен (Opus 5.5, ≤ $0.50, таван $0.60); колона `research` във входа избира за всеки ред. Цената на всяко повикване се записва (`events.kind = ai_usage`). `pytest -m live` пуска един реален продукт.

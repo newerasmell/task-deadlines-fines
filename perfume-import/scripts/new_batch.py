@@ -50,7 +50,7 @@ def main() -> int:
     ap.add_argument("--no-save", action="store_true", help="не записвай в базата")
     ap.add_argument("--no-batch", action="store_true", help="евтините текстове без Batch API: по-бързо, 2× по-скъпо")
     ap.add_argument(
-        "--max-cost", type=float, help="лимит в USD на продукт за всички (по подразбиране по режим: 0.10 / 0.50)"
+        "--max-cost", type=float, help="лимит в USD на продукт за всички (по подразбиране по режим: 0.125 / 0.50)"
     )
     ap.add_argument(
         "--tier", default="economy", choices=list(TIERS), help="режим за партидата (по подразбиране economy)"

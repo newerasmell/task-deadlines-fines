@@ -62,7 +62,7 @@ TIERS = {
         text_model=SONNET,
         text_thinking=NO_THINKING,
         text_batch=True,
-        max_cost=0.10,
+        max_cost=0.125,
         text_cost=0.005,
     ),
     "deep": Tier(

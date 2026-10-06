@@ -86,7 +86,7 @@ def test_budget_is_checked_against_each_products_tier(monkeypatch):
     monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
     rows = read_input(ROOT / "input" / "sample-5.csv", GROUP, STORES)[:2]
     result = run_batch(FakeClient(responder=responder), rows, GROUP, STORES, "test", deep_eans={rows[1].ean})
-    assert [p.max_cost for p in result.products] == [0.10, 0.50]
+    assert [p.max_cost for p in result.products] == [0.125, 0.50]
     forced = run_batch(FakeClient(responder=responder), rows, GROUP, STORES, "test", max_cost=0.0)
     assert {o["limit_usd"] for o in forced.summary()["over_budget"]} == {0.0}
 
@@ -121,3 +121,13 @@ def test_research_again_rebuilds_the_saved_input(monkeypatch):
         with Session(engine()) as session, session.begin():
             session.execute(delete(Event).where(Event.batch_id == batch_id))
             session.execute(delete(Batch).where(Batch.id == batch_id))
+
+
+def test_economy_ceiling_leaves_room_for_the_image_lookup():
+    """The image is required: a typical economy research (Gucci Bamboo, live run: $0.083) must still afford the
+    image lookup and the three texts within the ceiling."""
+    from pipeline.tiers import ceiling
+
+    t = TIERS["economy"]
+    assert ceiling(t.max_cost) == 0.15
+    assert 0.083 + t.image_search_cost + 3 * t.text_cost <= ceiling(t.max_cost)
