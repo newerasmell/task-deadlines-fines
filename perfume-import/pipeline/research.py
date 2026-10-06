@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 from pipeline import ean
-from pipeline.ai import AIError, Result, Usage, ask
+from pipeline.ai import AIError, Usage, ask
 from pipeline.config import Group
 from pipeline.fields import Field
 from pipeline.input import InputRow
@@ -31,6 +31,7 @@ official product page, the Fragrantica page, and one major retailer (Notino, Dou
 brand's site for concentration, notes, ingredients (INCI) and the official packshot."""
 
 RULES = """Rules:
+- Always run web_search before answering. Never answer from memory: an answer without a search is rejected.
 - Every fact needs sources: for each source give its URL, what it literally says, and whether it supports the
   value you chose. Two independent websites per fact when the results allow it.
 - gender and fragrance_family: pick only from the allowed values given. Put the source's own wording in "says".
@@ -221,28 +222,39 @@ def strip_brand(fields: dict[str, Field]) -> None:
             return
 
 
+NO_SEARCH_RETRY = "\n\nYour previous answer ran no web search. Search now; answer only from the results."
+
+
 def research_product(
     client, row: InputRow, group: Group, tier: Tier | None = None, budget: float | None = None
 ) -> Research:
     tier = tier or TIERS[DEFAULT_TIER]
+    spent, result = Usage(), None
     try:
-        result: Result = ask(
-            client,
-            system=system_prompt(tier),
-            prompt=prompt(row),
-            schema=schema(group),
-            effort=tier.research_effort,
-            web=True,
-            tools=tier.web_tools(),
-            model=tier.model,
-            max_tokens=tier.research_max_tokens,
-            budget=budget,
-        )
+        # At low effort the model sometimes answers from memory without one search: nothing it says is then
+        # verifiable. Asked once more, insisting; a second answer without a search is kept but has no sources.
+        for attempt in range(2):
+            result = ask(
+                client,
+                system=system_prompt(tier),
+                prompt=prompt(row) + (NO_SEARCH_RETRY if attempt else ""),
+                schema=schema(group),
+                effort=tier.research_effort,
+                web=True,
+                tools=tier.web_tools(),
+                model=tier.model,
+                max_tokens=tier.research_max_tokens,
+                budget=None if budget is None else budget - spent.cost,
+            )
+            spent.add(result.usage)
+            if result.sources or result.usage.web_searches:
+                break
     except AIError as exc:
         blocked = {
             k: Field(key=k, value=None, origin="ai_research", status="blocked", message=str(exc)) for k in FACT_KEYS
         }
-        return Research(fields=blocked, images=[], raw={}, error=str(exc))
+        return Research(fields=blocked, images=[], raw={}, usage=spent, error=str(exc))
+    result.usage = spent
     data = result.data
     seen = {s["url"] for s in result.sources}
     fields = {k: fact_field(k, data[k], seen) for k in FACT_KEYS}

@@ -228,3 +228,14 @@ def test_research_stops_resuming_at_its_budget():
     with pytest.raises(AIError, match="тавана"):
         ask(client, system="s", prompt="p", schema=SCHEMA, web=True, budget=0.01)
     assert len(client.calls) == 1
+
+
+def test_an_answer_without_any_search_is_asked_again():
+    client = FakeClient(message(research_answer()), message(research_answer(), urls=[A, B, C], searches=2))
+    r = research_product(client, ROW, load_group("group-1"))
+    assert len(client.calls) == 2 and "ran no web search" in client.calls[1]["messages"][0]["content"]
+    assert r.fields["brand"].status == "ok" and r.usage.web_searches == 2
+    lazy = FakeClient(message(research_answer()), message(research_answer()))
+    r = research_product(lazy, ROW, load_group("group-1"))
+    assert len(lazy.calls) == 2  # asked once more, then kept: nothing it says counts as sourced
+    assert r.fields["brand"].status == "suggested" and r.fields["brand"].sources == []
