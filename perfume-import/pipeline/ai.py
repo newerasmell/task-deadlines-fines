@@ -134,13 +134,16 @@ def ask(
     thinking: dict | None = None,
     model: str = MODEL,
     tools: list[dict] | None = None,
+    budget: float | None = None,
 ) -> Result:
-    """One structured answer. Raises AIError with a Bulgarian message the field can show."""
+    """One structured answer. Raises AIError with a Bulgarian message the field can show.
+
+    budget (USD): a paused server-tool turn is resumed only while the call has cost less than this."""
     import anthropic
 
     try:
         web_tools = (tools or WEB_TOOLS) if web else None
-        return _ask(client, system, prompt, schema, effort, web_tools, max_tokens, thinking, model)
+        return _ask(client, system, prompt, schema, effort, web_tools, max_tokens, thinking, model, budget)
     except anthropic.APIError as exc:
         # One product's API failure (400, overload, network) blocks that product, not the whole batch.
         raise AIError(f"Грешка от Claude API: {_api_detail(exc)}") from exc
@@ -169,7 +172,7 @@ def params(*, system, prompt, schema, effort, max_tokens, thinking=None, tools=N
     return body
 
 
-def _ask(client, system, prompt, schema, effort, tools, max_tokens, thinking, model) -> Result:
+def _ask(client, system, prompt, schema, effort, tools, max_tokens, thinking, model, budget=None) -> Result:
     body = params(
         system=system,
         prompt=prompt,
@@ -189,6 +192,8 @@ def _ask(client, system, prompt, schema, effort, tools, max_tokens, thinking, mo
         sources += _sources(message.content)
         if message.stop_reason != "pause_turn":
             break
+        if budget is not None and usage.cost >= budget:
+            raise AIError(f"Проучването спря: стигна тавана ${budget:.2f} на продукт ({usage.cost_usd:.3f}).")
         # Server tools hit their iteration limit: resend the paused turn and the server resumes it.
         body["messages"] = [first_turn, {"role": "assistant", "content": message.content}]
     else:

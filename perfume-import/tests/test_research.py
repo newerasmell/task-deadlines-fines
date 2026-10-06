@@ -3,7 +3,7 @@ import pytest
 from pipeline.ai import FALLBACK_BETA, MODEL, AIError, ask
 from pipeline.config import load_group
 from pipeline.input import InputRow
-from pipeline.research import fact_field, research_product
+from pipeline.research import fact_field, from_saved, research_product
 from tests.fake_ai import FakeClient, message
 
 A, B, C = "https://www.fragrantica.com/x", "https://www.notino.gr/y", "https://brand.com/z"
@@ -27,8 +27,9 @@ def research_answer(**overrides):
         "base_note": {"value": ["vanilla"], "sources": [src(A), src("https://invented.example/p")]},
         "ingredients": {"value": "", "sources": []},
         "images": [{"url": C + ".png", "width": 2000, "height": 2000, "source": "brand.com"}],
-        "matches_input": True,
+        "mismatch": "none",
         "problem": "",
+        "ean_for_volume": {"value": "", "sources": []},
     }
     data.update(overrides)
     return data
@@ -101,7 +102,7 @@ def test_schema_shares_the_sources_list():
     s = schema(load_group("group-1"))
     assert "items" in s["$defs"]["sources"]
     facts = [v for v in s["properties"].values() if "sources" in v.get("properties", {})]
-    assert len(facts) == 9 and all(f["properties"]["sources"] == {"$ref": "#/$defs/sources"} for f in facts)
+    assert len(facts) == 10 and all(f["properties"]["sources"] == {"$ref": "#/$defs/sources"} for f in facts)
 
 
 def test_status_rules_for_facts():
@@ -136,10 +137,10 @@ def test_research_product_end_to_end():
     assert "EAN: 3349668571970" in client.calls[0]["messages"][0]["content"]
 
 
-def test_mismatch_and_refusal_block_the_product():
-    client = FakeClient(message(research_answer(matches_input=False, problem="EAN is Black XS"), urls=[A, B, C]))
+def test_unknown_product_and_refusal_block_the_product():
+    client = FakeClient(message(research_answer(mismatch="product", problem="no such perfume"), urls=[A, B, C]))
     r = research_product(client, ROW, load_group("group-1"))
-    assert r.fields["name"].status == "blocked" and "Black XS" in r.fields["name"].message
+    assert r.fields["name"].status == "blocked" and "no such perfume" in r.fields["name"].message
     r = research_product(FakeClient(message(stop_reason="refusal", text="")), ROW, load_group("group-1"))
     assert r.error and all(f.status == "blocked" for f in r.fields.values())
 
@@ -189,3 +190,41 @@ def test_brand_is_removed_from_the_name():
     r = research_product(client, ROW, load_group("group-1"))
     assert r.fields["name"].value == "Code Profumo"
     assert (r.fields["name"].status, r.fields["name"].previous) == ("fixed", "Armani Code Profumo")
+
+
+GOOD_EAN = "3614270581670"
+
+
+def test_wrong_ean_keeps_researching_by_name_and_suggests_the_ean_for_the_volume():
+    answer = research_answer(
+        mismatch="ean",
+        problem="EAN 3349668571970 is the 30 ml bottle.",
+        ean_for_volume={"value": GOOD_EAN, "sources": [src(A, says=GOOD_EAN), src(B, says=GOOD_EAN)]},
+    )
+    r = research_product(FakeClient(message(answer, urls=[A, B, C])), ROW, load_group("group-1"))
+    assert r.fields["name"].status == "ok"  # nothing is blocked: every later step runs
+    assert r.ean_check.problem.startswith("EAN 3349668571970")
+    assert r.ean_check.suggestion.value == GOOD_EAN and r.ean_check.suggestion.status == "ok"
+
+
+def test_suggested_ean_with_a_bad_check_digit_is_dropped():
+    answer = research_answer(
+        mismatch="ean", problem="other size", ean_for_volume={"value": "3614270581671", "sources": [src(A)]}
+    )
+    r = research_product(FakeClient(message(answer, urls=[A, B, C])), ROW, load_group("group-1"))
+    assert r.ean_check and r.ean_check.suggestion.value == ""
+
+
+def test_saved_research_from_before_the_mismatch_key_still_blocks():
+    raw = research_answer(problem="EAN is Black XS")
+    del raw["mismatch"], raw["ean_for_volume"]
+    raw["matches_input"] = False
+    r = from_saved(raw)
+    assert r.fields["name"].status == "blocked" and r.ean_check is None
+
+
+def test_research_stops_resuming_at_its_budget():
+    client = FakeClient(message(stop_reason="pause_turn", searches=3), message({"ok": 1}))
+    with pytest.raises(AIError, match="тавана"):
+        ask(client, system="s", prompt="p", schema=SCHEMA, web=True, budget=0.01)
+    assert len(client.calls) == 1

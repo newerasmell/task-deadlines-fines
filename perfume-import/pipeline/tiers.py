@@ -10,6 +10,11 @@ from dataclasses import dataclass
 SONNET = "claude-sonnet-5-5"
 OPUS = "claude-opus-5-5"
 NO_THINKING = {"type": "between_tools"}  # Sonnet 5.5's lowest thinking setting (needs effort <= high)
+OVERRUN = 0.20  # a product may go at most 20% over its limit; a step that would pass that is skipped
+
+
+def ceiling(limit: float) -> float:
+    return round(limit * (1 + OVERRUN), 4)
 
 
 @dataclass(frozen=True)
@@ -25,8 +30,10 @@ class Tier:
     text_model: str
     text_thinking: dict | None  # None = the model's default (Opus 5.5 cannot turn thinking off)
     text_batch: bool  # texts through the Message Batches API at half price
-    max_cost: float  # USD per product, everything included
+    max_cost: float  # USD per product, everything included; hard ceiling = ceiling(max_cost)
+    text_cost: float  # expected USD per text (English master or one translation), measured on live runs
     image_search: bool = True  # one small extra lookup when research brought no working packshot
+    image_search_cost: float = 0.045
 
     def web_tools(self) -> list[dict]:
         tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": self.searches}]
@@ -56,6 +63,7 @@ TIERS = {
         text_thinking=NO_THINKING,
         text_batch=True,
         max_cost=0.10,
+        text_cost=0.005,
     ),
     "deep": Tier(
         name="deep",
@@ -70,6 +78,7 @@ TIERS = {
         text_thinking=None,
         text_batch=False,
         max_cost=0.50,
+        text_cost=0.02,
     ),
 }
 DEFAULT_TIER = "economy"

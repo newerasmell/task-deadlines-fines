@@ -108,17 +108,31 @@ def test_texts_go_through_two_message_batches(rows, monkeypatch):
     monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
     monkeypatch.setattr("pipeline.ai.time.sleep", lambda s: None)
     client = FakeClient(responder=responder)
-    result = run_batch(client, rows, GROUP, STORES, "test", batch_texts=True, max_cost=0.0001)
+    result = run_batch(client, rows, GROUP, STORES, "test", batch_texts=True, max_cost=0.055)
     assert client.batches == [["m0", "m1"], ["t0-el", "t0-hr", "t1-el", "t1-hr"]]
     gr = result.products[0].stores["premierparfums"]
     assert gr["body_html"].value.startswith("<p>Το Paco")
     s = result.summary()
-    assert s["max_cost_usd"] == 0.0001 and len(s["over_budget"]) == 2
+    # over the limit is reported, but every step ran: the product stays under the ceiling (limit + 20%)
+    assert s["max_cost_usd"] == 0.055 and len(s["over_budget"]) == 2 and not s["skipped"]
     assert set(s["over_budget"][0]["steps"]) >= {"research", "description_en", "text_el", "text_hr"}
+    assert all(0.055 < o["cost_usd"] <= 0.066 for o in s["over_budget"])
+
+
+def test_steps_that_would_pass_the_ceiling_are_skipped(rows, monkeypatch):
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    client = FakeClient(responder=responder)
+    result = run_batch(client, rows, GROUP, STORES, "test", batch_texts=False, max_cost=0.0001)
+    s = result.summary()
+    assert {k for skip in s["skipped"] for k in skip["steps"]} == {"texts"}
+    p = result.products[0]
+    assert set(p.usage) == {"research"}  # nothing paid after the research
+    body = p.stores["premierparfums"]["body_html"]
+    assert body.status == "blocked" and "тавана $0.00" in body.message
 
 
 def test_mismatch_keeps_the_found_name_in_the_text_facts():
-    """A size/EAN mismatch blocks the product via `name`, but the prose still needs the fragrance's name."""
+    """research_mismatch blocks the product via `name`, but the prose still needs the fragrance's name."""
     name = Field(key="name", value="Code Profumo", origin="ai_research", status="ok")
     name.flag("blocked", "Продуктът не съвпада с входа: EAN is the 60 ml bottle", "research_mismatch")
     failed = Field(key="concentration", value="Eau de Parfum", origin="ai_research", status="ok")
@@ -126,3 +140,25 @@ def test_mismatch_keeps_the_found_name_in_the_text_facts():
     brand = Field(key="brand", value="Giorgio Armani", origin="ai_research", status="ok")
     research = Research(fields={"brand": brand, "name": name, "concentration": failed}, images=[], raw={})
     assert facts_for_text(research) == {"brand": "Giorgio Armani", "name": "Code Profumo"}
+
+
+def test_wrong_ean_is_flagged_with_the_right_one_and_the_product_is_built(rows, monkeypatch):
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    good = "3614270581670"
+    sources = [{"url": A, "says": good, "supports": True}, {"url": B, "says": good, "supports": True}]
+
+    def wrong_ean(kwargs):
+        if kwargs.get("tools"):
+            answer = research_answer(
+                mismatch="ean", problem="It is the 30 ml EAN.", ean_for_volume={"value": good, "sources": sources}
+            )
+            return message(answer, urls=[A, B, C], searches=4)
+        return responder(kwargs)
+
+    result = run_batch(FakeClient(responder=wrong_ean), rows[:1], GROUP, STORES, "test", batch_texts=False)
+    gr = result.products[0].stores["premierparfums"]
+    assert gr["name"].status == "ok" and gr["body_html"].value.startswith("<p>Το Paco")
+    code = gr["ean"]
+    assert code.value == rows[0].ean and code.status == "suggested" and code.rule == "ean_mismatch"
+    assert code.alternatives == [good] and len(code.sources) == 2
+    assert "30 ml EAN" in code.message and good in code.message

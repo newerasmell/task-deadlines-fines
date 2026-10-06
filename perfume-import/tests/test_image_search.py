@@ -63,3 +63,10 @@ def test_failed_lookup_leaves_the_image_blocked_with_the_reason():
 
     result = research_step(FakeClient(responder=respond), ROW, GROUP, tier=TIERS["economy"])
     assert result.images == [] and "отказа" in result.research.raw["_image_search_error"]
+
+
+def test_no_lookup_when_it_would_pass_the_ceiling():
+    client = FakeClient(responder=responder)
+    result = research_step(client, ROW, GROUP, tier=TIERS["economy"], max_cost=0.05, texts=3)
+    assert len(client.calls) == 1 and "image_search" not in result.usage
+    assert "таван" in result.skipped["image_search"]

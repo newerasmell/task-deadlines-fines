@@ -21,7 +21,7 @@ from pipeline.ai import api_key  # noqa: E402
 from pipeline.batch import resolve_tier  # noqa: E402
 from pipeline.config import load_group  # noqa: E402
 from pipeline.input import InputError, read_input  # noqa: E402
-from pipeline.tiers import TIERS  # noqa: E402
+from pipeline.tiers import TIERS, ceiling  # noqa: E402
 
 LABELS = {
     "ok": "ok",
@@ -90,7 +90,8 @@ def main() -> int:
         per_product = costs["research"] + factor * (costs["description_en"] + costs["language"] * len(languages))
         total += per_product * n
         limit = args.max_cost if args.max_cost is not None else TIERS[name].max_cost
-        lines.append(f"  {TIERS[name].label}: {n} × ≈ ${per_product:.3f} ({source}; лимит ${limit:.2f})")
+        cap = f"лимит ${limit:.2f}, таван ${ceiling(limit):.2f}"
+        lines.append(f"  {TIERS[name].label}: {n} × ≈ ${per_product:.3f} ({source}; {cap})")
     print(
         f"{len(rows)} продукта × {len(stores)} магазина, езици: {', '.join(languages) or 'en'}. "
         f"Очаквана цена ≈ ${total:.2f}."
@@ -149,6 +150,9 @@ def main() -> int:
         print(
             f"  Над лимита ${over['limit_usd']:.2f} ({over['tier']}): {over['input']} ${over['cost_usd']:.3f} ({steps})"
         )
+    for skip in summary["skipped"]:
+        for step, why in skip["steps"].items():
+            print(f"  {skip['input']}, {step}: {why}")
     print(f"Детайли по полета: {out}")
     if not args.no_save:
         from db.repo import save_batch

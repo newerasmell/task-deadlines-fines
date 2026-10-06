@@ -2,12 +2,14 @@
 
 The model searches the web and returns facts with sources. Code, not the model, decides the status:
 a fact is ok only when at least two different websites support it, and only URLs that the web tools actually
-returned count as sources (an invented URL is ignored). EAN and price never come from here.
+returned count as sources (an invented URL is ignored). Price never comes from here; an EAN only as a sourced
+suggestion when the input EAN belongs to another size or product (decision #10), never written over the input.
 """
 
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
+from pipeline import ean
 from pipeline.ai import AIError, Result, Usage, ask
 from pipeline.config import Group
 from pipeline.fields import Field
@@ -39,7 +41,12 @@ RULES = """Rules:
 - images: packshot image URLs seen in the results (official site first), with width/height if known (0 if not).
 - Never invent an EAN, a price, a launch year or a perfumer. If sources disagree, choose the better-supported
   value and list the disagreeing source with supports=false.
-- If the EAN or name in the request clearly belongs to a different product, set matches_input=false and explain."""
+- Research the fragrance by its name and volume, even when the EAN in the request looks wrong.
+- mismatch: "none" when the request's EAN belongs to this fragrance at this volume (or nothing contradicts it);
+  "ean" when sources show the EAN belongs to another size, edition, set or product; "product" only when the
+  name itself identifies no product or several equally. Explain any mismatch in problem.
+- ean_for_volume: the EAN a source literally shows for this fragrance, concentration and volume (the tester EAN
+  if the request is a tester and one is shown), with its sources; an empty string when no result shows it."""
 
 
 def system_prompt(tier: Tier) -> str:
@@ -102,8 +109,9 @@ def schema(group: Group) -> dict:
                 "additionalProperties": False,
             },
         },
-        "matches_input": {"type": "boolean"},
+        "mismatch": {"type": "string", "enum": ["none", "ean", "product"]},
         "problem": {"type": "string"},
+        "ean_for_volume": _fact({"type": "string"}),
     }
     return {
         "type": "object",
@@ -176,12 +184,19 @@ def fact_field(key: str, fact: dict, seen_urls: set[str], origin: str = "ai_rese
 
 
 @dataclass
+class EanCheck:
+    problem: str
+    suggestion: Field  # value "" when no source shows the EAN for this volume
+
+
+@dataclass
 class Research:
     fields: dict[str, Field]
     images: list[dict]
     raw: dict
     usage: Usage = field(default_factory=Usage)
     error: str | None = None
+    ean_check: "EanCheck | None" = None  # the input EAN belongs to another size or product
 
     def value(self, key: str):
         f = self.fields.get(key)
@@ -203,7 +218,9 @@ def strip_brand(fields: dict[str, Field]) -> None:
             return
 
 
-def research_product(client, row: InputRow, group: Group, tier: Tier | None = None) -> Research:
+def research_product(
+    client, row: InputRow, group: Group, tier: Tier | None = None, budget: float | None = None
+) -> Research:
     tier = tier or TIERS[DEFAULT_TIER]
     try:
         result: Result = ask(
@@ -216,6 +233,7 @@ def research_product(client, row: InputRow, group: Group, tier: Tier | None = No
             tools=tier.web_tools(),
             model=tier.model,
             max_tokens=tier.research_max_tokens,
+            budget=budget,
         )
     except AIError as exc:
         blocked = {
@@ -226,14 +244,14 @@ def research_product(client, row: InputRow, group: Group, tier: Tier | None = No
     seen = {s["url"] for s in result.sources}
     fields = {k: fact_field(k, data[k], seen) for k in FACT_KEYS}
     strip_brand(fields)
-    if not data["matches_input"]:
-        fields["name"].flag("blocked", f"Продуктът не съвпада с входа: {data['problem']}", "research_mismatch")
-    return Research(
+    research = Research(
         fields=fields,
         images=data["images"],
         raw={**data, "_sources_seen": sorted(seen)},
         usage=result.usage,
     )
+    _mismatch(research, data, seen)
+    return research
 
 
 def from_saved(raw: dict) -> Research:
@@ -241,9 +259,30 @@ def from_saved(raw: dict) -> Research:
     seen = set(raw.get("_sources_seen", []))
     fields = {k: fact_field(k, raw[k], seen) for k in FACT_KEYS if k in raw}
     strip_brand(fields)
-    if raw.get("matches_input") is False:
-        fields["name"].flag("blocked", f"Продуктът не съвпада с входа: {raw.get('problem')}", "research_mismatch")
-    return Research(fields=fields, images=raw.get("images", []), raw=raw)
+    research = Research(fields=fields, images=raw.get("images", []), raw=raw)
+    _mismatch(research, raw, seen)
+    return research
+
+
+def mismatch_kind(raw: dict) -> str:
+    """Research saved before the "mismatch" key had only matches_input; false then meant another product."""
+    if "mismatch" in raw:
+        return raw["mismatch"]
+    return "product" if raw.get("matches_input") is False else "none"
+
+
+def _mismatch(research: Research, raw: dict, seen: set[str]) -> None:
+    """A wrong EAN does not stop the product (decision #10): the fragrance is researched by its name and the
+    EAN is flagged with the EAN the sources give for this volume. Only an unidentifiable name blocks."""
+    kind, problem = mismatch_kind(raw), raw.get("problem") or ""
+    if kind == "product":
+        research.fields["name"].flag("blocked", f"Продуктът не съвпада с входа: {problem}", "research_mismatch")
+    elif kind == "ean":
+        found = raw.get("ean_for_volume") or {"value": "", "sources": []}
+        suggestion = fact_field("ean", {**found, "value": ean.clean(found["value"] or "")}, seen)
+        if suggestion.value and ean.problem(suggestion.value):
+            suggestion.value = ""
+        research.ean_check = EanCheck(problem=problem, suggestion=suggestion)
 
 
 IMAGE_SYSTEM = """You find packshot images for one perfume for an online shop.
@@ -280,7 +319,9 @@ def find_images(client, row: InputRow, research: Research) -> tuple[list[dict], 
     brand, name = research.value("brand") or "", research.value("name") or row.name
     concentration = research.value("concentration") or ""
     product = " ".join(x for x in (brand, name, concentration) if x)
-    prompt = f"Perfume: {product}\nEAN: {row.ean or 'unknown'}\nFind its packshot image URLs."
+    code = row.ean if not research.ean_check else research.ean_check.suggestion.value  # never the wrong EAN
+    volume = f"\nVolume: {row.ml:g} ml" if row.ml else ""
+    prompt = f"Perfume: {product}{volume}\nEAN: {code or 'unknown'}\nFind its packshot image URLs."
     try:
         result = ask(
             client,

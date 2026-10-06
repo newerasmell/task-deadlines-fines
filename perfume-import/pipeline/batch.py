@@ -17,8 +17,8 @@ from pipeline.fields import SEVERITY, Field, worst
 from pipeline.generate import NOTE_KEYS, Text, generate_texts, text_fields
 from pipeline.images import Checked, check_all, image_field
 from pipeline.input import InputRow
-from pipeline.research import Research, find_images, from_saved, research_product
-from pipeline.tiers import DEFAULT_TIER, TIERS, Tier, tier
+from pipeline.research import EanCheck, Research, find_images, from_saved, research_product
+from pipeline.tiers import DEFAULT_TIER, OVERRUN, TIERS, Tier, ceiling, tier
 from pipeline.validate import Context, validate_batch, validate_product
 
 MAX_PARALLEL = 10  # SPEC: one researcher per product, at most 10 at a time
@@ -37,10 +37,25 @@ class ProductResult:
     images: list[Checked] = field(default_factory=list)  # downloaded and measured, shared by all stores
     tier: Tier = field(default_factory=lambda: TIERS[DEFAULT_TIER])
     max_cost: float | None = None
+    skipped: dict[str, str] = field(default_factory=dict)  # step -> why it was not run (the cost ceiling)
 
     @property
     def cost_usd(self) -> float:
         return round(sum(u["cost_usd"] for u in self.usage.values()), 4)
+
+    @property
+    def ceiling(self) -> float:
+        return ceiling(self.max_cost if self.max_cost is not None else self.tier.max_cost)
+
+    def affords(self, step: str, expected: float) -> bool:
+        """Run a paid step only if the product stays within its ceiling (limit + 20%) afterwards."""
+        if self.cost_usd + expected <= self.ceiling:
+            return True
+        self.skipped[step] = (
+            f"Пропуснато: ${self.cost_usd:.3f} похарчени + ≈${expected:.3f} за тази стъпка минава тавана "
+            f"${self.ceiling:.2f} (лимит + {OVERRUN:.0%})."
+        )
+        return False
 
 
 @dataclass
@@ -84,6 +99,7 @@ class BatchResult:
                 for p in self.products
                 if p.max_cost is not None and p.cost_usd > p.max_cost
             ],
+            "skipped": [{"input": p.row.name, "steps": p.skipped} for p in self.products if p.skipped],
         }
 
 
@@ -141,15 +157,45 @@ def store_fields(result: ProductResult, group: Group, store_key: str) -> dict[st
         gender = research.value("gender")
         fields["google.gender"] = Field("google.gender", google_gender(gender, group), "template", "ok")
         fields["image"] = image_field(result.images, group.spec.rules.image_min_height)
+        if "image_search" in result.skipped and fields["image"].status == "blocked":
+            fields["image"].message += " Търсене на снимка: " + result.skipped["image_search"]
+        if research.ean_check:
+            flag_ean(fields["ean"], research.ean_check, row)
 
     text = result.texts.get(store.language)
     if text and result.master:
         fields.update(text_fields(text, result.master, group))
     else:
-        fields["body_html"] = Field("body_html", "", "ai_generated", "blocked", message="Описанието не е генерирано.")
+        why = result.skipped.get("texts", "")
+        fields["body_html"] = Field(
+            "body_html", "", "ai_generated", "blocked", message=f"Описанието не е генерирано. {why}".strip()
+        )
     fields["compare_at"] = Field("compare_at", "", "input", "ok")
     validate_product(fields, Context(group, store))
     return fields
+
+
+def flag_ean(f: Field, check: EanCheck, row: InputRow) -> None:
+    """The input EAN stays (SKU, title and the rest are built from it); the app shows the sourced EAN for this
+    volume as the alternative to accept. suggested, so nothing uploads until a person decides."""
+    volume = f"{row.ml:g} ml" if row.ml else "този обем"
+    found = check.suggestion
+    f.sources = found.sources
+    if found.value and found.value != f.value:
+        f.alternatives = [found.value]
+        f.confidence = found.confidence
+        f.flag(
+            "suggested",
+            f"EAN {f.value} не е за този продукт/обем: {check.problem} За {volume} източниците дават {found.value}"
+            f"{'' if found.status == 'ok' else ' (само един източник, провери)'}. Приеми го или остави входния.",
+            "ean_mismatch",
+        )
+    else:
+        f.flag(
+            "suggested",
+            f"EAN {f.value} не е за този продукт/обем: {check.problem} EAN за {volume} не е намерен; провери ръчно.",
+            "ean_mismatch",
+        )
 
 
 def research_step(
@@ -160,21 +206,29 @@ def research_step(
     refresh: bool = False,
     fetch_image: Callable[[str], bytes] | None = None,
     tier: Tier | None = None,
+    max_cost: float | None = None,
+    texts: int = 1,
 ) -> ProductResult:
+    """texts: how many texts this product still needs (English + translations); their expected cost is kept
+    in reserve, so the optional image lookup never eats the budget for the description."""
     tier = tier or TIERS[DEFAULT_TIER]
-    result = ProductResult(row=row, tier=tier)
+    result = ProductResult(row=row, tier=tier, max_cost=max_cost if max_cost is not None else tier.max_cost)
     raw = None if refresh or not row.ean else saved_research(row.ean)
     if raw and not good_enough(raw, tier):
         raw = None  # saved economy research does not satisfy a deep request
     if raw:
         result.research, result.reused_research = from_saved(raw), True
     else:
-        result.research = research_product(client, row, group, tier)
+        result.research = research_product(client, row, group, tier, budget=result.ceiling)
         result.research.raw["_tier"] = tier.name
         result.usage["research"] = result.research.usage.to_dict()
     if not result.research.error:
         result.images = check_all(result.research.images, fetch_image)
-        if tier.image_search and not any(c.ok for c in result.images):
+        if (
+            tier.image_search
+            and not any(c.ok for c in result.images)
+            and result.affords("image_search", tier.image_search_cost + texts * tier.text_cost)
+        ):
             extra, usage, error = find_images(client, row, result.research)
             result.usage["image_search"] = usage.to_dict()
             known = {c.url for c in result.images}
@@ -222,18 +276,19 @@ def run_batch(
     (resolve_tier): economy texts go through one Message Batch per round, deep texts are interactive.
     batch_texts=True/False forces all texts one way. max_cost overrides every tier's own limit."""
     tiers = [resolve_tier(r, default_tier, deep_eans) for r in rows]
+    languages = [group.store(s).language for s in stores]
+    n_texts = 1 + len(set(languages) - {"en"})
     with ThreadPoolExecutor(max_workers=max(1, min(workers, MAX_PARALLEL))) as pool:
         products = list(
             pool.map(
-                lambda rt: research_step(client, rt[0], group, saved_research, refresh, fetch_image, rt[1]),
+                lambda rt: research_step(
+                    client, rt[0], group, saved_research, refresh, fetch_image, rt[1], max_cost, n_texts
+                ),
                 zip(rows, tiers, strict=True),
             )
         )
-    for p in products:
-        p.max_cost = max_cost if max_cost is not None else p.tier.max_cost
 
-    ready = [p for p in products if not p.research.error]
-    languages = [group.store(s).language for s in stores]
+    ready = [p for p in products if not p.research.error and p.affords("texts", n_texts * p.tier.text_cost)]
     texts = generate_texts(
         client, [(facts_for_text(p.research), p.row.tester, p.tier) for p in ready], group, languages, batch=batch_texts
     )

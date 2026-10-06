@@ -10,7 +10,7 @@ Read before any work: `docs/SPEC.md` (architecture, data model, rules) and, for 
 3. Deterministic fields are built by code from the group template, never by the AI: title, handle, SKU (which carries the EAN, `SK{ean}`), ml, product type, fixed columns, the tester sentence. The AI only researches facts and writes prose.
 4. Controlled fields (gender, fragrance family) are picked from `vocab.yaml`. Free text is never written into them.
 5. English is the master for all localized content; every localized field stores and shows its English reference (`value_en`).
-6. The AI never guesses an EAN or a price. Missing ones are `blocked`.
+6. The AI never guesses an EAN or a price. Missing ones are `blocked`. When the input EAN belongs to another size or product, the EAN that sources show for this volume is offered only as a `suggested` alternative, never written over the input (decisions #11).
 7. Images are never upscaled. Below the minimum resolution → `warning`, keep the original.
 8. Nothing reaches Shopify unless it has no `blocked` fields and every `suggested` field has been accepted in the app.
 
