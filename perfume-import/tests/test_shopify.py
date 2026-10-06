@@ -152,3 +152,12 @@ def test_metafields_go_in_the_type_the_store_defined(fields):
     assert middle["type"] == "list.single_line_text_field" and middle["value"].startswith('["')
     assert sent[("custom", "product_milliliters")]["value"] == "110"
     assert sent[("custom", "gender")]["type"] == "single_line_text_field"  # no definition
+
+
+def test_every_upload_is_published_to_every_channel(fields):
+    fake = FakeShopify(publications=["Online Store", "Point of Sale", "Google & YouTube"])
+    result = upload_product(shop(fake), fields, "draft", None, None)
+    assert fake.published[result.product_id] == [f"gid://shopify/Publication/{i}" for i in range(3)]
+    assert "Публикуван в 3 канала" in result.notes[-1]
+    denied = upload_product(shop(FakeShopify(publish_denied=True)), fields, "draft", None, None)
+    assert denied.action == "created" and "write_publications" in denied.notes[-1]  # uploaded, says what to add

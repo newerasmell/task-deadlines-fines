@@ -15,7 +15,12 @@ class FakeShopify:
         throttle: int = 0,
         reject: str | None = None,
         definitions: dict[tuple[str, str], str] | None = None,
+        publications: list[str] | None = None,
+        publish_denied: bool = False,
     ):
+        self.publications = publications if publications is not None else ["Online Store", "Google & YouTube"]
+        self.publish_denied = publish_denied  # the app has no read_publications / write_publications
+        self.published: dict[str, list[str]] = {}  # product id -> publication ids
         self.definitions = definitions or {}  # (namespace, key) -> type, enforced like Shopify does
         self.products = {p["id"]: p for p in (products or [])}  # id -> {id, handle, title, sku, ...}
         self.calls: list[dict] = []
@@ -53,6 +58,14 @@ class FakeShopify:
         if "product(id:" in query:
             found = self.products.get(variables["id"])
             return self.ok({"product": found and {"id": found["id"]}})
+        if "publications(" in query:
+            if self.publish_denied:
+                return httpx.Response(200, json={"errors": [{"message": "Access denied for publications field."}]})
+            nodes = [{"id": f"gid://shopify/Publication/{i}", "name": n} for i, n in enumerate(self.publications)]
+            return self.ok({"publications": {"nodes": nodes}})
+        if "publishablePublish" in query:
+            self.published[variables["id"]] = [i["publicationId"] for i in variables["input"]]
+            return self.ok({"publishablePublish": {"userErrors": []}})
         if "metafieldDefinitions" in query:
             nodes = [{"namespace": n, "key": k, "type": {"name": t}} for (n, k), t in self.definitions.items()]
             return self.ok(

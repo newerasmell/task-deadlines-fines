@@ -105,6 +105,7 @@ class Shopify:
         self.sleep = sleep
         self._category: str | None | bool = False  # False = not looked up yet
         self._metafield_types: dict[tuple[str, str], str] | None = None
+        self._publications: list[dict] | None = None
 
     def graphql(self, query: str, variables: dict | None = None) -> dict:
         """One call; waits and retries while Shopify throttles (HTTP 429 or a THROTTLED error)."""
@@ -189,7 +190,23 @@ class Shopify:
             self._metafield_types = types
         return self._metafield_types
 
+    def publications(self) -> list[dict]:
+        """Every sales channel and market catalog of the store ({id, name}), looked up once."""
+        if self._publications is None:
+            data = self.graphql("{ publications(first: 100) { nodes { id name } } }")
+            self._publications = data["publications"]["nodes"]
+        return self._publications
+
     # ---- writes ----
+
+    def publish(self, product_id: str, publication_ids: list[str]) -> list[str]:
+        """Publish the product to these channels; returns Shopify's error messages (empty when all went)."""
+        data = self.graphql(
+            """mutation($id: ID!, $input: [PublicationInput!]!) { publishablePublish(id: $id, input: $input) {
+                 userErrors { field message } } }""",
+            {"id": product_id, "input": [{"publicationId": i} for i in publication_ids]},
+        )["publishablePublish"]
+        return [e["message"] for e in data["userErrors"]]
 
     def stage_image(self, data: bytes, filename: str, mime: str) -> str:
         """Upload the picture to Shopify's staging bucket; returns the resourceUrl for productSet files."""
@@ -403,6 +420,7 @@ def upload_product(
     if not category:
         notes.append("Категорията Perfumes & Colognes не е намерена в таксономията; продуктът е без категория.")
     result = shop.product_set(product_input(fields, status, category, source, shop.metafield_types()), target)
+    notes.append(_publish_everywhere(shop, result["id"]))
     return Uploaded(
         product_id=result["id"],
         handle=result["handle"],
@@ -410,6 +428,24 @@ def upload_product(
         status=result["status"],
         notes=notes,
     )
+
+
+def _publish_everywhere(shop: Shopify, product_id: str) -> str:
+    """Every channel and market of the store, drafts too: a draft shows nowhere until it is activated, and then
+    it is already in every channel. A failure here keeps the uploaded product and says what to fix."""
+    try:
+        publications = shop.publications()
+        if not publications:
+            return "Магазинът няма канали за продажба; продуктът не е публикуван никъде."
+        errors = shop.publish(product_id, [p["id"] for p in publications])
+    except ShopifyError as exc:
+        return (
+            f"Качен, но не е публикуван в каналите ({exc}). Добави правата read_publications и write_publications "
+            "в приложението perfume-import в Shopify Dev Dashboard, пусни нова версия и качи отново."
+        )
+    if errors:
+        return "Качен, но част от каналите не го приеха: " + "; ".join(errors)
+    return f"Публикуван в {len(publications)} канала: " + ", ".join(p["name"] for p in publications) + "."
 
 
 def store_client(group: Group, store_key: str, http: httpx.Client | None = None) -> Shopify:
