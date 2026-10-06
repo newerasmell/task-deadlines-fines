@@ -176,6 +176,41 @@ export type StoreProfile = {
   }
 }
 
+export type AuditIssue = {
+  rule: string
+  label: string
+  status: Status
+  action: string
+  fields: number
+  products: number
+}
+
+export type AuditSummary = {
+  batch_id: number
+  name: string
+  group: string
+  store: string | null
+  created_at: string
+  products: number
+  issues: AuditIssue[]
+  fix_products: number
+  fix_fields: number
+}
+
+export type AuditItem = {
+  product_id: number
+  title: string
+  field_id: number
+  key: string
+  value: unknown
+  previous: unknown
+  status: Status
+  message: string
+  price: string | null
+  compare_at: string | null
+  decided_by: string | null
+}
+
 const ACTOR_KEY = 'perfume-import.actor'
 
 export function getActor(): string {
@@ -244,12 +279,18 @@ const post = <T>(path: string, body: unknown) => request<T>(path, { method: 'POS
 export const api = {
   batches: () => request<BatchSummary[]>('/api/batches'),
   batch: (id: number) => request<Batch>(`/api/batches/${id}`),
+  product: (id: number) => request<Product & { batch_id: number }>(`/api/products/${id}`),
   vocab: (group: string) => request<Record<string, string[]>>(`/api/groups/${group}/vocab`),
   decide: (fieldId: number, action: 'accept' | 'edit' | 'pick', value?: unknown) =>
     post<Product>(`/api/fields/${fieldId}/decision`, { action, value }),
   acceptAll: (productId: number, store?: string) => post<Product>(`/api/products/${productId}/accept-all`, { store }),
   approve: (productId: number) => post<Product>(`/api/products/${productId}/approve`, {}),
   stores: () => request<StoreRow[]>('/api/stores'),
+  audit: (batchId: number) => request<AuditSummary>(`/api/batches/${batchId}/audit`),
+  auditItems: (batchId: number, rule: string, limit: number) =>
+    request<{ rule: string; label: string; total: number; items: AuditItem[] }>(
+      `/api/batches/${batchId}/audit/${encodeURIComponent(rule)}?limit=${limit}`,
+    ),
   analyze: (form: FormData) => upload<{ profile_id: number }>('/api/stores/analyze', form),
   profile: (id: number) => request<StoreProfile>(`/api/profiles/${id}`),
   editProfileItem: (id: number, key: string, value: unknown) =>

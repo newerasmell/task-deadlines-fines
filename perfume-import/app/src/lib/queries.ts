@@ -6,6 +6,9 @@ export const useBatches = () => useQuery({ queryKey: ['batches'], queryFn: api.b
 
 export const useBatch = (id: number) => useQuery({ queryKey: ['batch', id], queryFn: () => api.batch(id) })
 
+export const useProduct = (id: number | null) =>
+  useQuery({ queryKey: ['product', id], queryFn: () => api.product(id!), enabled: id !== null })
+
 export const useVocab = (group: string | undefined) =>
   useQuery({ queryKey: ['vocab', group], queryFn: () => api.vocab(group!), enabled: !!group, staleTime: Infinity })
 
@@ -22,7 +25,9 @@ export function useProductMutation<A>(batchId: number, fn: (args: A) => Promise<
       client.setQueryData<Batch>(['batch', batchId], (old) =>
         old ? { ...old, products: old.products.map((p) => (p.id === product.id ? product : p)) } : old,
       )
+      client.setQueryData(['product', product.id], { ...product, batch_id: batchId })
       client.invalidateQueries({ queryKey: ['batches'] })
+      client.invalidateQueries({ queryKey: ['audit', batchId] })
     },
   })
 }
@@ -98,3 +103,14 @@ export function useStoreMutation<A, R>(fn: (args: A) => Promise<R>) {
     },
   })
 }
+
+export const useAudit = (batchId: number) => useQuery({ queryKey: ['audit', batchId], queryFn: () => api.audit(batchId) })
+
+export const useAuditItems = (batchId: number, rule: string | null, limit: number) =>
+  useQuery({
+    queryKey: ['audit', batchId, rule, limit],
+    queryFn: () => api.auditItems(batchId, rule!, limit),
+    enabled: !!rule,
+    // Keep the list while "show more" loads, never another rule's list (a click would hit the wrong row).
+    placeholderData: (previous, query) => (query?.queryKey[2] === rule ? previous : undefined),
+  })

@@ -6,7 +6,7 @@ from urllib.parse import unquote
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from db import review, upload
+from db import audit, review, upload
 from pipeline.config import load_group
 
 router = APIRouter(prefix="/api")
@@ -47,6 +47,11 @@ def batches():
 @router.get("/batches/{batch_id}")
 def batch(batch_id: int):
     return _call(review.get_batch, batch_id)
+
+
+@router.get("/products/{product_id}")
+def product(product_id: int):
+    return _call(review.get_product, product_id)
 
 
 @router.post("/fields/{field_id}/decision")
@@ -102,3 +107,25 @@ def start_upload(batch_id: int, body: UploadRequest, x_actor: str | None = Heade
 @router.get("/batches/{batch_id}/upload")
 def upload_state(batch_id: int):
     return _call(upload.state, batch_id)
+
+
+@router.get("/batches/{batch_id}/audit")
+def audit_summary(batch_id: int):
+    return _call(audit.summary, batch_id)
+
+
+@router.get("/batches/{batch_id}/audit/{rule}")
+def audit_items(batch_id: int, rule: str, offset: int = 0, limit: int = 50):
+    return _call(audit.items, batch_id, rule, offset, min(limit, 200))
+
+
+@router.get("/batches/{batch_id}/fix.csv")
+def audit_fix_csv(batch_id: int):
+    from fastapi.responses import Response
+
+    filename, data = _call(audit.fix_csv, batch_id)
+    return Response(
+        data,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

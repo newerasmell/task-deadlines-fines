@@ -228,6 +228,15 @@ def _product_dict(p: Product, sps: list[StoreProduct], by_sp: dict[int, list[Fie
     }
 
 
+def get_product(product_id: int) -> dict:
+    """One product with every store's fields (an audit opens one fix without loading the whole catalog)."""
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        return {"batch_id": product.batch_id, **_product_json(session, product_id)}
+
+
 def _media_json(m: Media) -> dict:
     return {
         "id": m.id,
