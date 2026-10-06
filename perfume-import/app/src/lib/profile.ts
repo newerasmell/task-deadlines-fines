@@ -89,12 +89,13 @@ export function rows(p: StoreProfile): Row[] {
     const v = vocab?.[field]
     if (!v) continue
     const values = (v.value as string[]) ?? []
-    const variants = (v.variants as Record<string, string>) ?? {}
+    const canonical = (v.canonical as Record<string, { variants?: Record<string, number> }>) ?? {}
+    const spellings = Object.values(canonical).reduce((n, c) => n + Object.keys(c?.variants ?? {}).length, 0)
     out.push({
       key: `vocab.${field}`,
       label,
       value: values.slice(0, 6).join(', ') + (values.length > 6 ? ` и още ${values.length - 6}` : ''),
-      note: Object.keys(variants).length ? `${Object.keys(variants).length} изписвания ще се уеднаквят` : '',
+      note: spellings ? `${spellings} изписвания ще се уеднаквят` : '',
       match: pct(v.match_rate),
       kind: kind(v),
       editable: false,

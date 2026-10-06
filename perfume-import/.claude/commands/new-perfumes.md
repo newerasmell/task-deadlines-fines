@@ -7,4 +7,4 @@ Input: $ARGUMENTS
 2. Only after the user confirms the cost, run `python scripts/new_batch.py $ARGUMENTS` (needs ANTHROPIC_API_KEY in the
    environment). Research, texts, per-store fields and validation all run in `pipeline/` (see docs/SPEC.md §1, §4, §5).
 3. Report the batch number, counts ok / for review / blocked per store and the real cost per product from the output.
-Upload to Shopify is phase 5; never upload from here.
+Upload to Shopify happens in the app (Качване), after the products are approved; never upload from here.
