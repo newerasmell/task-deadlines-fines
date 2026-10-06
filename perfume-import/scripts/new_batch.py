@@ -33,7 +33,7 @@ LABELS = {
 # Per-step costs (USD) for --estimate when the database has no measured run of that tier yet.
 # After a run, the averages from events (kind ai_usage) are used instead.
 DEFAULT_COSTS = {
-    "economy": {"research": 0.06, "description_en": 0.003, "language": 0.003},  # Sonnet, search only, Batch
+    "economy": {"research": 0.07, "description_en": 0.002, "language": 0.004},  # Sonnet, search only, Batch
     "deep": {"research": 0.35, "description_en": 0.02, "language": 0.015},  # Opus, pages, interactive
 }
 

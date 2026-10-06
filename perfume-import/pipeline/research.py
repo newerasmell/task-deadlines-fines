@@ -12,7 +12,7 @@ from pipeline.ai import AIError, Result, Usage, ask
 from pipeline.config import Group
 from pipeline.fields import Field
 from pipeline.input import InputRow
-from pipeline.tiers import DEFAULT_TIER, TIERS, Tier
+from pipeline.tiers import DEFAULT_TIER, NO_THINKING, SONNET, TIERS, Tier
 from pipeline.titles import CONCENTRATIONS
 
 NOTE_KEYS = ("top_note", "middle_note", "base_note")
@@ -244,3 +244,57 @@ def from_saved(raw: dict) -> Research:
     if raw.get("matches_input") is False:
         fields["name"].flag("blocked", f"Продуктът не съвпада с входа: {raw.get('problem')}", "research_mismatch")
     return Research(fields=fields, images=raw.get("images", []), raw=raw)
+
+
+IMAGE_SYSTEM = """You find packshot images for one perfume for an online shop.
+Use at most one web search and open at most one page: the brand's official product page, or a large retailer's
+product page (Notino, Douglas, Sephora, Lookfantastic). Return direct image file URLs (.jpg, .png, .webp) that
+appear in that page or in the results, largest version first, official site first. Never build or guess a URL."""
+
+IMAGE_TOOLS = [
+    {"type": "web_search_20260209", "name": "web_search", "max_uses": 1},
+    {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 1, "max_content_tokens": 4000},
+]
+
+IMAGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "images": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"url": {"type": "string"}, "source": {"type": "string"}},
+                "required": ["url", "source"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["images"],
+    "additionalProperties": False,
+}
+
+
+def find_images(client, row: InputRow, research: Research) -> tuple[list[dict], Usage, str | None]:
+    """The cheap image lookup (decision #9): one search, one page, Sonnet without thinking. The download
+    check in images.py decides whether a URL is real; nothing here is trusted on its own."""
+    brand, name = research.value("brand") or "", research.value("name") or row.name
+    concentration = research.value("concentration") or ""
+    product = " ".join(x for x in (brand, name, concentration) if x)
+    prompt = f"Perfume: {product}\nEAN: {row.ean or 'unknown'}\nFind its packshot image URLs."
+    try:
+        result = ask(
+            client,
+            system=IMAGE_SYSTEM,
+            prompt=prompt,
+            schema=IMAGE_SCHEMA,
+            effort="low",
+            web=True,
+            tools=IMAGE_TOOLS,
+            model=SONNET,
+            thinking=NO_THINKING,
+            max_tokens=2000,
+        )
+    except AIError as exc:
+        return [], Usage(), str(exc)
+    images = [{"url": i["url"], "width": 0, "height": 0, "source": i["source"]} for i in result.data["images"]]
+    return images, result.usage, None

@@ -26,6 +26,7 @@ class Tier:
     text_thinking: dict | None  # None = the model's default (Opus 5.5 cannot turn thinking off)
     text_batch: bool  # texts through the Message Batches API at half price
     max_cost: float  # USD per product, everything included
+    image_search: bool = True  # one small extra lookup when research brought no working packshot
 
     def web_tools(self) -> list[dict]:
         tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": self.searches}]

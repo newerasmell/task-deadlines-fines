@@ -17,7 +17,7 @@ from pipeline.fields import SEVERITY, Field, worst
 from pipeline.generate import NOTE_KEYS, Text, generate_texts, text_fields
 from pipeline.images import Checked, check_all, image_field
 from pipeline.input import InputRow
-from pipeline.research import Research, from_saved, research_product
+from pipeline.research import Research, find_images, from_saved, research_product
 from pipeline.tiers import DEFAULT_TIER, TIERS, Tier, tier
 from pipeline.validate import Context, validate_batch, validate_product
 
@@ -164,6 +164,16 @@ def research_step(
         result.usage["research"] = result.research.usage.to_dict()
     if not result.research.error:
         result.images = check_all(result.research.images, fetch_image)
+        if tier.image_search and not any(c.ok for c in result.images):
+            extra, usage, error = find_images(client, row, result.research)
+            result.usage["image_search"] = usage.to_dict()
+            known = {c.url for c in result.images}
+            extra = [i for i in extra if i["url"] not in known]
+            result.images += check_all(extra, fetch_image)
+            result.research.images = result.research.images + extra
+            result.research.raw["images"] = result.research.images  # saved research keeps the found pictures
+            if error:
+                result.research.raw["_image_search_error"] = error
     return result
 
 
