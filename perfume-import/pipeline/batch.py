@@ -168,6 +168,8 @@ def store_fields(result: ProductResult, group: Group, store_key: str, profile: d
         image_composed(fields["image"], result.composed.get(store_key), result.compose_error)
         if research.ean_check:
             flag_ean(fields["ean"], research.ean_check, row)
+        elif not row.ean:
+            flag_missing_ean(fields["ean"], research, row)
 
     text = result.texts.get(store.language)
     if text and result.master:
@@ -212,6 +214,30 @@ def compose_step(result: ProductResult, group: Group, stores: list[str]) -> None
         result.compose_error = str(exc)
     except Exception as exc:  # one bad picture must not stop the batch
         result.compose_error = f"{type(exc).__name__}: {exc}"
+
+
+def flag_missing_ean(f: Field, research: Research, row: InputRow) -> None:
+    """No EAN in the input (a product added by its name): blocked, as the AI never fills an EAN in (CLAUDE.md #6),
+    with the EAN the sources show for this volume as the alternative a person can pick."""
+    from pipeline import ean as ean_check
+
+    found = research.raw.get("ean_for_volume") or {}
+    code = ean_check.clean(found.get("value") or "")
+    volume = f"{row.ml:g} ml" if row.ml else "този обем"
+    if code and not ean_check.problem(code):
+        f.alternatives = [code]
+        f.sources = [{"url": s.get("url"), "title": s.get("says", "")} for s in found.get("sources", [])]
+        f.flag(
+            "blocked",
+            f"Липсва EAN във входа. За {volume} източниците дават {code}: избери го или въведи EAN от опаковката.",
+            "ean_missing",
+        )
+    else:
+        f.flag(
+            "blocked",
+            f"Липсва EAN във входа и източниците не го показват за {volume}. Въведи го от опаковката.",
+            "ean_missing",
+        )
 
 
 def flag_ean(f: Field, check: EanCheck, row: InputRow) -> None:

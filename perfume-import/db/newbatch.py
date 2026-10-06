@@ -12,7 +12,7 @@ from db.stores import accepted_profiles, install
 from pipeline.ai import api_key
 from pipeline.config import load_group
 from pipeline.estimate import estimate
-from pipeline.input import InputError, InputRow, read_input_text
+from pipeline.input import InputError, InputRow, read_input_text, read_names_text
 from pipeline.tiers import TIERS
 
 _jobs: dict[str, dict] = {}
@@ -30,7 +30,7 @@ class NewBatchError(Exception):
     """Something the person can fix; Bulgarian message."""
 
 
-def _rows(text: str, group_key: str, stores: list[str]) -> tuple[object, list[InputRow]]:
+def _rows(text: str, group_key: str, stores: list[str], mode: str = "table") -> tuple[object, list[InputRow]]:
     install()
     group = load_group(group_key)
     if group.spec is None:
@@ -40,7 +40,8 @@ def _rows(text: str, group_key: str, stores: list[str]) -> tuple[object, list[In
     if unknown:
         raise NewBatchError(f"Магазините {', '.join(unknown)} не са в {group_key}.")
     try:
-        return group, read_input_text(text, group, stores)
+        reader = read_names_text if mode == "names" else read_input_text
+        return group, reader(text, group, stores)
     except InputError as exc:
         raise NewBatchError(str(exc)) from exc
 
@@ -54,11 +55,18 @@ def _measured() -> dict:
         return {}
 
 
-def check(text: str, group_key: str, stores: list[str], tier: str = "economy", deep: list[str] | None = None) -> dict:
+def check(
+    text: str,
+    group_key: str,
+    stores: list[str],
+    tier: str = "economy",
+    deep: list[str] | None = None,
+    mode: str = "table",
+) -> dict:
     """Free: every row with its problems, and the expected cost of the rows that will run."""
     if tier not in TIERS:
         raise NewBatchError(f"Непознат режим „{tier}“.")
-    group, rows = _rows(text, group_key, stores)
+    group, rows = _rows(text, group_key, stores, mode)
     stores = stores or list(group.stores)
     good = [r for r in rows if not r.problems]
     est = estimate(good, group, stores, tier, set(deep or []), _measured())
@@ -91,13 +99,14 @@ def start(
     name: str | None = None,
     actor: str | None = None,
     client=None,
+    mode: str = "table",
 ) -> str:
     """Run the batch in a background thread; returns the job id. Rows with problems are left out."""
     if not api_key() and client is None:
         raise NewBatchError(
             "Няма ключ за Claude. Добави ANTHROPIC_API_KEY в Render → perfume-import → Environment и опитай отново."
         )
-    group, rows = _rows(text, group_key, stores)
+    group, rows = _rows(text, group_key, stores, mode)
     stores = stores or list(group.stores)
     rows = [r for r in rows if not r.problems]
     if not rows:

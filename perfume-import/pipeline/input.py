@@ -2,6 +2,7 @@
 
 import csv
 import io
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -45,6 +46,51 @@ def read_input_text(text: str, group: Group, stores: list[str] | None = None) ->
     first = text.split("\n", 1)[0]
     delimiter = "\t" if first.count("\t") > first.count(",") else ("," if "," in first else ";")
     return _read(io.StringIO(text), group, stores, delimiter)
+
+
+NAME_ML = re.compile(r"(\d+(?:[.,]\d+)?)\s*ml\b", re.IGNORECASE)
+NAME_TESTER = re.compile(r"\b(tester|тестер)\b", re.IGNORECASE)
+NAME_EAN = re.compile(r"(?<!\d)(\d{13}|\d{12}|\d{8}|\d{14})(?!\d)")
+
+
+def read_names_text(text: str, group: Group, stores: list[str] | None = None) -> list[InputRow]:
+    """One product per line, only its name ("Dior Sauvage EDT 100 ml TESTER"); the volume, the tester flag and
+    an EAN, when the line has them, are read from it. Research finds the rest; an EAN only as a suggestion from
+    the sources, prices are entered by a person in the review (CLAUDE.md #6)."""
+    stores = stores or list(group.stores)
+    for key in stores:
+        group.store(key)
+    rows = []
+    for line, raw in enumerate(text.lstrip("\ufeff").splitlines(), 1):
+        if not raw.strip():
+            continue
+        code = NAME_EAN.search(raw)
+        rest = NAME_EAN.sub(" ", raw) if code else raw
+        ml_match = NAME_ML.search(rest)
+        tester = bool(NAME_TESTER.search(rest))
+        name = " ".join(NAME_TESTER.sub(" ", NAME_ML.sub(" ", rest)).split()).strip(" ,;-")
+        problems = []
+        ml = None
+        if ml_match:
+            ml = float(ml_match.group(1).replace(",", "."))
+        else:
+            problems.append("Липсва обем: добави го в реда, напр. „100 ml“.")
+        if not name:
+            problems.append("Липсва име на продукта.")
+        rows.append(
+            InputRow(
+                line=line,
+                name=name,
+                ml=ml,
+                tester=tester,
+                ean=ean.clean(code.group(1)) if code else "",
+                prices=dict.fromkeys(stores),
+                problems=problems,
+            )
+        )
+    if not rows:
+        raise InputError("Няма нито един продукт. Напиши по един на ред.")
+    return rows
 
 
 def _read(fh, group: Group, stores: list[str] | None, delimiter: str = ",") -> list[InputRow]:

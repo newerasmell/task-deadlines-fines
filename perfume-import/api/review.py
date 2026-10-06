@@ -116,7 +116,7 @@ def audit_summary(batch_id: int):
 
 @router.get("/batches/{batch_id}/audit/{rule}")
 def audit_items(batch_id: int, rule: str, offset: int = 0, limit: int = 50):
-    return _call(audit.items, batch_id, rule, offset, min(limit, 200))
+    return _call(audit.items, batch_id, rule, offset, min(limit, 5000))
 
 
 @router.get("/batches/{batch_id}/fix.csv")

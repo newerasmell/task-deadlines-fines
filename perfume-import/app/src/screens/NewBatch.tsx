@@ -35,6 +35,8 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
   const group = groups.find((g) => g.key === groupKey)
   const [stores, setStores] = useState<string[]>(() => group?.stores.map((s) => s.key) ?? [])
   const [tier, setTier] = useState<'economy' | 'deep'>('economy')
+  // "table": rows with ml, EAN and prices (Excel / CSV); "names": one product name per line, the rest researched.
+  const [mode, setMode] = useState<'table' | 'names'>('table')
   const [text, setText] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
   const [cleared, setCleared] = useState(false)
@@ -57,12 +59,13 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
     f.append('stores', stores.join(','))
     f.append('tier', tier)
     f.append('text', typed)
+    f.append('mode', mode)
     return f
-  }, [groupKey, stores, tier, typed])
+  }, [groupKey, stores, tier, typed, mode])
 
   const enabled = !!typed.trim() && !!groupKey && stores.length > 0 && !cleared
   const check = useQuery({
-    queryKey: ['check', groupKey, stores.join(','), tier, typed],
+    queryKey: ['check', groupKey, stores.join(','), tier, typed, mode],
     queryFn: () => api.checkBatch(form),
     enabled,
     retry: false,
@@ -187,7 +190,11 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
           <div className="flex items-end gap-3">
             <div className="flex grow flex-col gap-1">
               <h1 className="m-0 text-[22px] font-semibold">Продукти</h1>
-              <span className="text-sm text-ink-2">Постави редове от Excel или качи CSV. Останалото попълва системата.</span>
+              <span className="text-sm text-ink-2">
+                {mode === 'table'
+                  ? 'Постави редове от Excel или качи CSV. Останалото попълва системата.'
+                  : 'По един продукт на ред, с обема. AI намира всичко останало; цените се въвеждат в прегледа.'}
+              </span>
             </div>
             <input
               ref={picker}
@@ -206,7 +213,30 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
                 e.target.value = ''
               }}
             />
-            <Button onClick={() => picker.current?.click()}>Качи CSV</Button>
+            <div className="flex gap-0.5" role="tablist" aria-label="Как се въвеждат продуктите">
+              {(
+                [
+                  ['table', 'Таблица'],
+                  ['names', 'Само имена'],
+                ] as const
+              ).map(([key, label]) => (
+                <Button
+                  key={key}
+                  role="tab"
+                  aria-selected={mode === key}
+                  variant={mode === key ? 'dark' : 'secondary'}
+                  onClick={() => {
+                    setMode(key)
+                    setText('')
+                    setTyped('')
+                    setFileName(null)
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            {mode === 'table' && <Button onClick={() => picker.current?.click()}>Качи CSV</Button>}
             <Button asChild>
               <a href={`/api/groups/${groupKey}/input-template.csv`} download>
                 Изтегли шаблон
@@ -216,22 +246,39 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
 
           {!result ? (
             <label className="flex flex-col gap-2 text-sm text-ink-2">
-              {fileName ? `Файл: ${fileName}` : 'Редове от Excel, с реда със заглавията (name, ml, tester, ean, price_…)'}
+              {mode === 'names'
+                ? 'Имена на продукти, по един на ред: обем задължително, „TESTER“ и EAN ако ги има'
+                : fileName
+                  ? `Файл: ${fileName}`
+                  : 'Редове от Excel, с реда със заглавията (name, ml, tester, ean, price_…)'}
               <textarea
                 value={text}
                 onChange={(e) => {
                   setText(e.target.value)
-                  storesFromHeader(e.target.value)
+                  if (mode === 'table') storesFromHeader(e.target.value)
                   setFileName(null)
                   setCleared(false)
                 }}
                 rows={12}
-                placeholder={'name\tml\ttester\tean\tprice_premierparfums\tprice_parfemija\nDior Sauvage EDT\t100\tне\t3348901250153\t89\t85'}
+                placeholder={
+                  mode === 'names'
+                    ? 'Dior Sauvage EDT 100 ml\nYves Saint Laurent Libre Le Parfum 90 ml TESTER\nArmani Code Profumo EDP 110 ml 3614270581670'
+                    : 'name\tml\ttester\tean\tprice_premierparfums\tprice_parfemija\nDior Sauvage EDT\t100\tне\t3348901250153\t89\t85'
+                }
                 className="w-full rounded-lg border border-line bg-canvas p-3 font-[inherit] text-sm text-ink"
               />
             </label>
           ) : (
-            <RowsTable rows={result.rows} stores={shownStores} />
+            <>
+              <RowsTable rows={result.rows} stores={mode === 'names' ? [] : shownStores} />
+              {mode === 'names' && (
+                <span className="text-sm leading-normal text-ink-2">
+                  Без EAN: проучването показва EAN-а, който източниците дават за този обем, и ти го избираш в прегледа.
+                  Цените за {plural(shownStores.length, 'сайт', 'сайта')} се въвеждат в прегледа; дотогава продуктът е
+                  спрян.
+                </span>
+              )}
+            </>
           )}
 
           {checking && <span className="text-sm text-ink-2">Проверявам…</span>}
@@ -311,7 +358,7 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
 }
 
 function RowsTable({ rows, stores }: { rows: CheckedRow[]; stores: GroupInfo['stores'] }) {
-  const cols = `minmax(0,1fr) 52px 64px 128px repeat(${stores.length}, 72px)`
+  const cols = ['minmax(0,1fr) 52px 64px 128px', ...stores.map(() => '72px')].join(' ')
   const bad = (r: CheckedRow, words: string[]) => r.problems.some((p) => words.some((w) => p.toLowerCase().includes(w)))
   const cell = 'px-2 py-2.5 tabular text-xs'
   const err = 'bg-blocked-tint font-medium text-blocked-text'
@@ -335,7 +382,7 @@ function RowsTable({ rows, stores }: { rows: CheckedRow[]; stores: GroupInfo['st
             <div className={cn('truncate px-2.5 py-2.5', bad(r, ['име']) && err)}>{r.name || '—'}</div>
             <div className={cn(cell, 'text-right', bad(r, ['обем', 'ml']) && err)}>{r.ml ?? '—'}</div>
             <div className={cn(cell, bad(r, ['tester']) && err)}>{r.tester ? 'да' : 'не'}</div>
-            <div className={cn(cell, bad(r, ['ean']) && err)}>{r.ean || '—'}</div>
+            <div className={cn(cell, bad(r, ['ean']) && err, !r.ean && 'text-ink-2')}>{r.ean || 'от проучването'}</div>
             {stores.map((s) => (
               <div key={s.key} className={cn(cell, 'text-right', !r.prices[s.key] && err)}>
                 {r.prices[s.key] ?? '—'}

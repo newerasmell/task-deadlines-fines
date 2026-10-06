@@ -86,9 +86,10 @@ async def check(
     tier: Annotated[str, Form()] = "economy",
     deep: Annotated[str, Form()] = "",
     text: Annotated[str, Form()] = "",
+    mode: Annotated[str, Form()] = "table",
     file: Annotated[UploadFile | None, File()] = None,
 ):
-    return _call(newbatch.check, await _text(file, text), group, _list(stores), tier, _list(deep))
+    return _call(newbatch.check, await _text(file, text), group, _list(stores), tier, _list(deep), mode)
 
 
 @router.post("/batches/start", status_code=202)
@@ -99,6 +100,7 @@ async def start(
     deep: Annotated[str, Form()] = "",
     name: Annotated[str, Form()] = "",
     text: Annotated[str, Form()] = "",
+    mode: Annotated[str, Form()] = "table",
     file: Annotated[UploadFile | None, File()] = None,
     x_actor: str | None = Header(default=None),
 ):
@@ -111,6 +113,7 @@ async def start(
         _list(deep),
         name or None,
         actor_name(x_actor),
+        mode=mode,
     )
     return {"job_id": job_id}
 

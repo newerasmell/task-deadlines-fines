@@ -83,3 +83,60 @@ def test_api_without_a_key_says_what_to_add(monkeypatch):
     assert template.text.startswith("name,ml,tester,ean,price_premierparfums")
     assert any(g["key"] == "group-1" and g["ready"] for g in client.get("/api/groups").json())
     assert client.post("/api/batches/check", data={"group": "group-1"}).status_code == 422
+
+
+def test_names_only_reads_volume_tester_and_ean_from_the_line():
+    from pipeline.input import read_names_text
+
+    rows = read_names_text(
+        "Dior Sauvage EDT 100 ml TESTER\nArmani Code Profumo EDP 110ml 3614270581670\n\nGucci Bamboo EDP\n",
+        GROUP,
+        STORES,
+    )
+    assert [(r.name, r.ml, r.tester, r.ean) for r in rows] == [
+        ("Dior Sauvage EDT", 100.0, True, ""),
+        ("Armani Code Profumo EDP", 110.0, False, "3614270581670"),
+        ("Gucci Bamboo EDP", None, False, ""),
+    ]
+    assert rows[2].problems and "обем" in rows[2].problems[0]
+    assert rows[0].prices == {"premierparfums": None, "parfemija": None}
+
+
+@pytest.mark.db
+def test_product_by_name_gets_the_sourced_ean_to_pick_and_the_sku_follows(monkeypatch):
+    """CLAUDE.md #6: no EAN is filled in by the AI; the sourced one is offered, a person picks it, SKU follows."""
+    from db import review
+    from db.repo import save_batch
+    from pipeline.batch import run_batch
+    from pipeline.input import read_names_text
+    from tests.fake_ai import message
+    from tests.test_research import A, B, C, research_answer
+
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    found = {"value": "3614270581670", "sources": [{"url": A, "says": "EAN 3614270581670", "supports": True}]}
+
+    def by_name(kwargs):
+        if kwargs.get("tools"):
+            return message(research_answer(ean_for_volume=found), urls=[A, B, C], searches=3)
+        return responder(kwargs)
+
+    rows = read_names_text("Paco Rabanne Lady Million Empire EDP 80 ml", GROUP, STORES)
+    result = run_batch(FakeClient(responder=by_name), rows, GROUP, STORES, "by name")
+    ean_field = result.products[0].stores["premierparfums"]["ean"]
+    assert ean_field.status == "blocked" and ean_field.value == ""
+    assert ean_field.alternatives == ["3614270581670"] and "3614270581670" in ean_field.message
+    assert result.products[0].stores["premierparfums"]["price"].status == "blocked"  # prices: a person
+
+    batch_id = save_batch(result)
+    try:
+        product = review.get_batch(batch_id)["products"][0]
+        ean_row = product["stores"]["premierparfums"]["fields"]["ean"]
+        after = review.decide(ean_row["id"], "pick", "Мария", "3614270581670")
+        for store in STORES:
+            fields = after["stores"][store]["fields"]
+            assert fields["ean"]["value"] == "3614270581670" and fields["ean"]["status"] == "ok"
+            assert fields["sku"]["value"] == "SK3614270581670" and fields["sku"]["status"] == "ok"
+    finally:
+        with Session(engine()) as session, session.begin():
+            session.execute(delete(Event).where(Event.batch_id == batch_id))
+            session.execute(delete(Batch).where(Batch.id == batch_id))
