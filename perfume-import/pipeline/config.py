@@ -131,5 +131,6 @@ INPUT_BASE_COLUMNS = ["name", "ml", "tester", "ean"]
 
 
 def input_template_columns(group: Group) -> list[str]:
-    """input/products_template.csv: one price column per store, in stores.yaml order."""
-    return [*INPUT_BASE_COLUMNS, *(f"price_{k}" for k in group.stores), "notes"]
+    """input/products_template.csv: one price column per store, in stores.yaml order; `research` is optional
+    (economy / deep per product, empty = the batch's choice)."""
+    return [*INPUT_BASE_COLUMNS, *(f"price_{k}" for k in group.stores), "notes", "research"]

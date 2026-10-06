@@ -18,6 +18,7 @@ from pipeline.generate import NOTE_KEYS, Text, generate_texts, text_fields
 from pipeline.images import Checked, check_all, image_field
 from pipeline.input import InputRow
 from pipeline.research import Research, from_saved, research_product
+from pipeline.tiers import DEFAULT_TIER, TIERS, Tier, tier
 from pipeline.validate import Context, validate_batch, validate_product
 
 MAX_PARALLEL = 10  # SPEC: one researcher per product, at most 10 at a time
@@ -34,6 +35,8 @@ class ProductResult:
     stores: dict[str, dict[str, Field]] = field(default_factory=dict)
     usage: dict[str, dict] = field(default_factory=dict)  # step -> Usage.to_dict()
     images: list[Checked] = field(default_factory=list)  # downloaded and measured, shared by all stores
+    tier: Tier = field(default_factory=lambda: TIERS[DEFAULT_TIER])
+    max_cost: float | None = None
 
     @property
     def cost_usd(self) -> float:
@@ -69,10 +72,17 @@ class BatchResult:
             "cost_usd": self.cost_usd,
             "cost_per_product_usd": round(self.cost_usd / max(1, len(self.products)), 4),
             "max_cost_usd": self.max_cost,
+            "tiers": dict(Counter(p.tier.name for p in self.products)),
             "over_budget": [
-                {"input": p.row.name, "cost_usd": p.cost_usd, "steps": {k: u["cost_usd"] for k, u in p.usage.items()}}
+                {
+                    "input": p.row.name,
+                    "tier": p.tier.name,
+                    "limit_usd": p.max_cost,
+                    "cost_usd": p.cost_usd,
+                    "steps": {k: u["cost_usd"] for k, u in p.usage.items()},
+                }
                 for p in self.products
-                if self.max_cost is not None and p.cost_usd > self.max_cost
+                if p.max_cost is not None and p.cost_usd > p.max_cost
             ],
         }
 
@@ -139,17 +149,37 @@ def research_step(
     saved_research: Callable[[str], dict | None] = lambda ean: None,
     refresh: bool = False,
     fetch_image: Callable[[str], bytes] | None = None,
+    tier: Tier | None = None,
 ) -> ProductResult:
-    result = ProductResult(row=row)
+    tier = tier or TIERS[DEFAULT_TIER]
+    result = ProductResult(row=row, tier=tier)
     raw = None if refresh or not row.ean else saved_research(row.ean)
+    if raw and not good_enough(raw, tier):
+        raw = None  # saved economy research does not satisfy a deep request
     if raw:
         result.research, result.reused_research = from_saved(raw), True
     else:
-        result.research = research_product(client, row, group)
+        result.research = research_product(client, row, group, tier)
+        result.research.raw["_tier"] = tier.name
         result.usage["research"] = result.research.usage.to_dict()
     if not result.research.error:
         result.images = check_all(result.research.images, fetch_image)
     return result
+
+
+def good_enough(raw: dict, tier: Tier) -> bool:
+    order = list(TIERS)
+    saved = raw.get("_tier", DEFAULT_TIER)
+    return order.index(saved if saved in TIERS else DEFAULT_TIER) >= order.index(tier.name)
+
+
+def resolve_tier(row: InputRow, default: str = DEFAULT_TIER, deep_eans: set[str] = frozenset()) -> Tier:
+    """Most specific wins: the row's own `research` column, then --deep EANs, then the batch's tier."""
+    if row.tier:
+        return TIERS[row.tier]
+    if row.ean and row.ean in deep_eans:
+        return TIERS["deep"]
+    return tier(default)
 
 
 def run_batch(
@@ -161,20 +191,31 @@ def run_batch(
     saved_research: Callable[[str], dict | None] = lambda ean: None,
     refresh: bool = False,
     workers: int = MAX_PARALLEL,
-    batch_texts: bool = False,
+    batch_texts: bool | None = None,
     max_cost: float | None = None,
     fetch_image: Callable[[str], bytes] | None = None,
+    default_tier: str = DEFAULT_TIER,
+    deep_eans: set[str] = frozenset(),
 ) -> BatchResult:
     """Research every product (parallel, interactive: it needs web search), then all texts at once
-    (English masters in one round, every product x language in the next; one Message Batch per round
-    when batch_texts=True, at half price)."""
+    (English masters in one round, every product x language in the next). Each product has a tier
+    (resolve_tier): economy texts go through one Message Batch per round, deep texts are interactive.
+    batch_texts=True/False forces all texts one way. max_cost overrides every tier's own limit."""
+    tiers = [resolve_tier(r, default_tier, deep_eans) for r in rows]
     with ThreadPoolExecutor(max_workers=max(1, min(workers, MAX_PARALLEL))) as pool:
-        products = list(pool.map(lambda r: research_step(client, r, group, saved_research, refresh, fetch_image), rows))
+        products = list(
+            pool.map(
+                lambda rt: research_step(client, rt[0], group, saved_research, refresh, fetch_image, rt[1]),
+                zip(rows, tiers, strict=True),
+            )
+        )
+    for p in products:
+        p.max_cost = max_cost if max_cost is not None else p.tier.max_cost
 
     ready = [p for p in products if not p.research.error]
     languages = [group.store(s).language for s in stores]
     texts = generate_texts(
-        client, [(facts_for_text(p.research), p.row.tester) for p in ready], group, languages, batch=batch_texts
+        client, [(facts_for_text(p.research), p.row.tester, p.tier) for p in ready], group, languages, batch=batch_texts
     )
     for p, (master, by_language) in zip(ready, texts, strict=True):
         p.master, p.texts = master, by_language

@@ -12,15 +12,22 @@ from pipeline.ai import AIError, Result, Usage, ask
 from pipeline.config import Group
 from pipeline.fields import Field
 from pipeline.input import InputRow
+from pipeline.tiers import DEFAULT_TIER, TIERS, Tier
 from pipeline.titles import CONCENTRATIONS
 
 NOTE_KEYS = ("top_note", "middle_note", "base_note")
 FACT_KEYS = ("brand", "name", "concentration", "gender", "fragrance_family", *NOTE_KEYS, "ingredients")
 
-SYSTEM = """You research one perfume for an online shop catalog using web search (at most 3 searches).
+SEARCH_ONLY = """You research one perfume for an online shop catalog using web search (at most {searches} searches).
 Search Fragrantica first, then one major retailer (Notino, Douglas, Sephora) or the brand's site. Work from the
-search results; you cannot open pages, so cite the result URLs you were given.
-Rules:
+search results; you cannot open pages, so cite the result URLs you were given."""
+
+WITH_PAGES = """You research one perfume for an online shop catalog using web search (at most {searches} searches)
+and web fetch (at most {fetches} pages). Search first; open only the pages that settle facts: the brand's
+official product page, the Fragrantica page, and one major retailer (Notino, Douglas, Sephora). Prefer the
+brand's site for concentration, notes, ingredients (INCI) and the official packshot."""
+
+RULES = """Rules:
 - Every fact needs sources: for each source give its URL, what it literally says, and whether it supports the
   value you chose. Two independent websites per fact when the results allow it.
 - gender and fragrance_family: pick only from the allowed values given. Put the source's own wording in "says".
@@ -33,6 +40,14 @@ Rules:
 - Never invent an EAN, a price, a launch year or a perfumer. If sources disagree, choose the better-supported
   value and list the disagreeing source with supports=false.
 - If the EAN or name in the request clearly belongs to a different product, set matches_input=false and explain."""
+
+
+def system_prompt(tier: Tier) -> str:
+    intro = WITH_PAGES if tier.fetches else SEARCH_ONLY
+    return intro.format(searches=tier.searches, fetches=tier.fetches) + "\n" + RULES
+
+
+SYSTEM = system_prompt(TIERS[DEFAULT_TIER])
 
 
 SOURCES = {
@@ -188,10 +203,19 @@ def strip_brand(fields: dict[str, Field]) -> None:
             return
 
 
-def research_product(client, row: InputRow, group: Group) -> Research:
+def research_product(client, row: InputRow, group: Group, tier: Tier | None = None) -> Research:
+    tier = tier or TIERS[DEFAULT_TIER]
     try:
         result: Result = ask(
-            client, system=SYSTEM, prompt=prompt(row), schema=schema(group), effort="low", web=True, max_tokens=8000
+            client,
+            system=system_prompt(tier),
+            prompt=prompt(row),
+            schema=schema(group),
+            effort=tier.research_effort,
+            web=True,
+            tools=tier.web_tools(),
+            model=tier.model,
+            max_tokens=tier.research_max_tokens,
         )
     except AIError as exc:
         blocked = {

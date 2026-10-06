@@ -23,3 +23,9 @@ def no_image_downloads(monkeypatch):
     """Tests never touch the network: every image URL 'downloads' as a 1200×1200 PNG unless a test says otherwise."""
     picture = png(1200, 1200)
     monkeypatch.setattr("pipeline.images.fetch", lambda url: picture)
+
+
+@pytest.fixture(autouse=True)
+def no_batch_waiting(monkeypatch):
+    """The Batches API is polled every few seconds; the fake client finishes at once, so never wait."""
+    monkeypatch.setattr("pipeline.ai.time.sleep", lambda seconds: None)

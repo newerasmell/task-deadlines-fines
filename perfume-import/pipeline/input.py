@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pipeline import ean
 from pipeline.config import INPUT_BASE_COLUMNS, Group
+from pipeline.tiers import tier
 
 TRUE = {"1", "true", "yes", "y", "да", "x", "tester"}
 FALSE = {"", "0", "false", "no", "n", "не"}
@@ -24,6 +25,7 @@ class InputRow:
     ean: str
     prices: dict[str, str | None]
     notes: str = ""
+    tier: str | None = None  # economy / deep from the `research` column; None = the batch's choice
     problems: list[str] = field(default_factory=list)
 
     @property
@@ -66,6 +68,12 @@ def _row(line: int, r: dict[str, str], stores: list[str]) -> InputRow:
     if not r["name"]:
         problems.append("Липсва име на продукта.")
     prices = {k: (r.get(f"price_{k}") or None) for k in stores}
+    tier_name = None
+    if r.get("research"):
+        try:
+            tier_name = tier(r["research"]).name
+        except KeyError as exc:
+            problems.append(str(exc).strip('"'))
     return InputRow(
         line=line,
         name=r["name"],
@@ -74,5 +82,6 @@ def _row(line: int, r: dict[str, str], stores: list[str]) -> InputRow:
         ean=ean.clean(r["ean"]),
         prices=prices,
         notes=r.get("notes", ""),
+        tier=tier_name,
         problems=problems,
     )

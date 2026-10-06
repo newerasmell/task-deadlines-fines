@@ -37,7 +37,9 @@ make test                 # тестове; тези с маркер db иска
 ```bash
 python scripts/new_batch.py input/sample-5.csv --group group-1 --stores premierparfums,parfemija --estimate  # без AI
 python scripts/new_batch.py input/sample-5.csv --group group-1 --stores premierparfums,parfemija            # проучване + текстове + запис
+python scripts/new_batch.py input/x.csv --group group-1 --deep 3614270581656,737052925127                   # избрани продукти задълбочено
+python scripts/research_again.py --ean 3614270581656 --tier deep                                          # един продукт наново, нова партида
 python scripts/suggest_vocab.py --audit <export.csv> --group group-1 --store <key> [--save]                # решение #5
 python scripts/build_glossary.py config/glossary/pairs/el-hr.yaml                                         # решение #7
 ```
-Модел: Claude Opus 5.5. Цената на всяко повикване се записва (`events.kind = ai_usage`). `pytest -m live` пуска един реален продукт.
+Режими: евтин (Sonnet 5.5, ≤ $0.10/продукт, по подразбиране) и задълбочен (Opus 5.5, ≤ $0.50); колона `research` във входа избира за всеки ред. Цената на всяко повикване се записва (`events.kind = ai_usage`). `pytest -m live` пуска един реален продукт.

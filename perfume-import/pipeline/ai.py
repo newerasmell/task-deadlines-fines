@@ -13,11 +13,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-MODEL = "claude-sonnet-5-5"
+from pipeline.tiers import NO_THINKING, SONNET  # noqa: E402,F401  (NO_THINKING re-exported for callers)
+
+MODEL = SONNET  # default when a caller does not pass one
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 MAX_RESUMES = 5
 BATCH_DISCOUNT = 0.5  # token prices in the Batches API; web searches are not discounted
-NO_THINKING = {"type": "between_tools"}  # Sonnet 5.5's lowest thinking setting (needs effort <= high)
 
 # USD per million tokens: input, output, cache read, cache write (5-minute). Web search: per request.
 PRICES = {
@@ -26,7 +27,7 @@ PRICES = {
 }
 PRICE_WEB_SEARCH = 10.00 / 1000
 
-# Search snippets only: reading whole pages (web_fetch) was 95% of the cost in the first live run.
+# Default web tools (economy tier): search snippets only; reading whole pages was 95% of the first run's cost.
 WEB_TOOLS = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}]
 
 
@@ -131,12 +132,15 @@ def ask(
     web: bool = False,
     max_tokens: int = 32000,
     thinking: dict | None = None,
+    model: str = MODEL,
+    tools: list[dict] | None = None,
 ) -> Result:
     """One structured answer. Raises AIError with a Bulgarian message the field can show."""
     import anthropic
 
     try:
-        return _ask(client, system, prompt, schema, effort, web, max_tokens, thinking)
+        web_tools = (tools or WEB_TOOLS) if web else None
+        return _ask(client, system, prompt, schema, effort, web_tools, max_tokens, thinking, model)
     except anthropic.APIError as exc:
         # One product's API failure (400, overload, network) blocks that product, not the whole batch.
         raise AIError(f"Грешка от Claude API: {_api_detail(exc)}") from exc
@@ -148,10 +152,10 @@ def _api_detail(exc) -> str:
     return detail or str(exc)
 
 
-def params(*, system, prompt, schema, effort, max_tokens, thinking=None, tools=None) -> dict:
+def params(*, system, prompt, schema, effort, max_tokens, thinking=None, tools=None, model=MODEL) -> dict:
     """Request body shared by interactive calls and batch requests."""
     body = {
-        "model": MODEL,
+        "model": model,
         "max_tokens": max_tokens,
         "system": system,
         "messages": [{"role": "user", "content": prompt}],
@@ -165,7 +169,7 @@ def params(*, system, prompt, schema, effort, max_tokens, thinking=None, tools=N
     return body
 
 
-def _ask(client, system, prompt, schema, effort, web, max_tokens, thinking) -> Result:
+def _ask(client, system, prompt, schema, effort, tools, max_tokens, thinking, model) -> Result:
     body = params(
         system=system,
         prompt=prompt,
@@ -173,7 +177,8 @@ def _ask(client, system, prompt, schema, effort, web, max_tokens, thinking) -> R
         effort=effort,
         max_tokens=max_tokens,
         thinking=thinking,
-        tools=WEB_TOOLS if web else None,
+        tools=tools,
+        model=model,
     )
     first_turn = body["messages"][0]
     usage, sources = Usage(), []

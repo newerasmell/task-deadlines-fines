@@ -132,6 +132,7 @@ def save_batch(result: BatchResult, author: str | None = None) -> int:
                         "ean": p.row.ean,
                         "name": p.row.name,
                         "reused_research": p.reused_research,
+                        "tier": p.tier.name,
                         "steps": p.usage,
                         "cost_usd": p.cost_usd,
                     },
@@ -198,8 +199,9 @@ def save_vocab_suggestions(group_key: str, suggestions: dict[str, list[dict]]) -
     return saved
 
 
-def measured_costs(last: int = 50) -> dict[str, float]:
-    """Average cost per step over the last products that were really researched (for --estimate)."""
+def measured_costs(tier: str = "economy", last: int = 50) -> dict[str, float]:
+    """Average cost per step over the last products of this tier that were really researched (--estimate).
+    Events written before tiers existed count as economy."""
     with Session(engine()) as session:
         rows = session.execute(
             select(Event.payload).where(Event.kind == "ai_usage").order_by(Event.id.desc()).limit(last)
@@ -209,8 +211,25 @@ def measured_costs(last: int = 50) -> dict[str, float]:
             steps = payload.get("steps", {})
             if payload.get("reused_research") or "research" not in steps:
                 continue
+            if payload.get("tier", "economy") != tier:
+                continue
             sums["research"].append(steps["research"]["cost_usd"])
             if "description_en" in steps:
                 sums["description_en"].append(steps["description_en"]["cost_usd"])
             sums["language"] += [u["cost_usd"] for k, u in steps.items() if k.startswith("text_")]
     return {k: sum(v) / len(v) for k, v in sums.items() if v}
+
+
+def latest_product(ean: str) -> dict | None:
+    """The newest saved product with this EAN: its input row and the stores it was built for."""
+    with Session(engine()) as session:
+        product = session.execute(
+            select(Product).where(Product.ean == ean).order_by(Product.id.desc()).limit(1)
+        ).scalar_one_or_none()
+        if product is None:
+            return None
+        batch = session.get(Batch, product.batch_id)
+        stores = session.execute(
+            select(StoreProduct.store_key).where(StoreProduct.product_id == product.id).order_by(StoreProduct.id)
+        ).scalars()
+        return {"input": dict(product.input), "group": batch.group_key, "stores": list(stores), "batch_id": batch.id}

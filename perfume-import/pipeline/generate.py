@@ -10,9 +10,10 @@ length out of range -> one retry then warning.
 from dataclasses import dataclass, field
 
 from pipeline import lang
-from pipeline.ai import NO_THINKING, AIError, Usage, ask, ask_batch, params
+from pipeline.ai import AIError, Usage, ask, ask_batch, params
 from pipeline.config import Group, load_glossary
 from pipeline.fields import Field
+from pipeline.tiers import DEFAULT_TIER, TIERS, Tier
 
 NOTE_KEYS = ("top_note", "middle_note", "base_note")
 SEO_MAX = 160
@@ -81,6 +82,7 @@ class Task:
     request: dict  # keyword arguments for ai.ask / ai.params
     lo: int
     hi: int
+    batch: bool = False  # through the Message Batches API (economy tier)
     attempts: int = 0
     length_retry_used: bool = False
     data: dict | None = None
@@ -88,11 +90,13 @@ class Task:
     usage: Usage = field(default_factory=Usage)
 
 
-def _execute(client, tasks: list[Task], batch: bool) -> dict:
-    if batch:
-        return ask_batch(client, {t.id: params(**t.request) for t in tasks})
-    out = {}
+def _execute(client, tasks: list[Task], batch: bool | None) -> dict:
+    """batch=None: each task decides (its tier); True/False forces every task one way."""
+    batched = [t for t in tasks if (t.batch if batch is None else batch)]
+    out = ask_batch(client, {t.id: params(**t.request) for t in batched}) if batched else {}
     for t in tasks:
+        if t in batched:
+            continue
         try:
             out[t.id] = ask(client, **t.request)
         except AIError as exc:
@@ -100,7 +104,7 @@ def _execute(client, tasks: list[Task], batch: bool) -> dict:
     return out
 
 
-def run_tasks(client, tasks: list[Task], batch: bool = False) -> None:
+def run_tasks(client, tasks: list[Task], batch: bool | None = False) -> None:
     """Send every pending task (one batch per round when batch=True), check language and length, retry:
     wrong language up to LANGUAGE_RETRIES more times then blocked; length out of range once then warning."""
     pending = list(tasks)
@@ -143,19 +147,27 @@ def _length_problems(t: Task) -> list[tuple[str, str, str]]:
     return problems
 
 
-def master_task(task_id: str, facts: dict, group: Group) -> Task:
+def _text_request(tier: Tier, **request) -> dict:
+    request["model"] = tier.text_model
+    if tier.text_thinking:
+        request["thinking"] = tier.text_thinking
+    return request
+
+
+def master_task(task_id: str, facts: dict, group: Group, tier: Tier | None = None) -> Task:
+    tier = tier or TIERS[DEFAULT_TIER]
     lo, hi = group.spec.description.length
     schema = {"type": "object", "properties": TEXT_PROPS, "required": list(TEXT_PROPS), "additionalProperties": False}
     prompt = "Facts (verified by research):\n" + "\n".join(f"- {k}: {v}" for k, v in facts.items() if v)
-    request = {
-        "system": MASTER_SYSTEM.format(guide=group.description_guide, lo=lo, hi=hi),
-        "prompt": prompt,
-        "schema": schema,
-        "effort": "medium",
-        "max_tokens": 4000,
-        "thinking": NO_THINKING,
-    }
-    return Task(task_id, "en", request, lo, hi)
+    request = _text_request(
+        tier,
+        system=MASTER_SYSTEM.format(guide=group.description_guide, lo=lo, hi=hi),
+        prompt=prompt,
+        schema=schema,
+        effort="medium",
+        max_tokens=4000 if tier.text_thinking else 16000,  # room for thinking when it cannot be turned off
+    )
+    return Task(task_id, "en", request, lo, hi, batch=tier.text_batch)
 
 
 def master_text(task: Task, facts: dict) -> Text:
@@ -177,7 +189,10 @@ class _Local:
     need_sentence: bool
 
 
-def local_task(task_id: str, master: Text, language: str, group: Group, tester: bool) -> _Local:
+def local_task(
+    task_id: str, master: Text, language: str, group: Group, tester: bool, tier: Tier | None = None
+) -> _Local:
+    tier = tier or TIERS[DEFAULT_TIER]
     sentence = group.spec.tester_sentence.get(language) if tester else None
     if language == "en":
         return _Local(None, [], {}, sentence, False)
@@ -209,15 +224,16 @@ def local_task(task_id: str, master: Text, language: str, group: Group, tester: 
         )
     )
     name = LANGUAGE_NAMES.get(language, language)
-    request = {
-        "system": LOCAL_SYSTEM.format(language_name=name, lo=lo, hi=hi),
-        "prompt": prompt,
-        "schema": schema,
-        "effort": "low",
-        "max_tokens": 4000,
-        "thinking": NO_THINKING,
-    }
-    return _Local(Task(task_id, language, request, lo, hi), unknown, glossary, sentence, need_sentence)
+    request = _text_request(
+        tier,
+        system=LOCAL_SYSTEM.format(language_name=name, lo=lo, hi=hi),
+        prompt=prompt,
+        schema=schema,
+        effort="low",
+        max_tokens=4000 if tier.text_thinking else 16000,
+    )
+    task = Task(task_id, language, request, lo, hi, batch=tier.text_batch)
+    return _Local(task, unknown, glossary, sentence, need_sentence)
 
 
 def local_text(local: _Local, master: Text, language: str) -> Text:
@@ -256,21 +272,23 @@ def local_text(local: _Local, master: Text, language: str) -> Text:
 
 
 def generate_texts(
-    client, items: list[tuple[dict, bool]], group: Group, languages: list[str], batch: bool = False
+    client, items: list[tuple], group: Group, languages: list[str], batch: bool | None = None
 ) -> list[tuple[Text, dict[str, Text]]]:
-    """Texts for many products: all English masters in one round, then every product x language in one round
-    (each round is one Message Batch when batch=True). items = [(facts, tester), ...]."""
+    """Texts for many products: all English masters in one round, then every product x language in the next.
+    items = [(facts, tester), ...] or [(facts, tester, tier), ...]. With batch=None each product's tier decides
+    (economy -> one Message Batch per round at half price, deep -> interactive); True/False forces it."""
     languages = list(dict.fromkeys(languages))
-    masters = [master_task(f"m{i}", facts, group) for i, (facts, _) in enumerate(items)]
+    items = [(it[0], it[1], it[2] if len(it) > 2 and it[2] else TIERS[DEFAULT_TIER]) for it in items]
+    masters = [master_task(f"m{i}", facts, group, tier) for i, (facts, _, tier) in enumerate(items)]
     run_tasks(client, masters, batch)
-    master_texts = [master_text(t, facts) for t, (facts, _) in zip(masters, items, strict=True)]
+    master_texts = [master_text(t, facts) for t, (facts, _, _) in zip(masters, items, strict=True)]
 
     locals_: dict[tuple[int, str], _Local] = {}
-    for i, (master, (_, tester)) in enumerate(zip(master_texts, items, strict=True)):
+    for i, (master, (_, tester, tier)) in enumerate(zip(master_texts, items, strict=True)):
         if not master.description:
             continue
         for language in languages:
-            locals_[(i, language)] = local_task(f"t{i}-{language}", master, language, group, tester)
+            locals_[(i, language)] = local_task(f"t{i}-{language}", master, language, group, tester, tier)
     run_tasks(client, [lo.task for lo in locals_.values() if lo.task], batch)
 
     out = []

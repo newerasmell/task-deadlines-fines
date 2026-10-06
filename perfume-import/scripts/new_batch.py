@@ -11,14 +11,17 @@ expected cost without calling the API.
 import argparse
 import json
 import sys
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pipeline.ai import api_key  # noqa: E402
+from pipeline.batch import resolve_tier  # noqa: E402
 from pipeline.config import load_group  # noqa: E402
 from pipeline.input import InputError, read_input  # noqa: E402
+from pipeline.tiers import TIERS  # noqa: E402
 
 LABELS = {
     "ok": "ok",
@@ -27,9 +30,12 @@ LABELS = {
     "warning": "предупреждения",
     "blocked": "блокирани",
 }
-# Per-step costs (USD) for --estimate when the database has no measured run yet (Sonnet 5.5, 3 searches,
-# texts through the Batches API). After a run, the averages from events (kind ai_usage) are used instead.
-DEFAULT_COSTS = {"research": 0.06, "description_en": 0.003, "language": 0.003}
+# Per-step costs (USD) for --estimate when the database has no measured run of that tier yet.
+# After a run, the averages from events (kind ai_usage) are used instead.
+DEFAULT_COSTS = {
+    "economy": {"research": 0.06, "description_en": 0.003, "language": 0.003},  # Sonnet, search only, Batch
+    "deep": {"research": 0.35, "description_en": 0.02, "language": 0.015},  # Opus, pages, interactive
+}
 
 
 def main() -> int:
@@ -42,8 +48,14 @@ def main() -> int:
     ap.add_argument("--estimate", action="store_true", help="само проверка на входа и очаквана цена, без AI")
     ap.add_argument("--refresh", action="store_true", help="проучи отново, дори ако EAN вече е проучван")
     ap.add_argument("--no-save", action="store_true", help="не записвай в базата")
-    ap.add_argument("--no-batch", action="store_true", help="текстовете без Batch API: по-бързо, 2× по-скъпо")
-    ap.add_argument("--max-cost", type=float, default=0.10, help="лимит в USD на продукт (по подразбиране 0.10)")
+    ap.add_argument("--no-batch", action="store_true", help="евтините текстове без Batch API: по-бързо, 2× по-скъпо")
+    ap.add_argument(
+        "--max-cost", type=float, help="лимит в USD на продукт за всички (по подразбиране по режим: 0.10 / 0.50)"
+    )
+    ap.add_argument(
+        "--tier", default="economy", choices=list(TIERS), help="режим за партидата (по подразбиране economy)"
+    )
+    ap.add_argument("--deep", default="", help="EAN-и, разделени със запетая, които да се проучат задълбочено")
     args = ap.parse_args()
 
     group = load_group(args.group)
@@ -59,23 +71,31 @@ def main() -> int:
             print(f"  {row.label}: {problem}")
 
     languages = sorted({group.store(s).language for s in stores} - {"en"})
-    costs, source = DEFAULT_COSTS, "оценка без измерване"
-    if not args.no_save:
-        try:
-            from db.repo import measured_costs
+    deep_eans = {e.strip() for e in args.deep.split(",") if e.strip()}
+    counts = Counter(resolve_tier(r, args.tier, deep_eans).name for r in rows)
+    total = 0.0
+    lines = []
+    for name, n in counts.items():
+        costs, source = DEFAULT_COSTS[name], "оценка без измерване"
+        if not args.no_save:
+            try:
+                from db.repo import measured_costs
 
-            measured = measured_costs()
-            if measured:
-                costs, source = {**DEFAULT_COSTS, **measured}, "средно от последните измерени продукти"
-        except Exception:  # no database: fall back to the defaults
-            pass
-    factor = 2 if args.no_batch else 1
-    per_product = costs["research"] + factor * (costs["description_en"] + costs["language"] * len(languages))
+                measured = measured_costs(name)
+                if measured:
+                    costs, source = {**costs, **measured}, "измерено"
+            except Exception:  # no database: fall back to the defaults
+                pass
+        factor = 2 if args.no_batch and TIERS[name].text_batch else 1
+        per_product = costs["research"] + factor * (costs["description_en"] + costs["language"] * len(languages))
+        total += per_product * n
+        limit = args.max_cost if args.max_cost is not None else TIERS[name].max_cost
+        lines.append(f"  {TIERS[name].label}: {n} × ≈ ${per_product:.3f} ({source}; лимит ${limit:.2f})")
     print(
         f"{len(rows)} продукта × {len(stores)} магазина, езици: {', '.join(languages) or 'en'}. "
-        f"Очаквана цена ≈ ${per_product * len(rows):.2f} (≈ ${per_product:.3f} на продукт, {source}; "
-        f"лимит ${args.max_cost:.2f})."
+        f"Очаквана цена ≈ ${total:.2f}."
     )
+    print("\n".join(lines))
     if args.estimate:
         return 0
     if not api_key():
@@ -99,8 +119,10 @@ def main() -> int:
         name,
         saved_research=saved,
         refresh=args.refresh,
-        batch_texts=not args.no_batch,
+        batch_texts=False if args.no_batch else None,
         max_cost=args.max_cost,
+        default_tier=args.tier,
+        deep_eans=deep_eans,
     )
 
     summary = result.summary()
@@ -124,7 +146,9 @@ def main() -> int:
     print(f"Цена: ${summary['cost_usd']:.2f} общо, ${summary['cost_per_product_usd']:.3f} на продукт.")
     for over in summary["over_budget"]:
         steps = ", ".join(f"{k} ${v:.3f}" for k, v in over["steps"].items())
-        print(f"  Над лимита ${args.max_cost:.2f}: {over['input']} ${over['cost_usd']:.3f} ({steps})")
+        print(
+            f"  Над лимита ${over['limit_usd']:.2f} ({over['tier']}): {over['input']} ${over['cost_usd']:.3f} ({steps})"
+        )
     print(f"Детайли по полета: {out}")
     if not args.no_save:
         from db.repo import save_batch
