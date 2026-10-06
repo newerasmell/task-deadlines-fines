@@ -268,6 +268,12 @@ export function FieldPanel({
           </div>
         )}
 
+        {field.status === 'warning' && !editing && (
+          <div className="text-xs leading-relaxed text-ink-2">
+            „Остави както е“ не променя стойността, само отбелязва, че е проверена. За поправка: Промени (E).
+          </div>
+        )}
+
         {field.status === 'blocked' && !editing && (
           <div className="text-xs leading-relaxed text-ink-2">Спряно поле не се приема: поправи го с Промени или избери друга стойност.</div>
         )}
@@ -277,7 +283,14 @@ export function FieldPanel({
 
       <div className="flex gap-2 border-t border-line px-5 py-4">
         <Button variant="primary" size="lg" className="grow" disabled={!canAccept || decide.isPending} onClick={accept}>
-          Приеми <span className="opacity-70">A</span>
+          {field.status === 'warning'
+            ? 'Остави както е'
+            : field.status === 'fixed'
+              ? 'Приеми поправката'
+              : field.status === 'suggested'
+                ? 'Приеми предложението'
+                : 'Прието'}{' '}
+          <span className="opacity-70">A</span>
         </Button>
         <Button size="lg" disabled={editing || isImage} onClick={startEdit}>
           Промени <span className="text-ink-2">E</span>
