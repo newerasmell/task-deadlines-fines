@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { Failure, Loading } from '../components/States'
 import { Button } from '../components/ui/button'
 import { Dialog } from '../components/ui/dialog'
@@ -8,6 +8,7 @@ import { useActor } from '../lib/actorContext'
 import { api, type CheckResult, type CheckedRow, type GroupInfo, type Job } from '../lib/api'
 import { cn } from '../lib/cn'
 import { groupLabel, plural } from '../lib/labels'
+import { useLatestJob } from '../lib/queries'
 
 // New batch (NewBatch.dc.html): group, stores and research mode on the left; the products pasted from Excel or
 // from a CSV on the right, checked for free with the expected cost; research starts only after a confirmation
@@ -21,14 +22,21 @@ const TIERS = [
 const money = (n: number) => `$${n.toFixed(2)}`
 
 export function NewBatchScreen() {
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
   const groups = useQuery({ queryKey: ['groups'], queryFn: api.groups })
-  if (groups.isPending) return <Loading what="групите" />
+  const latest = useLatestJob()
+  // The progress has its own address (?job=), so a reload or the banner on Партиди comes back to it; only one
+  // run at a time, so while one runs the form is not shown.
+  const jobId = params.get('job') ?? (latest.data?.running ? latest.data.id : null)
+  if (jobId) return <Progress jobId={jobId} onDone={(id) => navigate(`/batches/${id}`)} />
+  if (groups.isPending || latest.isPending) return <Loading what="групите" />
   if (groups.isError) return <Failure error={groups.error} retry={() => groups.refetch()} />
   return <NewBatch groups={groups.data} />
 }
 
 function NewBatch({ groups }: { groups: GroupInfo[] }) {
-  const navigate = useNavigate()
+  const [, setParams] = useSearchParams()
   const { ensure } = useActor()
   const ready = groups.filter((g) => g.ready)
   const [groupKey, setGroupKey] = useState(ready[0]?.key ?? '')
@@ -43,7 +51,6 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
   const [startError, setStartError] = useState<string | null>(null)
   const [confirm, setConfirm] = useState(false)
   const [starting, setStarting] = useState(false)
-  const [jobId, setJobId] = useState<string | null>(null)
   const [typed, setTyped] = useState(text)
   const picker = useRef<HTMLInputElement>(null)
 
@@ -102,7 +109,7 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
     setStartError(null)
     try {
       const r = await api.startBatch(form)
-      setJobId(r.job_id)
+      setParams({ job: r.job_id })
       setConfirm(false)
     } catch (e) {
       setStartError((e as Error).message)
@@ -111,8 +118,6 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
       setStarting(false)
     }
   }
-
-  if (jobId) return <Progress jobId={jobId} onDone={(id) => navigate(`/batches/${id}`)} />
 
   const shownStores = group?.stores.filter((s) => stores.includes(s.key)) ?? []
   const problems = result?.rows.filter((r) => r.problems.length) ?? []
@@ -436,7 +441,7 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) 
             </div>
             <span className="text-sm leading-normal text-ink-2">
               Може да затвориш страницата: партидата ще се появи в списъка, когато е готова. Описанията минават през
-              Batch API и може да отнемат до 15 минути.
+              Batch API и може да отнемат до 15 минути. Не пускай deploy, докато върви: рестартът я спира.
             </span>
           </>
         )}

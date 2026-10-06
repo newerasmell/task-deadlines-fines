@@ -333,6 +333,7 @@ export const api = {
   checkBatch: (form: FormData) => upload<CheckResult>('/api/batches/check', form),
   startBatch: (form: FormData) => upload<{ job_id: string }>('/api/batches/start', form),
   job: (id: string) => request<Job>(`/api/jobs/${id}`),
+  latestJob: () => request<Job | null>('/api/jobs/latest'),
   audit: (batchId: number) => request<AuditSummary>(`/api/batches/${batchId}/audit`),
   auditItems: (batchId: number, rule: string, limit: number) =>
     request<{ rule: string; label: string; total: number; items: AuditItem[] }>(

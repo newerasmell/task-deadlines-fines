@@ -169,3 +169,11 @@ def job(job_id: str) -> dict:
 
 def running() -> dict | None:
     return next((dict(j) for j in _jobs.values() if j["running"]), None)
+
+
+def latest() -> dict | None:
+    """The running job, else the last one this server ran (finished or failed); None after a restart."""
+    current = running()
+    if current:
+        return current
+    return dict(list(_jobs.values())[-1]) if _jobs else None

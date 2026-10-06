@@ -123,6 +123,11 @@ def running_job():
     return newbatch.running()
 
 
+@router.get("/jobs/latest")
+def latest_job():
+    return newbatch.latest()
+
+
 @router.get("/jobs/{job_id}")
 def job(job_id: str):
     return _call(newbatch.job, job_id)

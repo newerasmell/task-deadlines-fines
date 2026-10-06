@@ -56,6 +56,8 @@ def test_run_in_the_background_and_save(monkeypatch):
     worker = next(t for t in threading.enumerate() if t.name == f"new-batch-{job_id}")
     worker.join(timeout=120)
     job = newbatch.job(job_id)
+    assert newbatch.running() is None and newbatch.latest()["id"] == job_id  # the app keeps showing the last one
+    assert TestClient(app).get("/api/jobs/latest").json()["id"] == job_id
     try:
         assert job["error"] is None, job
         assert job["batch_id"] and job["stage"] == "saving", job

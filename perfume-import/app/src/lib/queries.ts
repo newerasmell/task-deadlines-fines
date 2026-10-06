@@ -60,6 +60,14 @@ export function useAcceptColumn(batchId: number) {
   })
 }
 
+// The running new batch, else the last one this server ran: kept in the server's memory, lost on a deploy.
+export const useLatestJob = () =>
+  useQuery({
+    queryKey: ['job', 'latest'],
+    queryFn: api.latestJob,
+    refetchInterval: (query) => (query.state.data?.running ? 5000 : false),
+  })
+
 export const useUploadState = (batchId: number) =>
   useQuery({
     queryKey: ['upload', batchId],
