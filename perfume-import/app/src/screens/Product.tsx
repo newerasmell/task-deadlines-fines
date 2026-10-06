@@ -54,6 +54,7 @@ export function ProductScreen() {
           </div>
           {open && (
             <FieldPanel
+              key={`${product.id}-${open.store}-${open.key}`}
               batch={batch.data}
               product={product}
               store={open.store}

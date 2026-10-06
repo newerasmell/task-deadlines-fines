@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Batch, FieldRecord, Product, Status } from '../lib/api'
 import { cn } from '../lib/cn'
 import { display, fieldLabel, host, LOCALIZED, storeShort, stripHtml } from '../lib/labels'
@@ -38,26 +38,22 @@ export function FieldPanel({
   product,
   store,
   fieldKey,
+  startEditing = false,
   onClose,
 }: {
   batch: Batch
   product: Product
   store: string
   fieldKey: string
+  startEditing?: boolean
   onClose: () => void
 }) {
   const field = product.stores[store]?.fields[fieldKey]
   const decide = useDecide(batch.id)
   const vocab = useVocab(batch.group)
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const panel = useRef<HTMLElement>(null)
-
-  useEffect(() => {
-    setEditing(false)
-    decide.reset()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, fieldKey, product.id])
+  // The parent remounts the panel (key) for another cell, so this state always belongs to one field.
+  const [editing, setEditing] = useState(startEditing && fieldKey !== 'image')
+  const [draft, setDraft] = useState(() => display(product.stores[store]?.fields[fieldKey]?.value))
 
   const canAccept = !!field && (field.status === 'suggested' || field.status === 'warning' || field.status === 'fixed')
   const accept = () => field && canAccept && decide.mutate({ fieldId: field.id, action: 'accept' })
@@ -105,7 +101,6 @@ export function FieldPanel({
 
   return (
     <aside
-      ref={panel}
       aria-label={`Поле ${fieldLabel(fieldKey)}`}
       className="flex w-[400px] shrink-0 flex-col border-l border-line bg-canvas shadow-[-8px_0_24px_rgba(26,29,33,0.06)]"
     >
