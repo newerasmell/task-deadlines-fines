@@ -28,6 +28,7 @@ WITH_ML = ("title", "product_milliliters")
 class Context:
     group: Group
     store: StoreConfig
+    description_length: tuple[int, int] | None = None  # the store's own (profile), else the group's
     matchers: dict[str, VocabMatcher] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -184,11 +185,15 @@ def _description(fields: dict[str, Field], ctx: Context) -> None:
     if not text:
         body.flag("warning", "Липсва описание.", "description_missing")
         return
-    lo, hi = ctx.spec.description.length
+    lo, hi = ctx.description_length or ctx.spec.description.length
     sentence = ctx.spec.tester_sentence.get(ctx.store.language) or ""
     prose = collapse_spaces(text.replace(sentence, "")) if sentence else text  # the fixed sentence is extra
     if not lo <= len(prose) <= hi:
-        body.flag("warning", f"Описанието е {len(prose)} знака; групата иска {lo}–{hi}.", "description_length")
+        body.flag(
+            "warning",
+            f"Описанието е {len(prose)} знака; {'магазинът' if ctx.description_length else 'групата'} иска {lo}–{hi}.",
+            "description_length",
+        )
     if not parse_title(fields["title"].value or "").tester:
         return
     sentence = ctx.spec.tester_sentence.get(ctx.store.language)

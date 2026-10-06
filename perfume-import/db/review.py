@@ -359,9 +359,18 @@ def _accept(row: FieldRow, actor: str | None) -> None:
     row.decided_by, row.decided_at = actor, now()
 
 
+def _description_length(group, store_key: str) -> tuple[int, int] | None:
+    """The store's own description length when it writes in its own style (pipeline.generate.store_style)."""
+    from db.stores import accepted_profiles
+    from pipeline.generate import store_style
+
+    style = store_style(group.store(store_key), accepted_profiles([store_key]).get(store_key), group)
+    return (style.lo, style.hi) if style else None
+
+
 def _set_value(batch: Batch, store_key: str, rows: dict[str, FieldRow], key: str, value, action, actor):
     group = load_group(batch.group_key)
-    ctx = Context(group, group.store(store_key))
+    ctx = Context(group, group.store(store_key), _description_length(group, store_key))
     fields = {k: to_field(r) for k, r in rows.items()}
     old = fields[key]
     edited = Field(

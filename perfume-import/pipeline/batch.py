@@ -16,7 +16,7 @@ from pipeline.build import ProductInput, build_store_fields, google_gender
 from pipeline.compose import Composed, compose_for_stores
 from pipeline.config import Group
 from pipeline.fields import SEVERITY, Field, worst
-from pipeline.generate import NOTE_KEYS, Text, generate_texts, text_fields
+from pipeline.generate import NOTE_KEYS, Text, generate_texts, store_style, style_key, text_fields
 from pipeline.images import Checked, best, check_all, image_field
 from pipeline.input import InputRow
 from pipeline.research import EanCheck, Research, find_images, fragrantica_bottle, from_saved, research_product
@@ -171,7 +171,8 @@ def store_fields(result: ProductResult, group: Group, store_key: str, profile: d
         elif not row.ean:
             flag_missing_ean(fields["ean"], research, row)
 
-    text = result.texts.get(store.language)
+    style = store_style(store, profile, group)
+    text = (result.texts.get(style_key(style)) if style else None) or result.texts.get(store.language)
     if text and result.master:
         fields.update(text_fields(text, result.master, group))
     else:
@@ -180,7 +181,7 @@ def store_fields(result: ProductResult, group: Group, store_key: str, profile: d
             "body_html", "", "ai_generated", "blocked", message=f"Описанието не е генерирано. {why}".strip()
         )
     fields["compare_at"] = Field("compare_at", "", "input", "ok")
-    validate_product(fields, Context(group, store))
+    validate_product(fields, Context(group, store, (style.lo, style.hi) if style else None))
     return fields
 
 
@@ -361,8 +362,12 @@ def run_batch(
             report("research", done[0], len(rows))
         return result
 
-    languages = [group.store(s).language for s in stores]
-    n_texts = 1 + len(set(languages) - {"en"})
+    # A store with an accepted profile gets its own text in its own style (competitors in one language never
+    # share a description); the others share their language's translation.
+    styles = [st for s in stores if (st := store_style(group.store(s), (profiles or {}).get(s), group))]
+    styled = {st.key for st in styles}
+    languages = [group.store(s).language for s in stores if s not in styled]
+    n_texts = 1 + len(set(languages) - {"en"}) + len(styles)
     with ThreadPoolExecutor(max_workers=max(1, min(workers, MAX_PARALLEL))) as pool:
         report("research", 0, len(rows))
         products = list(pool.map(researched, zip(rows, tiers, strict=True)))
@@ -372,14 +377,19 @@ def run_batch(
     ready = [p for p in products if not p.research.error and p.affords("texts", n_texts * p.tier.text_cost)]
     report("texts", 0, len(ready))
     texts = generate_texts(
-        client, [(facts_for_text(p.research), p.row.tester, p.tier) for p in ready], group, languages, batch=batch_texts
+        client,
+        [(facts_for_text(p.research), p.row.tester, p.tier) for p in ready],
+        group,
+        languages,
+        batch=batch_texts,
+        styles=styles,
     )
     for p, (master, by_language) in zip(ready, texts, strict=True):
         p.master, p.texts = master, by_language
         p.usage["description_en"] = master.usage.to_dict()
         for language, t in by_language.items():
             if language != "en":
-                p.usage[f"text_{language}"] = t.usage.to_dict()
+                p.usage[f"text_{language.removeprefix('store:')}"] = t.usage.to_dict()
 
     report("fields", 0, len(products))
     for p in products:

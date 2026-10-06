@@ -14,6 +14,7 @@ from pipeline import lang
 from pipeline.ai import AIError, Usage, ask, ask_batch, params
 from pipeline.config import Group, load_glossary
 from pipeline.fields import Field
+from pipeline.text import strip_html
 from pipeline.tiers import DEFAULT_TIER, TIERS, Tier
 
 NOTE_KEYS = ("top_note", "middle_note", "base_note")
@@ -32,6 +33,22 @@ LOCAL_SYSTEM = """You translate perfume shop texts from English into {language_n
 Keep the meaning, tone and every fact; keep brand and fragrance names exactly as written; the description
 must be {lo}-{hi} characters in {language_name}; the SEO description at most 160 characters.
 Translate each listed perfume note as a perfumer would name it in {language_name}, lowercase."""
+
+STORE_SYSTEM = """You write the product description for the online perfume shop "{label}", in {language_name}.
+You get an English reference description and the verified facts. Write this shop's own text from them:
+- Follow the shop's style shown in its existing descriptions below: structure ({shape}), paragraphing, tone,
+  sentence length, how it opens and how it presents the notes. Never copy their wording, and never take facts
+  from them: they are about other perfumes.
+- Do not translate the reference sentence by sentence: rephrase freely and order the information your own way,
+  so the text reads differently from any other shop selling the same perfume. Keep every fact; add none.
+- Keep brand and fragrance names exactly as written. {lo}-{hi} characters of visible text.
+- description: HTML using only <p>, <br>, <strong>, <em>, <ul>, <li>, in the shop's structure.
+- seo_description: plain text, at most 160 characters, also in the shop's own words.
+- Translate each listed perfume note as a perfumer would name it in {language_name}, lowercase.
+Do not mention that the product is a tester and do not mention price.
+
+The shop's existing descriptions (style reference only):
+{examples}"""
 
 LANGUAGE_NAMES = {
     "en": "English",
@@ -52,6 +69,40 @@ LANGUAGE_NAMES = {
 
 
 @dataclass
+class StoreStyle:
+    """How one store writes its descriptions, learned from its catalog (the accepted profile): two competing
+    stores in one language get two different texts from the same facts."""
+
+    key: str
+    label: str
+    language: str
+    lo: int
+    hi: int
+    shape: str  # e.g. "3 × <p>" or "1 × <p> + <strong>"
+    examples: list[str]  # a few of its own descriptions (HTML), style reference only
+
+
+def store_style(store, profile: dict | None, group: Group) -> StoreStyle | None:
+    """None without an accepted profile with example descriptions: the store then gets its language's text."""
+    if not profile:
+        return None
+    items = profile.get("items", profile)
+
+    def value(key: str):
+        it = items.get(key) or {}
+        return None if it.get("status") == "rejected" else it.get("value")
+
+    examples = [e["body_html"][:1500] for e in (value("description_examples") or []) if e.get("body_html")][:3]
+    if not examples:
+        return None
+    lo, hi = group.spec.description.length
+    learned = value("description_length")
+    if isinstance(learned, list | tuple) and len(learned) == 2 and 50 <= int(learned[0]) < int(learned[1]):
+        lo, hi = int(learned[0]), int(learned[1])
+    return StoreStyle(store.key, store.label, store.language, lo, hi, value("description_html") or "1 × <p>", examples)
+
+
+@dataclass
 class Text:
     language: str
     description: str
@@ -62,10 +113,12 @@ class Text:
     tester_sentence_is_new: bool = False
     problems: list[tuple[str, str, str]] = field(default_factory=list)  # (status, rule, message)
     usage: Usage = field(default_factory=Usage)
+    html: bool = False  # the description is the store's own HTML (StoreStyle), not plain text to wrap in <p>
 
 
 def _check(text: str, seo: str, language: str, lo: int, hi: int) -> tuple[bool, bool]:
-    """-> (language ok, length ok)."""
+    """-> (language ok, length ok). Lengths count visible text."""
+    text = strip_html(text)
     found = lang.detect(text)
     language_ok = found in (None, language)
     length_ok = lo <= len(text) <= hi and len(seo) <= SEO_MAX
@@ -194,6 +247,7 @@ class _Local:
     glossary: dict[str, str]
     sentence: str | None
     need_sentence: bool
+    html: bool = False
 
 
 def local_task(
@@ -243,6 +297,59 @@ def local_task(
     return _Local(task, unknown, glossary, sentence, need_sentence)
 
 
+def store_task(
+    task_id: str, master: Text, style: StoreStyle, group: Group, tester: bool, tier: Tier | None = None
+) -> _Local:
+    """The store's own text in its language and style, from the English master (also for English stores)."""
+    tier = tier or TIERS[DEFAULT_TIER]
+    language = style.language
+    sentence = group.spec.tester_sentence.get(language) if tester else None
+    glossary = load_glossary(language) if language != "en" else {}
+    unknown = (
+        sorted({t for terms in master.notes.values() for t in terms if t.lower() not in glossary})
+        if language != "en"
+        else []
+    )
+    need_sentence = tester and not sentence
+    note_item = {
+        "type": "object",
+        "properties": {"en": {"type": "string"}, "local": {"type": "string"}},
+        "required": ["en", "local"],
+        "additionalProperties": False,
+    }
+    props = {**TEXT_PROPS, "notes": {"type": "array", "items": note_item}, "tester_sentence": {"type": "string"}}
+    schema = {"type": "object", "properties": props, "required": list(props), "additionalProperties": False}
+    prompt = (
+        f"English reference description:\n{master.description}\n\n"
+        f"English SEO description:\n{master.seo_description}\n\n"
+        f"Notes to translate: {', '.join(unknown) if unknown else '(none)'}\n"
+        + (
+            f"Also translate this sentence as tester_sentence: {group.spec.tester_sentence['en']}\n"
+            if need_sentence
+            else "tester_sentence: return an empty string.\n"
+        )
+    )
+    examples = "\n\n".join(f"--- example {i + 1} ---\n{e}" for i, e in enumerate(style.examples))
+    system = STORE_SYSTEM.format(
+        label=style.label,
+        language_name=LANGUAGE_NAMES.get(language, language),
+        shape=style.shape,
+        lo=style.lo,
+        hi=style.hi,
+        examples=examples,
+    )
+    request = _text_request(
+        tier,
+        system=system,
+        prompt=prompt,
+        schema=schema,
+        effort="low",
+        max_tokens=4000 if tier.text_thinking else 16000,
+    )
+    task = Task(task_id, language, request, style.lo, style.hi, batch=tier.text_batch)
+    return _Local(task, unknown, glossary, sentence, need_sentence, html=True)
+
+
 def local_text(local: _Local, master: Text, language: str) -> Text:
     if local.task is None:  # English store: the master is the text
         return Text(
@@ -255,7 +362,7 @@ def local_text(local: _Local, master: Text, language: str) -> Text:
         )
     task = local.task
     if task.data is None or _blocked(task):
-        return Text(language, "", "", {}, problems=task.problems, usage=task.usage)
+        return Text(language, "", "", {}, problems=task.problems, usage=task.usage, html=local.html)
     data, problems = task.data, list(task.problems)
     new_terms = {n["en"].lower(): n["local"].lower() for n in data["notes"] if n["en"].lower() in local.unknown}
     missing = [t for t in local.unknown if t not in new_terms]
@@ -275,11 +382,17 @@ def local_text(local: _Local, master: Text, language: str) -> Text:
         tester_sentence_is_new=local.need_sentence,
         problems=problems,
         usage=task.usage,
+        html=local.html,
     )
 
 
 def generate_texts(
-    client, items: list[tuple], group: Group, languages: list[str], batch: bool | None = None
+    client,
+    items: list[tuple],
+    group: Group,
+    languages: list[str],
+    batch: bool | None = None,
+    styles: list[StoreStyle] | None = None,
 ) -> list[tuple[Text, dict[str, Text]]]:
     """Texts for many products: all English masters in one round, then every product x language in the next.
     items = [(facts, tester), ...] or [(facts, tester, tier), ...]. With batch=None each product's tier decides
@@ -296,20 +409,30 @@ def generate_texts(
             continue
         for language in languages:
             locals_[(i, language)] = local_task(f"t{i}-{language}", master, language, group, tester, tier)
+        for style in styles or []:
+            locals_[(i, style_key(style))] = store_task(f"t{i}-s-{style.key}", master, style, group, tester, tier)
     run_tasks(client, [lo.task for lo in locals_.values() if lo.task], batch)
 
+    targets = [*languages, *(style_key(st) for st in styles or [])]
+    language_of = {style_key(st): st.language for st in styles or []}
     out = []
     for i, master in enumerate(master_texts):
         texts = {}
-        for language in languages:
+        for language in targets:
+            code = language_of.get(language, language)
             if (i, language) in locals_:
-                texts[language] = local_text(locals_[(i, language)], master, language)
+                texts[language] = local_text(locals_[(i, language)], master, code)
             else:
                 texts[language] = Text(
-                    language, "", "", {}, problems=[("blocked", "generation_failed", "Няма английски оригинал.")]
+                    code, "", "", {}, problems=[("blocked", "generation_failed", "Няма английски оригинал.")]
                 )
         out.append((master, texts))
     return out
+
+
+def style_key(style: StoreStyle) -> str:
+    """Key of a store's own text in generate_texts' result (languages are keyed by their code)."""
+    return f"store:{style.key}"
 
 
 def english_master(client, facts: dict, group: Group) -> Text:
@@ -325,17 +448,29 @@ def localize(client, master: Text, language: str, group: Group, tester: bool) ->
     return local_text(local, master, language)
 
 
+def _with_sentence(html: str, sentence: str) -> str:
+    """The tester sentence closes the last paragraph of the store's HTML (or follows it)."""
+    end = html.rfind("</p>")
+    if end == -1:
+        return f"{html} {sentence}".strip()
+    return f"{html[:end].rstrip()} {sentence}{html[end:]}"
+
+
 def text_fields(text: Text, master: Text, group: Group) -> dict[str, Field]:
     """Fields for one store from its language's text. Generated prose is suggested until the group opts in."""
     status = "ok" if group.spec.auto_accept_generated else "suggested"
     body = text.description
     body_en = master.description
     if text.tester_sentence:
-        body = f"{body} {text.tester_sentence}"
+        body = _with_sentence(body, text.tester_sentence) if text.html else f"{body} {text.tester_sentence}"
         body_en = f"{body_en} {group.spec.tester_sentence.get('en', '')}".strip()
     fields = {
         "body_html": Field(
-            key="body_html", value=f"<p>{body}</p>", origin="ai_generated", status=status, value_en=f"<p>{body_en}</p>"
+            key="body_html",
+            value=body if text.html else f"<p>{body}</p>",
+            origin="ai_generated",
+            status=status,
+            value_en=f"<p>{body_en}</p>",
         ),
         "seo_description": Field(
             key="seo_description",

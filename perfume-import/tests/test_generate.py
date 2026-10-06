@@ -185,3 +185,36 @@ def test_notes_research_did_not_find_are_a_warning_not_done(monkeypatch):
     f = text_fields(t, master, GROUP)
     assert f["top_note"].status == "ok"
     assert f["middle_note"].status == "warning" and "не намери нотки" in f["middle_note"].message
+
+
+def test_competing_stores_in_one_language_get_their_own_texts(monkeypatch):
+    """Two Greek stores with profiles: one text each, written in each store's style, not one shared translation."""
+    from pipeline.generate import StoreStyle, generate_texts, style_key
+
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {"lemon": "λεμόνι", "rose": "τριαντάφυλλο"})
+    styles = [
+        StoreStyle("premier", "PremierParfums", "el", 200, 700, "2 × <p>", ["<p>Παράδειγμα Α.</p><p>Δεύτερο.</p>"]),
+        StoreStyle("aroma", "AromaChic", "el", 200, 700, "1 × <p> + <strong>", ["<p><strong>Β</strong> κείμενο.</p>"]),
+    ]
+    html = {
+        "PremierParfums": f"<p>{EL[:200]}</p><p>{EL[200:]}</p>",
+        "AromaChic": f"<p><strong>Paco Rabanne</strong> {EL}</p>",
+    }
+
+    def responder(kwargs):
+        system = kwargs["system"] if isinstance(kwargs["system"], str) else kwargs["system"][0]["text"]
+        if "Write in English" in system:
+            return master_message()
+        shop = next(name for name in html if f'"{name}"' in system)
+        return text(html[shop], notes=[{"en": "vanilla", "local": "βανίλια"}, {"en": "akigalawood", "local": "ακ"}])
+
+    client = FakeClient(responder=responder)
+    [(master, texts)] = generate_texts(client, [(FACTS, True)], GROUP, [], batch=False, styles=styles)
+    a, b = texts[style_key(styles[0])], texts[style_key(styles[1])]
+    assert a.description != b.description and a.html and b.html
+    systems = [c["system"] if isinstance(c["system"], str) else c["system"][0]["text"] for c in client.calls[1:]]
+    assert any("Παράδειγμα Α" in s for s in systems) and any("<strong>Β</strong>" in s for s in systems)
+    fields = text_fields(a, master, GROUP)
+    body = fields["body_html"].value
+    assert body.startswith("<p>") and body.count("<p>") == 2  # the store's HTML, not wrapped again
+    assert body.endswith(GROUP.spec.tester_sentence["el"] + "</p>")  # closes the last paragraph

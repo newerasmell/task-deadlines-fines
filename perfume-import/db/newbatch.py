@@ -56,6 +56,14 @@ def _measured() -> dict:
         return {}
 
 
+def _styled(group, stores: list[str]) -> set[str]:
+    """Stores that will write their own text (an accepted profile with example descriptions)."""
+    from pipeline.generate import store_style
+
+    profiles = accepted_profiles(stores)
+    return {s for s in stores if store_style(group.store(s), profiles.get(s), group)}
+
+
 def check(
     text: str,
     group_key: str,
@@ -74,7 +82,9 @@ def check(
     group, rows = _rows(text, group_key, stores, mode)
     stores = stores or list(group.stores)
     good = [r for r in rows if not r.problems]
-    est = estimate(good, group, stores, tier, set(deep or []), _measured(), no_batch=fast)
+    est = estimate(
+        good, group, stores, tier, set(deep or []), _measured(), no_batch=fast, styled=_styled(group, stores)
+    )
     return {
         "rows": [
             {

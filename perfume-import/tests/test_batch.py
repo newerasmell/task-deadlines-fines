@@ -26,6 +26,9 @@ def responder(kwargs):
     system = kwargs["system"]
     if "into Greek" in system:
         return text(EL, notes=[{"en": t, "local": f"{t}-el"} for t in ["sicilian lemon", "rose", "vanilla"]])
+    if '"PremierParfums' in system and "in Greek" in system:  # the store's own text (pipeline.generate.STORE_SYSTEM)
+        own = f"<p>{EL[:150]}</p><p>{EL[150:]}</p>"
+        return text(own, notes=[{"en": t, "local": f"{t}-el"} for t in ["sicilian lemon", "rose", "vanilla"]])
     if "into Croatian" in system:
         return text(HR, notes=[{"en": t, "local": f"{t}-hr"} for t in ["sicilian lemon", "rose", "vanilla"]])
     return message({"description": EN, "seo_description": SEO})
@@ -223,3 +226,24 @@ def test_wrong_ean_is_flagged_with_the_right_one_and_the_product_is_built(rows, 
     assert code.value == rows[0].ean and code.status == "suggested" and code.rule == "ean_mismatch"
     assert code.alternatives == [good] and len(code.sources) == 2
     assert "30 ml EAN" in code.message and good in code.message
+
+
+def test_a_store_with_a_profile_gets_its_own_text(rows, monkeypatch):
+    """PremierParfums has an accepted profile with example descriptions: its text is written in its own
+    style (one call for the store), Parfemija without one gets the Croatian translation."""
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    profile = {
+        "items": {
+            "description_examples": {"value": [{"title": "X", "body_html": "<p>Α.</p><p>Β.</p>"}]},
+            "description_html": {"value": "2 × <p>", "status": "ok"},
+            "description_length": {"value": [100, 900], "status": "ok"},
+        }
+    }
+    client = FakeClient(responder=responder)
+    result = run_batch(client, rows[:1], GROUP, STORES, "test", profiles={"premierparfums": profile})
+    systems = [c["system"] for c in client.calls if not c.get("tools")]
+    assert sum('"PremierParfums' in s for s in systems) == 1 and not any("into Greek" in s for s in systems)
+    gr, hr = result.products[0].stores["premierparfums"], result.products[0].stores["parfemija"]
+    assert gr["body_html"].value.count("<p>") == 2
+    assert "description_length" not in [i["rule"] for i in gr["body_html"].issues]  # the store's 100–900
+    assert hr["body_html"].value.startswith("<p>") and HR[:30] in hr["body_html"].value

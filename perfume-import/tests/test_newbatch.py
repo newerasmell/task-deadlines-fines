@@ -44,7 +44,9 @@ def test_check_shows_problems_and_the_cost():
     assert out["ready"] == len(out["rows"]) - 1
     assert any("ml" in p for p in out["rows"][0]["problems"])
     assert out["estimate"]["products"] == out["ready"] and out["estimate"]["total"] > 0
-    assert out["estimate"]["languages"] == ["el", "hr"]
+    # A store with an accepted profile writes its own text; the others share their language's translation.
+    est = out["estimate"]
+    assert len(est["languages"]) + est["own_texts"] == 2 and set(est["languages"]) <= {"el", "hr"}
 
 
 @pytest.mark.db

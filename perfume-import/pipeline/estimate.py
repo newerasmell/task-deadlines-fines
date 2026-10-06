@@ -41,12 +41,14 @@ class Estimate:
     languages: list[str]
     total: float
     tiers: list[TierEstimate] = field(default_factory=list)
+    own_texts: int = 0  # stores writing in their own style: one text each instead of a shared translation
 
     def to_dict(self) -> dict:
         return {
             "products": self.products,
             "stores": self.stores,
             "languages": self.languages,
+            "own_texts": self.own_texts,
             "total": round(self.total, 4),
             "tiers": [t.__dict__ for t in self.tiers],
         }
@@ -61,16 +63,21 @@ def estimate(
     measured: dict[str, dict[str, float]] | None = None,
     max_cost: float | None = None,
     no_batch: bool = False,
+    styled: set[str] | None = None,
 ) -> Estimate:
-    """measured: {tier: {research, description_en, language}} from db.repo.measured_costs."""
-    languages = sorted({group.store(s).language for s in stores} - {"en"})
+    """measured: {tier: {research, description_en, language}} from db.repo.measured_costs.
+    styled: stores that get their own text (pipeline.generate.store_style), priced like one translation each."""
+    own = [s for s in stores if s in (styled or set())]
+    languages = sorted({group.store(s).language for s in stores if s not in own} - {"en"})
     counts = Counter(resolve_tier(r, default_tier, deep_eans).name for r in rows)
-    out = Estimate(products=len(rows), stores=len(stores), languages=languages, total=0.0)
+    out = Estimate(products=len(rows), stores=len(stores), languages=languages, total=0.0, own_texts=len(own))
     for name, n in counts.items():
         known = (measured or {}).get(name) or {}
         costs = {**DEFAULT_COSTS[name], **known}
         factor = 2 if no_batch and TIERS[name].text_batch else 1
-        per_product = costs["research"] + factor * (costs["description_en"] + costs["language"] * len(languages))
+        per_product = costs["research"] + factor * (
+            costs["description_en"] + costs["language"] * (len(languages) + len(own))
+        )
         limit = max_cost if max_cost is not None else TIERS[name].max_cost
         out.total += per_product * n
         out.tiers.append(
