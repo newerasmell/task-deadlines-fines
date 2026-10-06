@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
+import { AppNav } from '../components/AppNav'
 import { Empty, Failure, Loading } from '../components/States'
 import { Button } from '../components/ui/button'
 import { useActor } from '../lib/actorContext'
@@ -32,7 +33,7 @@ function summary(b: BatchSummary): string {
 }
 
 function action(b: BatchSummary): { label: string; to: string } {
-  if (b.kind === 'audit') return { label: 'Отвори одита', to: `/batches/${b.id}/grid` }
+  if (b.kind === 'audit') return { label: 'Отвори одита', to: `/batches/${b.id}/audit` }
   if (b.publish_status === 'uploaded') return { label: 'Виж резултата', to: `/batches/${b.id}/upload` }
   if (b.products && b.approved === b.products) return { label: `Качи ${b.approved}`, to: `/batches/${b.id}/upload` }
   if (b.review || b.blocked)
@@ -51,20 +52,21 @@ function Progress({ b }: { b: BatchSummary }) {
   )
 }
 
-export function BatchesScreen() {
+export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
   const batches = useBatches()
   const { actor, change } = useActor()
   const [group, setGroup] = useState<string | null>(null)
   const [unfinished, setUnfinished] = useState(false)
   const groups = useMemo(() => [...new Set((batches.data ?? []).map((b) => b.group))].sort(), [batches.data])
   const shown = (batches.data ?? []).filter(
-    (b) => (!group || b.group === group) && (!unfinished || b.review + b.blocked > 0),
+    (b) => (!kind || b.kind === kind) && (!group || b.group === group) && (!unfinished || b.review + b.blocked > 0),
   )
 
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex h-14 items-center gap-4 border-b border-line px-7">
-        <h1 className="m-0 text-base font-semibold">Партиди</h1>
+        <AppNav />
+        <h1 className="sr-only">{kind === 'audit' ? 'Одит на каталог' : 'Партиди'}</h1>
         <div className="grow" />
         <button
           onClick={change}
@@ -99,7 +101,9 @@ export function BatchesScreen() {
           <Empty>
             {batches.data.length
               ? 'Няма партиди по този филтър.'
-              : 'Още няма партиди. Създай първата с scripts/new_batch.py или /new-perfumes.'}
+              : kind === 'audit'
+                ? 'Още няма одит. Качи каталог на магазин от „Магазини“.'
+                : 'Още няма партиди. Създай първата с scripts/new_batch.py или /new-perfumes.'}
           </Empty>
         ) : (
           <div className="overflow-hidden rounded-lg border border-line" role="table" aria-label="Партиди">
