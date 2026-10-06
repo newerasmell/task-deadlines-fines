@@ -43,6 +43,8 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
   const group = groups.find((g) => g.key === groupKey)
   const [stores, setStores] = useState<string[]>(() => group?.stores.map((s) => s.key) ?? [])
   const [tier, setTier] = useState<'economy' | 'deep'>('economy')
+  // Texts as direct calls in parallel (minutes) instead of the Batches API queue (half price, up to an hour).
+  const [fast, setFast] = useState(true)
   // "table": rows with ml, EAN and prices (Excel / CSV); "names": one product name per line, the rest researched.
   const [mode, setMode] = useState<'table' | 'names'>('table')
   const [text, setText] = useState('')
@@ -67,12 +69,13 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
     f.append('tier', tier)
     f.append('text', typed)
     f.append('mode', mode)
+    f.append('fast', String(fast))
     return f
-  }, [groupKey, stores, tier, typed, mode])
+  }, [groupKey, stores, tier, typed, mode, fast])
 
   const enabled = !!typed.trim() && !!groupKey && stores.length > 0 && !cleared
   const check = useQuery({
-    queryKey: ['check', groupKey, stores.join(','), tier, typed, mode],
+    queryKey: ['check', groupKey, stores.join(','), tier, typed, mode, fast],
     queryFn: () => api.checkBatch(form),
     enabled,
     retry: false,
@@ -188,6 +191,24 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
               </label>
             ))}
             <span className="text-xs leading-normal text-ink-2">Колоната research във файла избира режима за отделен ред.</span>
+          </fieldset>
+
+          <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+            <legend className="mb-2 text-sm font-semibold">Скорост</legend>
+            <label className="flex items-start gap-2.5 text-base">
+              <input type="radio" name="speed" className="mt-1" checked={fast} onChange={() => setFast(true)} />
+              <span className="flex flex-col">
+                Бързо
+                <span className="text-xs text-ink-2">няколко минути; описанията струват двойно (≈ +$0.01 на продукт)</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2.5 text-base">
+              <input type="radio" name="speed" className="mt-1" checked={!fast} onChange={() => setFast(false)} />
+              <span className="flex flex-col">
+                Евтино
+                <span className="text-xs text-ink-2">описанията чакат на опашка в Anthropic: от 10 минути до час</span>
+              </span>
+            </label>
           </fieldset>
         </section>
 
@@ -400,6 +421,11 @@ function RowsTable({ rows, stores }: { rows: CheckedRow[]; stores: GroupInfo['st
   )
 }
 
+function elapsed(startedAt: number, now: number): string {
+  const s = Math.max(0, Math.round(now / 1000 - startedAt))
+  return s < 60 ? `${s} с` : `${Math.floor(s / 60)} мин ${s % 60} с`
+}
+
 function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) => void }) {
   const job = useQuery({
     queryKey: ['job', jobId],
@@ -407,6 +433,11 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) 
     refetchInterval: (q) => (q.state.data && !q.state.data.running ? false : 2000),
   })
   const j: Job | undefined = job.data
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
   useEffect(() => {
     if (j && !j.running && j.batch_id) onDone(j.batch_id)
   }, [j, onDone])
@@ -437,11 +468,17 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) 
               <span className="tabular whitespace-nowrap text-sm text-ink-2">
                 {j.stage_label}
                 {j.stage === 'research' ? ` · ${j.done} от ${j.total}` : '…'}
+                {j.started_at ? ` · ${elapsed(j.started_at, now)}` : ''}
               </span>
             </div>
+            {j.stage === 'texts' && j.fast === false && (
+              <span className="text-sm leading-normal text-ink-2">
+                Описанията чакат на опашка в Anthropic (евтиният режим): обикновено 10–30 минути, понякога до час.
+              </span>
+            )}
             <span className="text-sm leading-normal text-ink-2">
-              Може да затвориш страницата: партидата ще се появи в списъка, когато е готова. Описанията минават през
-              Batch API и може да отнемат до 15 минути. Не пускай deploy, докато върви: рестартът я спира.
+              Може да затвориш страницата: партидата ще се появи в списъка, когато е готова. Не пускай deploy, докато
+              върви: рестартът я спира.
             </span>
           </>
         )}

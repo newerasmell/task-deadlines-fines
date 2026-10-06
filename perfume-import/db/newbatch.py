@@ -5,6 +5,7 @@ estimate was shown. One run at a time.
 """
 
 import threading
+import time
 import uuid
 from datetime import date
 
@@ -62,14 +63,18 @@ def check(
     tier: str = "economy",
     deep: list[str] | None = None,
     mode: str = "table",
+    fast: bool = False,
 ) -> dict:
-    """Free: every row with its problems, and the expected cost of the rows that will run."""
+    """Free: every row with its problems, and the expected cost of the rows that will run.
+
+    fast: texts as direct calls in parallel (minutes) instead of the Batches API queue (half price, can take
+    up to an hour)."""
     if tier not in TIERS:
         raise NewBatchError(f"Непознат режим „{tier}“.")
     group, rows = _rows(text, group_key, stores, mode)
     stores = stores or list(group.stores)
     good = [r for r in rows if not r.problems]
-    est = estimate(good, group, stores, tier, set(deep or []), _measured())
+    est = estimate(good, group, stores, tier, set(deep or []), _measured(), no_batch=fast)
     return {
         "rows": [
             {
@@ -100,6 +105,7 @@ def start(
     actor: str | None = None,
     client=None,
     mode: str = "table",
+    fast: bool = False,
 ) -> str:
     """Run the batch in a background thread; returns the job id. Rows with problems are left out."""
     if not api_key() and client is None:
@@ -125,6 +131,9 @@ def start(
             "error": None,
             "batch_id": None,
             "cost_usd": None,
+            "fast": fast,
+            "started_at": time.time(),
+            "finished_at": None,
         }
     batch_name = name or f"{date.today().isoformat()} · {len(rows)} продукта"
 
@@ -148,6 +157,7 @@ def start(
                 deep_eans=set(deep or []),
                 profiles=accepted_profiles(stores),
                 progress=progress,
+                batch_texts=False if fast else None,
             )
             progress("saving", 0, 1)
             batch_id = save_batch(result, author=actor)
@@ -155,7 +165,7 @@ def start(
         except Exception as exc:  # shown in the app; nothing is saved half-way (save_batch is one transaction)
             _jobs[job_id]["error"] = f"{type(exc).__name__}: {exc}"
         finally:
-            _jobs[job_id]["running"] = False
+            _jobs[job_id].update({"running": False, "finished_at": time.time()})
 
     threading.Thread(target=work, daemon=True, name=f"new-batch-{job_id}").start()
     return job_id

@@ -142,3 +142,22 @@ def test_product_by_name_gets_the_sourced_ean_to_pick_and_the_sku_follows(monkey
         with Session(engine()) as session, session.begin():
             session.execute(delete(Event).where(Event.batch_id == batch_id))
             session.execute(delete(Batch).where(Batch.id == batch_id))
+
+
+@pytest.mark.db
+def test_fast_texts_skip_the_batches_queue(monkeypatch):
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    text = "\n".join(CSV.splitlines()[:2])
+    cheap = newbatch.check(text, "group-1", STORES)["estimate"]["total"]
+    assert newbatch.check(text, "group-1", STORES, fast=True)["estimate"]["total"] > cheap
+    client = FakeClient(responder=responder)
+    job_id = newbatch.start(text, "group-1", STORES, client=client, name="fast test", fast=True)
+    next(t for t in threading.enumerate() if t.name == f"new-batch-{job_id}").join(timeout=120)
+    job = newbatch.job(job_id)
+    try:
+        assert job["error"] is None and job["fast"] and job["finished_at"] >= job["started_at"]
+        assert client.batches == []  # no Message Batch: every text was a direct call
+    finally:
+        with Session(engine()) as session, session.begin():
+            session.execute(delete(Event).where(Event.batch_id == job["batch_id"]))
+            session.execute(delete(Batch).where(Batch.id == job["batch_id"]))

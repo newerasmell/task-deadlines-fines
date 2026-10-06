@@ -7,6 +7,7 @@ After each attempt the SPEC §7 checks run: wrong language -> retry up to 2 time
 length out of range -> one retry then warning.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from pipeline import lang
@@ -18,6 +19,7 @@ from pipeline.tiers import DEFAULT_TIER, TIERS, Tier
 NOTE_KEYS = ("top_note", "middle_note", "base_note")
 SEO_MAX = 160
 LANGUAGE_RETRIES = 2
+MAX_PARALLEL = 10  # interactive text calls at a time
 
 MASTER_SYSTEM = """You write product descriptions for a perfume shop. Write in English.
 Follow this style guide exactly:
@@ -94,13 +96,18 @@ def _execute(client, tasks: list[Task], batch: bool | None) -> dict:
     """batch=None: each task decides (its tier); True/False forces every task one way."""
     batched = [t for t in tasks if (t.batch if batch is None else batch)]
     out = ask_batch(client, {t.id: params(**t.request) for t in batched}) if batched else {}
-    for t in tasks:
-        if t in batched:
-            continue
+
+    def one(t: Task):
         try:
-            out[t.id] = ask(client, **t.request)
+            return ask(client, **t.request)
         except AIError as exc:
-            out[t.id] = exc
+            return exc
+
+    # Interactive texts run side by side: twenty products take about as long as one.
+    direct = [t for t in tasks if t not in batched]
+    if direct:
+        with ThreadPoolExecutor(max_workers=min(len(direct), MAX_PARALLEL)) as pool:
+            out.update(zip((t.id for t in direct), pool.map(one, direct), strict=True))
     return out
 
 

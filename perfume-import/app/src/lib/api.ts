@@ -252,6 +252,9 @@ export type Job = {
   error: string | null
   batch_id: number | null
   cost_usd: number | null
+  fast?: boolean
+  started_at?: number // unix seconds
+  finished_at?: number | null
 }
 
 const ACTOR_KEY = 'perfume-import.actor'

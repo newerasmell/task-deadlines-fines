@@ -50,7 +50,8 @@ def missing_settings(store: StoreConfig) -> str | None:
     """What is not set up for this store, without calling Shopify (the Upload screen polls it)."""
     if not (store.shop or "").strip() or store.shop == "CHANGE_ME":
         return (
-            f"Няма Shopify домейн за {store.label}. Попълни shop (…myshopify.com) в config/groups/<група>/stores.yaml."
+            f"Няма Shopify домейн за {store.label}. Попълни го в Магазини → {store.label} → Shopify адрес "
+            "(…myshopify.com) или в config/groups/<група>/stores.yaml."
         )
     id_name, secret_name = client_credential_names(store)
     if not os.environ.get(store.token_env or "") and not (os.environ.get(id_name) and os.environ.get(secret_name)):
