@@ -88,13 +88,23 @@ class BatchResult:
 
 
 def facts_for_text(research: Research) -> dict:
-    """Only facts the research actually found; blocked or empty ones never reach the prose."""
+    """Only facts the research actually found; blocked or empty ones never reach the prose.
+
+    research_mismatch blocks the whole product (e.g. the EAN is another size) and is carried on `name`;
+    the name itself was still found, so it stays in the facts."""
     facts = {}
     for key in ("brand", "name", "concentration", "gender", "fragrance_family", *NOTE_KEYS):
         f = research.fields.get(key)
-        if f and f.status != "blocked" and f.value not in (None, "", []):
+        if f and not _value_blocked(f) and f.value not in (None, "", []):
             facts[key] = f.value
     return facts
+
+
+def _value_blocked(f: Field) -> bool:
+    if f.status != "blocked":
+        return False
+    rules = [i["rule"] for i in f.issues if i["status"] == "blocked"]
+    return not rules or any(r != "research_mismatch" for r in rules)
 
 
 def store_fields(result: ProductResult, group: Group, store_key: str) -> dict[str, Field]:

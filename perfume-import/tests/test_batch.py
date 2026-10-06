@@ -4,9 +4,11 @@ import pytest
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from pipeline.batch import run_batch
+from pipeline.batch import facts_for_text, run_batch
 from pipeline.config import load_group
+from pipeline.fields import Field
 from pipeline.input import read_input
+from pipeline.research import Research
 from pipeline.settings import ROOT
 from tests.fake_ai import FakeClient, message
 from tests.test_generate import EL, EN, HR, SEO, text
@@ -113,3 +115,14 @@ def test_texts_go_through_two_message_batches(rows, monkeypatch):
     s = result.summary()
     assert s["max_cost_usd"] == 0.0001 and len(s["over_budget"]) == 2
     assert set(s["over_budget"][0]["steps"]) >= {"research", "description_en", "text_el", "text_hr"}
+
+
+def test_mismatch_keeps_the_found_name_in_the_text_facts():
+    """A size/EAN mismatch blocks the product via `name`, but the prose still needs the fragrance's name."""
+    name = Field(key="name", value="Code Profumo", origin="ai_research", status="ok")
+    name.flag("blocked", "Продуктът не съвпада с входа: EAN is the 60 ml bottle", "research_mismatch")
+    failed = Field(key="concentration", value="Eau de Parfum", origin="ai_research", status="ok")
+    failed.flag("blocked", "other problem", "something_else")
+    brand = Field(key="brand", value="Giorgio Armani", origin="ai_research", status="ok")
+    research = Research(fields={"brand": brand, "name": name, "concentration": failed}, images=[], raw={})
+    assert facts_for_text(research) == {"brand": "Giorgio Armani", "name": "Code Profumo"}
