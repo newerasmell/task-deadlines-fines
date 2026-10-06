@@ -109,7 +109,7 @@ export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
                 : 'Още няма партиди. Създай първата с „Нова партида“ горе вдясно.'}
           </Empty>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-line" role="table" aria-label="Партиди">
+          <div className="shrink-0 overflow-hidden rounded-lg border border-line" role="table" aria-label="Партиди">
             <div
               role="row"
               className={`grid ${COLUMNS} border-b border-line bg-surface text-xs font-medium text-ink-2`}

@@ -51,7 +51,7 @@ export function StoresScreen() {
                 на всеки магазин.
               </span>
             </div>
-            <div className="overflow-hidden rounded-lg border border-line" role="table" aria-label="Магазини">
+            <div className="shrink-0 overflow-hidden rounded-lg border border-line" role="table" aria-label="Магазини">
               <div role="row" className={`grid ${COLUMNS} border-b border-line bg-surface text-xs font-medium text-ink-2`}>
                 <div role="columnheader" className="px-3.5 py-[9px]">Магазин</div>
                 <div role="columnheader" className="px-3.5 py-[9px]">Група</div>

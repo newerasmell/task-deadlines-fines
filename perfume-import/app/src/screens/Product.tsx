@@ -263,7 +263,7 @@ function FieldsTable({
   const cols = `150px repeat(${stores.length}, minmax(0, 1fr))`
 
   return (
-    <section className="flex min-w-0 grow flex-col overflow-hidden rounded-lg border border-line">
+    <section className="flex min-w-0 shrink-0 grow flex-col overflow-hidden rounded-lg border border-line">
       <div className="grid border-b border-line bg-surface text-xs font-semibold text-ink-3" style={{ gridTemplateColumns: cols }}>
         <div className="px-3.5 py-2.5">Поле</div>
         {stores.map((s, i) => (

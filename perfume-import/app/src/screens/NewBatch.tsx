@@ -316,7 +316,7 @@ function RowsTable({ rows, stores }: { rows: CheckedRow[]; stores: GroupInfo['st
   const cell = 'px-2 py-2.5 tabular text-xs'
   const err = 'bg-blocked-tint font-medium text-blocked-text'
   return (
-    <div className="overflow-x-auto rounded-lg border border-line">
+    <div className="shrink-0 overflow-x-auto rounded-lg border border-line">
       <div style={{ minWidth: 420 + stores.length * 72 }}>
         <div className="grid border-b border-line bg-surface text-xs font-medium text-ink-2" style={{ gridTemplateColumns: cols }}>
           <div className="px-2.5 py-2.5">Име</div>

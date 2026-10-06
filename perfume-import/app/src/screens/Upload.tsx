@@ -138,7 +138,7 @@ function StoreSection({
       : `${plural(items.length, 'продукт', 'продукта')} за качване`
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line">
+    <section className="shrink-0 overflow-hidden rounded-lg border border-line">
       <div className="flex items-center gap-3 border-b border-line bg-surface px-[18px] py-3.5">
         <span className="text-base font-semibold">{name}</span>
         <span className={cn('text-sm', failed ? 'text-blocked-text' : uploaded ? 'text-ok' : 'text-ink-2')}>{summary}</span>

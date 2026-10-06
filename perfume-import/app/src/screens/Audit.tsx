@@ -173,7 +173,7 @@ function ItemsTable({ rule, items, onFix }: { rule: string; items: AuditItem[]; 
   const cols = prices ? 'grid-cols-[minmax(0,1fr)_100px_120px_120px]' : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_110px]'
   const text = (v: unknown) => stripHtml(v).slice(0, 140)
   return (
-    <div className="overflow-hidden rounded-lg border border-line">
+    <div className="shrink-0 overflow-hidden rounded-lg border border-line">
       <div className={`grid ${cols} border-b border-line bg-surface text-xs font-medium text-ink-2`}>
         <div className="px-3.5 py-2.5">Продукт</div>
         {prices ? (

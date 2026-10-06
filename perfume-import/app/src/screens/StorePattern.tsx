@@ -74,7 +74,7 @@ function Pattern({ p }: { p: StoreProfile }) {
             </div>
           )}
 
-          <div className="overflow-hidden rounded-lg border border-line">
+          <div className="shrink-0 overflow-hidden rounded-lg border border-line">
             <div className={`grid ${COLS} border-b border-line bg-surface text-xs font-medium text-ink-2`}>
               <div className="px-4 py-2.5">Свойство</div>
               <div className="px-4 py-2.5">Разпознато</div>
