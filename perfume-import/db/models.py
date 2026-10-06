@@ -94,6 +94,9 @@ class StoreProduct(Created, Base):
     store_key: Mapped[str] = mapped_column(ForeignKey("stores.key"))
     shopify_product_id: Mapped[str | None]
     uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set by "Одобри продукта" (only with nothing blocked or undecided); any later field change clears it.
+    approved_by: Mapped[str | None]
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class FieldRow(Base):

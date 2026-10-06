@@ -1,8 +1,10 @@
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, text
 
+from api.review import router as review_router
 from pipeline import media
 from pipeline.settings import get_settings
 
@@ -10,6 +12,8 @@ settings = get_settings()
 engine = create_engine(settings.sqlalchemy_url, pool_pre_ping=True)
 
 app = FastAPI(title="Perfume Import")
+app.add_middleware(GZipMiddleware, minimum_size=2000)  # an audit batch is ~8 MB of JSON, ~1 MB gzipped
+app.include_router(review_router)
 
 
 @app.get("/api/health")
