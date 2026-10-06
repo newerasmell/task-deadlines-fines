@@ -17,7 +17,7 @@ from pipeline.fields import SEVERITY, Field, worst
 from pipeline.generate import NOTE_KEYS, Text, generate_texts, text_fields
 from pipeline.images import Checked, check_all, image_field
 from pipeline.input import InputRow
-from pipeline.research import EanCheck, Research, find_images, from_saved, research_product
+from pipeline.research import EanCheck, Research, find_images, fragrantica_bottle, from_saved, research_product
 from pipeline.tiers import DEFAULT_TIER, OVERRUN, TIERS, Tier, ceiling, tier
 from pipeline.validate import Context, validate_batch, validate_product
 
@@ -224,9 +224,10 @@ def research_step(
         result.usage["research"] = result.research.usage.to_dict()
     if not result.research.error:
         result.images = check_all(result.research.images, fetch_image)
+        min_height = group.spec.rules.image_min_height
         if (
             tier.image_search
-            and not any(c.ok for c in result.images)
+            and not any(c.ok and c.height >= min_height for c in result.images)
             and result.affords("image_search", tier.image_search_cost + texts * tier.text_cost)
         ):
             extra, usage, error = find_images(client, row, result.research)
@@ -238,6 +239,10 @@ def research_step(
             result.research.raw["images"] = result.research.images  # saved research keeps the found pictures
             if error:
                 result.research.raw["_image_search_error"] = error
+        if not any(c.ok for c in result.images):
+            known = {c.url for c in result.images}
+            extra = [i for i in fragrantica_bottle(result.research) if i["url"] not in known]
+            result.images += check_all(extra, fetch_image)
     return result
 
 

@@ -70,3 +70,38 @@ def test_no_lookup_when_it_would_pass_the_ceiling():
     result = research_step(client, ROW, GROUP, tier=TIERS["economy"], max_cost=0.05, texts=3)
     assert len(client.calls) == 1 and "image_search" not in result.usage
     assert "таван" in result.skipped["image_search"]
+
+
+def test_lookup_must_open_a_page_because_search_results_have_no_image_urls():
+    from pipeline.research import IMAGE_SYSTEM
+
+    assert "never contain image URLs" in IMAGE_SYSTEM and "always open one page" in IMAGE_SYSTEM
+
+
+def test_lookup_runs_when_the_research_image_is_too_small(monkeypatch):
+    def fetch(url):
+        return png(1500, 1500) if url == FOUND else png(300, 400)
+
+    monkeypatch.setattr("pipeline.images.fetch", fetch)
+    client = FakeClient(
+        responder=lambda kw: responder(kw) if "packshot" in kw["system"] else message(research_answer(), urls=[A, B, C])
+    )
+    result = research_step(client, ROW, GROUP, tier=TIERS["economy"])
+    assert "image_search" in result.usage
+    assert max(c.height for c in result.images if c.ok) == 1500
+
+
+def test_fragrantica_bottle_is_the_free_last_resort(monkeypatch):
+    page = "https://www.fragrantica.com/perfume/Gucci/Gucci-Bamboo-30815.html"
+    bottle = "https://fimgs.net/mdimg/perfume/o.30815.jpg"
+    monkeypatch.setattr("pipeline.images.fetch", lambda url: png(360, 500) if url == bottle else b"")
+
+    def respond(kwargs):
+        if "packshot images" in kwargs["system"]:
+            return message({"images": []})
+        return message(research_answer(images=[]), urls=[page, B, C])
+
+    client = FakeClient(responder=respond)
+    result = research_step(client, ROW, GROUP, tier=TIERS["economy"])
+    assert len(client.calls) == 2  # the bottle costs nothing
+    assert [(c.url, c.height) for c in result.images if c.ok] == [(bottle, 500)]

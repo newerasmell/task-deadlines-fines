@@ -6,6 +6,7 @@ returned count as sources (an invented URL is ignored). Price never comes from h
 suggestion when the input EAN belongs to another size or product (decision #10), never written over the input.
 """
 
+import re
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
@@ -286,9 +287,10 @@ def _mismatch(research: Research, raw: dict, seen: set[str]) -> None:
 
 
 IMAGE_SYSTEM = """You find packshot images for one perfume for an online shop.
-Use at most one web search and open at most one page: the brand's official product page, or a large retailer's
-product page (Notino, Douglas, Sephora, Lookfantastic). Return direct image file URLs (.jpg, .png, .webp) that
-appear in that page or in the results, largest version first, official site first. Never build or guess a URL."""
+Search results never contain image URLs, so: one web search to find the product page, then always open one page
+with web_fetch: the brand's official product page, or a large retailer's product page (Notino, Douglas, Sephora,
+Lookfantastic). Take the image file URLs (.jpg, .png, .webp; og:image and the product gallery) from that page,
+largest version first, official site first. Never build or guess a URL."""
 
 IMAGE_TOOLS = [
     {"type": "web_search_20260209", "name": "web_search", "max_uses": 1},
@@ -339,3 +341,15 @@ def find_images(client, row: InputRow, research: Research) -> tuple[list[dict], 
         return [], Usage(), str(exc)
     images = [{"url": i["url"], "width": 0, "height": 0, "source": i["source"]} for i in result.data["images"]]
     return images, result.usage, None
+
+
+FRAGRANTICA_PAGE = re.compile(r"fragrantica\.[a-z.]+/perfume/[^?#]*?-(\d+)\.html", re.I)
+
+
+def fragrantica_bottle(research: Research) -> list[dict]:
+    """Free last resort: Fragrantica's bottle picture for a perfume page the research saw. Often under 1000 px,
+    so it only ever comes in as a warning; the download check still decides whether it is real."""
+    urls = list(research.raw.get("_sources_seen", []))
+    urls += [s["url"] for f in research.fields.values() for s in f.sources]
+    ids = dict.fromkeys(m.group(1) for u in urls if (m := FRAGRANTICA_PAGE.search(u)))
+    return [{"url": f"https://fimgs.net/mdimg/perfume/o.{i}.jpg", "source": "fragrantica.com"} for i in ids]

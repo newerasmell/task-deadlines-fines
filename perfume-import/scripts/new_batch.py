@@ -38,6 +38,11 @@ DEFAULT_COSTS = {
 }
 
 
+def usd(amount: float) -> str:
+    """$0.125 stays $0.125 (":.2f" would show $0.12); whole cents keep two decimals."""
+    return f"${amount:.3f}".rstrip("0") if round(amount, 2) != amount else f"${amount:.2f}"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input", help="CSV по input/products_template.csv")
@@ -90,7 +95,7 @@ def main() -> int:
         per_product = costs["research"] + factor * (costs["description_en"] + costs["language"] * len(languages))
         total += per_product * n
         limit = args.max_cost if args.max_cost is not None else TIERS[name].max_cost
-        cap = f"лимит ${limit:.2f}, таван ${ceiling(limit):.2f}"
+        cap = f"лимит {usd(limit)}, таван {usd(ceiling(limit))}"
         lines.append(f"  {TIERS[name].label}: {n} × ≈ ${per_product:.3f} ({source}; {cap})")
     print(
         f"{len(rows)} продукта × {len(stores)} магазина, езици: {', '.join(languages) or 'en'}. "
@@ -148,7 +153,7 @@ def main() -> int:
     for over in summary["over_budget"]:
         steps = ", ".join(f"{k} ${v:.3f}" for k, v in over["steps"].items())
         print(
-            f"  Над лимита ${over['limit_usd']:.2f} ({over['tier']}): {over['input']} ${over['cost_usd']:.3f} ({steps})"
+            f"  Над лимита {usd(over['limit_usd'])} ({over['tier']}): {over['input']} ${over['cost_usd']:.3f} ({steps})"
         )
     for skip in summary["skipped"]:
         for step, why in skip["steps"].items():

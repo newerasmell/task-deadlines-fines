@@ -131,3 +131,12 @@ def test_economy_ceiling_leaves_room_for_the_image_lookup():
     t = TIERS["economy"]
     assert ceiling(t.max_cost) == 0.15
     assert 0.083 + t.image_search_cost + 3 * t.text_cost <= ceiling(t.max_cost)
+
+
+def test_cli_shows_a_limit_with_half_cents():
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from new_batch import usd
+
+    assert (usd(0.125), usd(0.15), usd(0.5)) == ("$0.125", "$0.15", "$0.50")
