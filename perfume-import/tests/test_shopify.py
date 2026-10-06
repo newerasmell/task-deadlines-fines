@@ -93,7 +93,7 @@ def test_missing_shop_or_token_says_what_to_do(monkeypatch):
         credentials(store)  # shop is CHANGE_ME in the seed
     monkeypatch.setattr(store, "shop", "premier.myshopify.com")
     monkeypatch.delenv(store.token_env, raising=False)
-    with pytest.raises(ShopifyError, match="SHOPIFY_CLIENT_ID_PREMIERPARFUMS"):
+    with pytest.raises(ShopifyError, match="Shopify достъп"):
         credentials(store)
     monkeypatch.setenv(store.token_env, "tok")
     assert credentials(store) == ("premier.myshopify.com", "tok")

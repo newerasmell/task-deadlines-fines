@@ -1,9 +1,11 @@
+import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { Failure, Loading } from '../components/States'
 import { Button } from '../components/ui/button'
 import { Dialog } from '../components/ui/dialog'
-import { api, type GroupScore, type StoreProfile } from '../lib/api'
+import { useActor } from '../lib/actorContext'
+import { api, type AccessInfo, type GroupScore, type StoreProfile } from '../lib/api'
 import { cn } from '../lib/cn'
 import { groupLabel, languageName, shortDate } from '../lib/labels'
 import { rows, type Row } from '../lib/profile'
@@ -131,11 +133,7 @@ function Pattern({ p }: { p: StoreProfile }) {
           <div className="flex flex-col gap-2 text-sm leading-normal text-ink-3">
             <h3 className="m-0 text-sm font-semibold text-ink">Достъп до Shopify</h3>
             <ShopField store={p.store} shop={p.shop} />
-            <span>
-              В Render → Environment добави <code className="text-xs">{p.access_env.client_id}</code> и{' '}
-              <code className="text-xs">{p.access_env.client_secret}</code> от приложението в Shopify Dev Dashboard
-              (права write_products, write_files). Не ги въвеждай тук.
-            </span>
+            <AccessField store={p.store} info={p.access_set} problem={p.access} />
           </div>
 
           <div className="grow" />
@@ -312,5 +310,85 @@ function ShopField({ store, shop }: { store: string; shop: string | null }) {
       {save.isError && <span className="text-xs text-blocked-text">{(save.error as Error).message}</span>}
       {saved && <span className="text-xs text-ok">Адресът е запазен.</span>}
     </form>
+  )
+}
+
+function AccessField({ store, info, problem }: { store: string; info: AccessInfo | null; problem: string | null }) {
+  const { user } = useActor()
+  const [clientId, setClientId] = useState('')
+  const [secret, setSecret] = useState('')
+  const [editing, setEditing] = useState(!info)
+  const save = useStoreMutation(() => api.setAccess(store, { client_id: clientId.trim(), client_secret: secret.trim() }))
+  const clear = useStoreMutation(() => api.clearAccess(store))
+  const check = useMutation({ mutationFn: () => api.checkAccess(store) })
+  const input = 'h-9 min-w-0 rounded-md border border-line bg-canvas px-2.5 text-sm font-normal'
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-ink">Shopify достъп</span>
+      {info ? (
+        <span className="text-xs text-ok">
+          Ключовете са въведени{info.updated_by ? ` от ${info.updated_by}` : ''}
+          {info.updated_at ? ` на ${new Date(info.updated_at).toLocaleDateString('bg-BG')}` : ''}. Пазят се криптирани и не
+          се показват.
+        </span>
+      ) : problem ? (
+        <span className="text-xs text-ink-2">{problem}</span>
+      ) : (
+        <span className="text-xs text-ok">Достъпът е настроен в Render.</span>
+      )}
+      {!user.is_admin ? (
+        <span className="text-xs text-ink-2">Ключовете въвежда администратор.</span>
+      ) : editing ? (
+        <form
+          className="flex flex-col gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save.mutate(undefined, {
+              onSuccess: () => {
+                setClientId('')
+                setSecret('')
+                setEditing(false)
+                check.mutate()
+              },
+            })
+          }}
+        >
+          <input placeholder="Client ID" autoComplete="off" value={clientId} onChange={(e) => setClientId(e.target.value)} className={input} />
+          <input type="password" placeholder="Client secret" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} className={input} />
+          <span className="text-xs leading-normal text-ink-2">
+            От Shopify Dev Dashboard → приложението → Settings. Права: read_products, write_products, read_files,
+            write_files, read_inventory, write_inventory, read_publications, write_publications.
+          </span>
+          <span className="flex gap-2">
+            <Button type="submit" disabled={!clientId.trim() || !secret.trim() || save.isPending}>
+              Запази ключовете
+            </Button>
+            {info && (
+              <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+                Откажи
+              </Button>
+            )}
+          </span>
+        </form>
+      ) : (
+        <span className="flex flex-wrap gap-2">
+          <Button size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
+            Провери връзката
+          </Button>
+          <Button size="sm" onClick={() => setEditing(true)}>
+            Смени ключовете
+          </Button>
+          {info && (
+            <Button size="sm" variant="ghost" disabled={clear.isPending} onClick={() => clear.mutate(undefined)}>
+              Изтрий
+            </Button>
+          )}
+        </span>
+      )}
+      {check.data && <span className={`text-xs ${check.data.ok ? 'text-ok' : 'text-blocked-text'}`}>{check.data.message}</span>}
+      {(save.isError || clear.isError) && (
+        <span className="text-xs text-blocked-text">{((save.error ?? clear.error) as Error).message}</span>
+      )}
+    </div>
   )
 }

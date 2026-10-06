@@ -1,11 +1,12 @@
-"""Review endpoints for the app (SPEC §8). The person deciding comes from the X-Actor header (URL-encoded
-name, kept in the browser) until the team login is connected."""
+"""Review endpoints for the app (SPEC §8). The person deciding is the logged-in user (api.auth); the X-Actor
+header (URL-encoded name) is used only where there is no login, i.e. in tests and scripts."""
 
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
+from api.auth import current_user
 from db import audit, review, upload
 from pipeline.config import load_group
 
@@ -13,6 +14,8 @@ router = APIRouter(prefix="/api")
 
 
 def actor_name(x_actor: str | None) -> str | None:
+    if user := current_user.get():
+        return user["name"]
     return unquote(x_actor).strip() or None if x_actor else None
 
 

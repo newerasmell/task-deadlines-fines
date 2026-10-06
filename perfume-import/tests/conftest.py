@@ -43,3 +43,22 @@ def media_in_tmp(tmp_path, monkeypatch):
 
     monkeypatch.setattr(get_settings(), "media_dir", tmp_path / "media")
     return tmp_path / "media"
+
+
+TEST_USER = {"id": 0, "name": "test", "is_admin": True, "disabled": False}
+
+
+@pytest.fixture(autouse=True)
+def logged_in():
+    """API tests act as a logged-in admin; tests/test_auth.py removes this to test the login itself. The actor
+    of a decision still comes from the X-Actor header there (no session user is set)."""
+    from api.auth import require_admin, require_user
+    from api.main import app
+
+    async def user():
+        return TEST_USER
+
+    app.dependency_overrides[require_user] = user
+    app.dependency_overrides[require_admin] = user
+    yield
+    app.dependency_overrides.clear()

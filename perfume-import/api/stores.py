@@ -1,10 +1,11 @@
-"""Stores, catalog uploads and profiles (SPEC §8.7). Tokens are never sent here: only env var names."""
+"""Stores, catalog uploads and profiles (SPEC §8.7). Shopify access is write-only: stored encrypted, never sent back."""
 
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from api.auth import require_admin
 from api.review import actor_name
 from db import stores
 
@@ -93,3 +94,26 @@ class Shop(BaseModel):
 def set_shop(store_key: str, body: Shop, x_actor: str | None = Header(default=None)):
     _call(stores.set_shop, store_key, body.shop, actor_name(x_actor))
     return {"ok": True}
+
+
+class Access(BaseModel):
+    client_id: str = ""
+    client_secret: str = ""
+    token: str = ""
+
+
+@router.put("/stores/{store_key}/access", dependencies=[Depends(require_admin)])
+def set_access(store_key: str, body: Access, x_actor: str | None = Header(default=None)):
+    """Write-only: the values are stored encrypted and never returned."""
+    return _call(stores.set_access, store_key, body.client_id, body.client_secret, body.token, actor_name(x_actor))
+
+
+@router.delete("/stores/{store_key}/access", dependencies=[Depends(require_admin)])
+def clear_access(store_key: str):
+    _call(stores.clear_access, store_key)
+    return {"ok": True}
+
+
+@router.post("/stores/{store_key}/access/check")
+def check_access(store_key: str):
+    return _call(stores.check_access, store_key)

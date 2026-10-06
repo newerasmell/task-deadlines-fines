@@ -15,12 +15,13 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.models import Batch, Store, StoreProfile
-from pipeline import config, media
+from db.models import Batch, Store, StoreProfile, StoreSecret
+from pipeline import config, media, shopify
 from pipeline.config import list_groups, load_group
 from pipeline.detect import detect_profile
 from pipeline.export import load_export
 from pipeline.groups import rank
+from pipeline.secrets import decrypt, encrypt
 from pipeline.shopify import client_credential_names, missing_settings
 from pipeline.text import slugify
 
@@ -44,9 +45,78 @@ def _overrides(group_key: str) -> dict[str, dict]:
         return {s.key: dict(s.settings) for s in rows if s.settings}
 
 
+def _stored_access(store_key: str) -> dict | None:
+    with Session(_engine()) as session:
+        row = session.get(StoreSecret, store_key)
+        if row is None:
+            return None
+        return {
+            k: decrypt(v) if v else None
+            for k, v in (("client_id", row.client_id), ("client_secret", row.client_secret), ("token", row.token))
+        }
+
+
 def install() -> None:
-    """Make load_group see the stores and domains set in the app."""
+    """Make load_group see the stores and domains set in the app, and Shopify the access entered in it."""
     config.store_overrides = _overrides
+    shopify.stored_access = _stored_access
+
+
+# ---- Shopify access entered in the app --------------------------------------------------------------------
+
+
+def set_access(store_key: str, client_id: str, client_secret: str, token: str, actor: str | None) -> dict:
+    """A Dev Dashboard app's Client ID + secret, or an older custom app's Admin API token. Stored encrypted;
+    the values are never returned, only that they are set, when and by whom."""
+    client_id, client_secret, token = client_id.strip(), client_secret.strip(), token.strip()
+    if not token and not (client_id and client_secret):
+        raise StoreError("Въведи Client ID и Client secret (или Admin API токен).")
+    if store_key not in {k for g in list_groups() for k in load_group(g).stores}:
+        raise KeyError(f"Няма магазин „{store_key}“.")
+    with Session(_engine()) as session, session.begin():
+        row = session.get(StoreSecret, store_key) or StoreSecret(store_key=store_key)
+        row.client_id = encrypt(client_id) if client_id else None
+        row.client_secret = encrypt(client_secret) if client_secret else None
+        row.token = encrypt(token) if token else None
+        row.updated_by, row.updated_at = actor, datetime.now(UTC)
+        session.add(row)
+    shopify.forget_token(store_key)
+    return access_info(store_key)
+
+
+def clear_access(store_key: str) -> None:
+    with Session(_engine()) as session, session.begin():
+        row = session.get(StoreSecret, store_key)
+        if row:
+            session.delete(row)
+    shopify.forget_token(store_key)
+
+
+def access_info(store_key: str) -> dict | None:
+    """Whether access is set in the app (never the values)."""
+    with Session(_engine()) as session:
+        row = session.get(StoreSecret, store_key)
+        if row is None:
+            return None
+        return {
+            "kind": "token" if row.token else "client",
+            "updated_by": row.updated_by,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+
+
+def check_access(store_key: str) -> dict:
+    """One read-only call to the store: its name, so the person sees the keys work."""
+    known = {k: g for g in list_groups() for k in load_group(g).stores}
+    if store_key not in known:
+        raise KeyError(f"Няма магазин „{store_key}“.")
+    group = load_group(known[store_key])
+    try:
+        shop = shopify.store_client(group, store_key)
+        data = shop.graphql("{ shop { name myshopifyDomain } }")["shop"]
+    except shopify.ShopifyError as exc:
+        return {"ok": False, "message": str(exc)}
+    return {"ok": True, "message": f"Връзката работи: {data['name']} ({data['myshopifyDomain']})."}
 
 
 # ---- list ------------------------------------------------------------------------------------------------
@@ -105,6 +175,8 @@ def _store_row(key, group_key, store, latest, accepted, audit_batch, row: Store 
         "currency": store.currency if store else settings.get("currency"),
         "shop": (store.shop if store and store.shop != "CHANGE_ME" else None) or settings.get("shop"),
         "access": missing_settings(store) if store else None,
+        "access_set": access_info(key),
+        "profile_accepted": accepted is not None,
         "state": state,
         "products": profile.profile.get("products") if profile else None,
         "catalog_at": profile.created_at.isoformat() if profile else None,
@@ -281,6 +353,8 @@ def get_profile(profile_id: int) -> dict:
                 "client_secret": secret_name,
                 "token": settings.get("token_env") or (config_store.token_env if config_store else None),
             },
+            "access_set": access_info(row.store_key),
+            "access": missing_settings(config_store) if config_store else None,
             "version": row.version,
             "state": row.state,
             "created_at": row.created_at.isoformat(),

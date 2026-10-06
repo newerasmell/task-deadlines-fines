@@ -10,6 +10,7 @@ import json
 import os
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -45,7 +46,35 @@ def client_credential_names(store: StoreConfig) -> tuple[str, str]:
     return f"SHOPIFY_CLIENT_ID_{suffix}", f"SHOPIFY_CLIENT_SECRET_{suffix}"
 
 
-_exchanged: dict[str, tuple[str, float]] = {}  # shop -> (token, expires at)
+# shop -> (token, expires at, client id, store key)
+_exchanged: dict[str, tuple[str, float, str | None, str]] = {}
+
+# Access entered in the app (db.stores.install sets it): store key -> {client_id, client_secret, token}, decrypted.
+stored_access: Callable[[str], dict | None] | None = None
+
+
+def _access(store: StoreConfig) -> tuple[str | None, str | None, str | None]:
+    """(token, client id, client secret): what was entered in the app wins over the environment."""
+    found = None
+    if stored_access is not None:
+        try:
+            found = stored_access(store.key)
+        except Exception:  # no database here: the environment alone
+            found = None
+    if found and (found.get("token") or (found.get("client_id") and found.get("client_secret"))):
+        return found.get("token"), found.get("client_id"), found.get("client_secret")
+    id_name, secret_name = client_credential_names(store)
+    return (
+        os.environ.get(store.token_env or "") or None,
+        os.environ.get(id_name) or None,
+        os.environ.get(secret_name) or None,
+    )
+
+
+def forget_token(store_key: str) -> None:
+    """New access entered: the next call exchanges the new Client ID and secret for a fresh token."""
+    for shop in [k for k, v in _exchanged.items() if v[3] == store_key]:
+        del _exchanged[shop]
 
 
 def missing_settings(store: StoreConfig) -> str | None:
@@ -55,11 +84,11 @@ def missing_settings(store: StoreConfig) -> str | None:
             f"Няма Shopify домейн за {store.label}. Попълни го в Магазини → {store.label} → Shopify адрес "
             "(…myshopify.com) или в config/groups/<група>/stores.yaml."
         )
-    id_name, secret_name = client_credential_names(store)
-    if not os.environ.get(store.token_env or "") and not (os.environ.get(id_name) and os.environ.get(secret_name)):
+    token, client_id, secret = _access(store)
+    if not token and not (client_id and secret):
         return (
-            f"Няма достъп до {store.label}. Добави в средата (в Render: Environment) {id_name} и {secret_name} "
-            f"от приложението в Shopify Dev Dashboard, или {store.token_env} с готов токен."
+            f"Няма достъп до {store.label}. Въведи Client ID и Client secret от приложението в Shopify Dev "
+            f"Dashboard в Магазини → {store.label} → Shopify достъп."
         )
     return None
 
@@ -71,12 +100,12 @@ def credentials(store: StoreConfig, http: httpx.Client | None = None) -> tuple[s
     if problem := missing_settings(store):
         raise ShopifyError(problem)
     shop = store.shop.strip()
-    token = os.environ.get(store.token_env or "", "")
+    token, client_id, secret = _access(store)
     if token:
         return shop, token
-    id_name, secret_name = client_credential_names(store)
-    client_id, secret = os.environ[id_name], os.environ[secret_name]
     cached = _exchanged.get(shop)
+    if cached and cached[2] != client_id:
+        cached = None  # the access was changed in the app
     if cached and cached[1] > time.time() + 300:
         return shop, cached[0]
     try:
@@ -92,7 +121,7 @@ def credentials(store: StoreConfig, http: httpx.Client | None = None) -> tuple[s
             "инсталирано в магазина от същата организация."
         )
     body = response.json()
-    _exchanged[shop] = (body["access_token"], time.time() + float(body.get("expires_in", 86399)))
+    _exchanged[shop] = (body["access_token"], time.time() + float(body.get("expires_in", 86399)), client_id, store.key)
     return shop, body["access_token"]
 
 

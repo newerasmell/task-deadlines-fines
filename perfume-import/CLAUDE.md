@@ -17,6 +17,7 @@ Read before any work: `docs/SPEC.md` (architecture, data model, rules) and, for 
 ## Conventions
 - Python 3.12 for pipeline and API (FastAPI), Postgres, React + Vite + TypeScript for the app.
 - App UI language: Bulgarian. Product content: the store's language.
-- Secrets only in `.env` (`SHOPIFY_TOKEN_<STORE_KEY>`), never committed.
+- Secrets never committed. Shopify access is entered in the app (admins only) and stored encrypted (`pipeline/secrets.py`, key on the media disk or `PERFUME_SECRET_KEY`), never sent back; env vars (`SHOPIFY_CLIENT_ID_<STORE>`…) still work as a fallback.
+- Everything but `/api/health` and `/api/auth/*` needs a login (`api/auth.py`); the actor of a decision is the logged-in user.
 - Work in the phases in SPEC §9; finish and test one phase before starting the next.
 - For UI: follow DESIGN.md exactly, build one screen at a time, screenshot it with Playwright and critique against DESIGN.md before moving on.

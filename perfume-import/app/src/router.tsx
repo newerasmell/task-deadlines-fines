@@ -10,11 +10,13 @@ import { NewStoreScreen } from './screens/NewStore'
 import { StorePatternScreen } from './screens/StorePattern'
 import { AuditScreen } from './screens/Audit'
 import { NewBatchScreen } from './screens/NewBatch'
+import { AccountScreen } from './screens/Account'
 
 export const router = createBrowserRouter([
   { path: '/', element: <BatchesScreen /> },
   { path: '/audits', element: <BatchesScreen kind="audit" /> },
   { path: '/stores', element: <StoresScreen /> },
+  { path: '/account', element: <AccountScreen /> },
   { path: '/stores/new', element: <NewStoreScreen /> },
   { path: '/profiles/:profileId', element: <StorePatternScreen /> },
   { path: '/batches/:batchId/audit', element: <AuditScreen /> },

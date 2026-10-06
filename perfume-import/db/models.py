@@ -188,3 +188,35 @@ class Media(Created, Base):
     bytes: Mapped[int] = mapped_column(BigInteger)
     sha256: Mapped[str] = mapped_column(String(64), index=True)
     info: Mapped[dict] = mapped_column(JSONB, default=dict)  # compose details: scale, bottle size, warnings
+
+
+class User(Created, Base):
+    """A person on the team. Passwords only as scrypt hashes; an admin creates users and resets passwords."""
+
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    password_hash: Mapped[str]
+    is_admin: Mapped[bool] = mapped_column(default=False)
+    disabled: Mapped[bool] = mapped_column(default=False)
+
+
+class UserSession(Created, Base):
+    """A login: the browser keeps a random token in an HttpOnly cookie, the database only its SHA-256."""
+
+    __tablename__ = "user_sessions"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class StoreSecret(Base):
+    """Shopify access for a store, set in the app. Values encrypted (pipeline.secrets); never sent back out."""
+
+    __tablename__ = "store_secrets"
+    store_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    client_id: Mapped[str | None]  # encrypted
+    client_secret: Mapped[str | None]  # encrypted
+    token: Mapped[str | None]  # encrypted; an older custom app's Admin API token
+    updated_by: Mapped[str | None]
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -106,6 +106,7 @@ export function useStoreMutation<A, R>(fn: (args: A) => Promise<R>) {
     onSuccess: (result) => {
       client.invalidateQueries({ queryKey: ['stores'] })
       client.invalidateQueries({ queryKey: ['batches'] })
+      client.invalidateQueries({ queryKey: ['profile'] })
       if (result && typeof result === 'object' && 'id' in result && 'store' in result)
         client.setQueryData(['profile', (result as { id: number }).id], result)
     },

@@ -129,6 +129,8 @@ export type StoreRow = {
   currency: string | null
   shop: string | null
   access: string | null
+  access_set: AccessInfo | null
+  profile_accepted: boolean
   state: 'active' | 'proposed' | 'waiting'
   products: number | null
   catalog_at: string | null
@@ -160,6 +162,8 @@ export type StoreProfile = {
   group: string | null
   shop: string | null
   access_env: { client_id: string; client_secret: string; token: string | null }
+  access_set: AccessInfo | null
+  access: string | null
   version: number
   state: 'proposed' | 'accepted' | 'rejected'
   created_at: string
@@ -257,22 +261,15 @@ export type Job = {
   finished_at?: number | null
 }
 
-const ACTOR_KEY = 'perfume-import.actor'
+export type AccessInfo = { kind: 'client' | 'token'; updated_by: string | null; updated_at: string | null }
 
-export function getActor(): string {
-  try {
-    return localStorage.getItem(ACTOR_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
+export type User = { id: number; name: string; is_admin: boolean; disabled: boolean }
 
-export function setActor(name: string) {
-  try {
-    localStorage.setItem(ACTOR_KEY, name)
-  } catch {
-    // Private mode: the name lives only in this tab.
-  }
+/** Any 401 means the session ended: the login screen takes over (lib/auth.tsx listens). */
+export const AUTH_EVENT = 'perfume-import:auth-required'
+
+function sessionEnded(response: Response) {
+  if (response.status === 401 && !response.url.includes('/api/auth/')) window.dispatchEvent(new Event(AUTH_EVENT))
 }
 
 export class ApiError extends Error {}
@@ -282,12 +279,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(path, {
       ...init,
-      headers: { 'Content-Type': 'application/json', 'X-Actor': encodeURIComponent(getActor()), ...init?.headers },
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
     })
   } catch {
     throw new ApiError('Няма връзка с API-то. Провери, че сървърът работи, и опитай отново.')
   }
   if (!response.ok) {
+    sessionEnded(response)
     let detail = ''
     try {
       detail = (await response.json()).detail ?? ''
@@ -302,11 +300,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 async function upload<T>(path: string, form: FormData): Promise<T> {
   let response: Response
   try {
-    response = await fetch(path, { method: 'POST', body: form, headers: { 'X-Actor': encodeURIComponent(getActor()) } })
+    response = await fetch(path, { method: 'POST', body: form })
   } catch {
     throw new ApiError('Няма връзка с API-то. Провери, че сървърът работи, и опитай отново.')
   }
   if (!response.ok) {
+    sessionEnded(response)
     let detail = ''
     try {
       detail = (await response.json()).detail ?? ''
@@ -322,7 +321,25 @@ const put = <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT'
 
 const post = <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) })
 
+const patch = <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body) })
+
+const del = <T>(path: string) => request<T>(path, { method: 'DELETE' })
+
 export const api = {
+  me: () => request<{ user: User | null; setup_needed: boolean }>('/api/auth/me'),
+  login: (name: string, password: string) => post<{ user: User }>('/api/auth/login', { name, password }),
+  setup: (name: string, password: string) => post<{ user: User }>('/api/auth/setup', { name, password }),
+  logout: () => post<{ ok: boolean }>('/api/auth/logout', {}),
+  changePassword: (current: string, next: string) => post<User>('/api/auth/password', { current, new: next }),
+  users: () => request<User[]>('/api/auth/users'),
+  createUser: (name: string, password: string, is_admin: boolean) =>
+    post<User>('/api/auth/users', { name, password, is_admin }),
+  updateUser: (id: number, change: { password?: string; is_admin?: boolean; disabled?: boolean }) =>
+    patch<User>(`/api/auth/users/${id}`, change),
+  setAccess: (store: string, access: { client_id?: string; client_secret?: string; token?: string }) =>
+    put<AccessInfo>(`/api/stores/${store}/access`, access),
+  clearAccess: (store: string) => del<{ ok: boolean }>(`/api/stores/${store}/access`),
+  checkAccess: (store: string) => post<{ ok: boolean; message: string }>(`/api/stores/${store}/access/check`, {}),
   batches: () => request<BatchSummary[]>('/api/batches'),
   batch: (id: number) => request<Batch>(`/api/batches/${id}`),
   product: (id: number) => request<Product & { batch_id: number }>(`/api/products/${id}`),

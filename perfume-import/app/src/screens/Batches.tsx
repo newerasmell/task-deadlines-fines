@@ -5,7 +5,6 @@ import { Link } from 'react-router'
 import { AppNav } from '../components/AppNav'
 import { Empty, Failure, Loading } from '../components/States'
 import { Button } from '../components/ui/button'
-import { useActor } from '../lib/actorContext'
 import type { BatchSummary } from '../lib/api'
 import { groupLabel, plural, shortDate, storeShort } from '../lib/labels'
 import { useBatches, useLatestJob } from '../lib/queries'
@@ -131,7 +130,6 @@ function JobBanner() {
 
 export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
   const batches = useBatches()
-  const { actor, change } = useActor()
   const [group, setGroup] = useState<string | null>(null)
   const [unfinished, setUnfinished] = useState(false)
   const groups = useMemo(() => [...new Set((batches.data ?? []).map((b) => b.group))].sort(), [batches.data])
@@ -145,13 +143,6 @@ export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
         <AppNav />
         <h1 className="sr-only">{kind === 'audit' ? 'Одит на каталог' : 'Партиди'}</h1>
         <div className="grow" />
-        <button
-          onClick={change}
-          className="border-0 bg-transparent p-0 text-sm text-ink-2 hover:text-ink"
-          title="Името се записва към всяко решение"
-        >
-          {actor ? `Преглежда: ${actor}` : 'Кой преглежда?'}
-        </button>
         <Button variant="primary" asChild>
           <Link to="/batches/new">Нова партида</Link>
         </Button>

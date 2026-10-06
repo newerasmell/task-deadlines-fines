@@ -17,6 +17,7 @@ dependencies = [
   "httpx>=0.27",
   "pillow>=10",
   "rembg[cpu]>=2.0.60,<3",
+  "cryptography>=43",  # Shopify access entered in the app is stored encrypted
   "python-multipart>=0.0.9",  # catalog uploads in the app (Stores → Add store)  # background removal for scenes and gradients (model u2net, local, no AI cost)
 ]
 
