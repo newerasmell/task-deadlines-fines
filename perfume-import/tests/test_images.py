@@ -58,3 +58,13 @@ def test_duplicate_urls_are_checked_once():
         return png(1500, 1500)
 
     assert len(check_all(candidates(BIG, BIG), fetch)) == 1 and calls == [BIG]
+
+
+def test_larger_variants_on_known_cdns_come_first():
+    from pipeline.images import larger_variants
+
+    lq = "https://cdn.notinoimg.com/detail_main_lq/gucci/737052925127_01-o/bamboo___211206.jpg"
+    dw = "https://shop.com/on/demandware.static/-/x/3614270581670.jpg?sw=340&sh=340&sm=cut"
+    other = "https://brand.com/a.jpg?w=300"
+    urls = [i["url"] for i in larger_variants([{"url": lq}, {"url": dw}, {"url": other}])]
+    assert urls == [lq.replace("detail_main_lq", "detail_main_hq"), lq, dw.split("?")[0], dw, other]

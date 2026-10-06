@@ -72,9 +72,27 @@ def check(image: dict, fetch_fn=None) -> Checked:
     return checked
 
 
+def larger_variants(images: list[dict]) -> list[dict]:
+    """Known CDNs serve the same picture bigger at a sibling URL: Notino's detail_main_lq has a detail_main_hq
+    (Gucci Bamboo: 427x450 -> 949x1000), and Demandware shops (giorgioarmanibeauty) resize with ?sw=&sh=.
+    The larger variant goes first; the download check still decides whether it exists."""
+    out = []
+    for image in images:
+        url = image.get("url") or ""
+        bigger = None
+        if "notinoimg.com/" in url and "/detail_main_lq/" in url:
+            bigger = url.replace("/detail_main_lq/", "/detail_main_hq/")
+        elif "/demandware.static/" in url and "?" in url and ("sw=" in url or "sh=" in url):
+            bigger = url.split("?", 1)[0]
+        if bigger:
+            out.append({**image, "url": bigger, "width": 0, "height": 0})
+        out.append(image)
+    return out
+
+
 def check_all(images: list[dict], fetch_fn=None) -> list[Checked]:
-    """Every candidate, in the order research returned them."""
-    unique = list({i["url"]: i for i in images if i.get("url")}.values())
+    """Every candidate (plus larger variants on known CDNs), in the order research returned them."""
+    unique = list({i["url"]: i for i in larger_variants(images) if i.get("url")}.values())
     if not unique:
         return []
     with ThreadPoolExecutor(max_workers=min(4, len(unique))) as pool:
