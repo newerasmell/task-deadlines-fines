@@ -54,3 +54,25 @@ export function useAcceptColumn(batchId: number) {
     },
   })
 }
+
+export const useUploadState = (batchId: number) =>
+  useQuery({
+    queryKey: ['upload', batchId],
+    queryFn: () => api.uploadState(batchId),
+    refetchInterval: (query) => (query.state.data?.running ? 1500 : false),
+  })
+
+export function useStartUpload(batchId: number) {
+  const client = useQueryClient()
+  const { ensure } = useActor()
+  return useMutation({
+    mutationFn: async (body: { status: 'draft' | 'active'; stores?: string[]; only_failed?: boolean }) => {
+      if (!(await ensure())) throw new Error('Без име качването не се записва.')
+      return api.startUpload(batchId, body)
+    },
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['upload', batchId] })
+      client.invalidateQueries({ queryKey: ['batches'] })
+    },
+  })
+}
