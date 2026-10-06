@@ -94,6 +94,10 @@ class StoreProduct(Created, Base):
     store_key: Mapped[str] = mapped_column(ForeignKey("stores.key"))
     shopify_product_id: Mapped[str | None]
     uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Last upload attempt (Phase 5): uploaded | failed, with the Shopify message or what to fix.
+    upload_status: Mapped[str | None] = mapped_column(String(16))
+    upload_message: Mapped[str | None] = mapped_column(Text)
+    upload_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Set by "Одобри продукта" (only with nothing blocked or undecided); any later field change clears it.
     approved_by: Mapped[str | None]
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

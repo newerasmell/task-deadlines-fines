@@ -6,7 +6,7 @@ from urllib.parse import unquote
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from db import review
+from db import review, upload
 from pipeline.config import load_group
 
 router = APIRouter(prefix="/api")
@@ -76,3 +76,29 @@ def vocab(group_key: str):
     except FileNotFoundError as exc:
         raise HTTPException(404, f"Няма група „{group_key}“.") from exc
     return {key: list(values) for key, values in group.vocab.items()}
+
+
+class UploadRequest(BaseModel):
+    status: str = "draft"  # draft | active
+    stores: list[str] | None = None
+    only_failed: bool = False
+
+
+@router.post("/batches/{batch_id}/upload", status_code=202)
+def start_upload(batch_id: int, body: UploadRequest, x_actor: str | None = Header(default=None)):
+    if body.status not in upload.STATUSES:
+        raise HTTPException(422, "Статусът е draft или active.")
+    state = _call(upload.state, batch_id)
+    if state["kind"] != "new":
+        raise HTTPException(409, "Качват се само партиди с нови продукти.")
+    started = upload.start(
+        batch_id, status=body.status, stores=body.stores, only_failed=body.only_failed, actor=actor_name(x_actor)
+    )
+    if not started:
+        raise HTTPException(409, "Качването на тази партида вече върви.")
+    return {"started": True}
+
+
+@router.get("/batches/{batch_id}/upload")
+def upload_state(batch_id: int):
+    return _call(upload.state, batch_id)
