@@ -271,7 +271,6 @@ def product_input(fields: dict, status: str, category: str | None, image: str | 
     variant: dict[str, Any] = {
         "optionValues": [{"optionName": option_name, "name": option_value}],
         "sku": sku,
-        "price": _text(_value(fields, "price")),
         "compareAtPrice": compare or None,
         "taxable": _bool(_value(fields, "fixed.Variant Taxable"), False),
         "inventoryPolicy": "CONTINUE"
@@ -279,6 +278,8 @@ def product_input(fields: dict, status: str, category: str | None, image: str | 
         else "DENY",
         "inventoryItem": inventory_item,
     }
+    if price := _text(_value(fields, "price")):
+        variant["price"] = price  # no price: Shopify keeps 0.00 until it is set there (draft only, decisions #16)
     if ean:
         variant["barcodes"] = [{"value": ean}]  # the EAN also as the variant barcode (GTIN for Google)
 
@@ -327,6 +328,8 @@ def upload_product(
     handle = _text(_value(fields, "handle"))
     if not sku:
         raise ShopifyError("Продуктът няма SKU; не се качва.")
+    if status.lower() == "active" and not _text(_value(fields, "price")):
+        raise ShopifyError("Няма цена: продукт без цена се качва само като чернова. Качи го като чернова.")
     notes = []
     target = known_id if known_id and shop.exists(known_id) else None
     if known_id and not target:

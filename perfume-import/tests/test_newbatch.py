@@ -125,7 +125,7 @@ def test_product_by_name_gets_the_sourced_ean_to_pick_and_the_sku_follows(monkey
     ean_field = result.products[0].stores["premierparfums"]["ean"]
     assert ean_field.status == "blocked" and ean_field.value == ""
     assert ean_field.alternatives == ["3614270581670"] and "3614270581670" in ean_field.message
-    assert result.products[0].stores["premierparfums"]["price"].status == "blocked"  # prices: a person
+    assert result.products[0].stores["premierparfums"]["price"].status == "warning"  # set in Shopify (#16)
 
     batch_id = save_batch(result)
     try:

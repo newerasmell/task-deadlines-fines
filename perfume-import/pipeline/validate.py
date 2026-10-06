@@ -221,7 +221,13 @@ def _prices(fields: dict[str, Field], ctx: Context) -> None:
         return
     price = _money(price_field.value)
     if price is None or price <= 0:
-        price_field.flag("blocked", f"Липсва цена за {ctx.store.label}.", "price_missing")
+        # decisions #16: prices may be set in Shopify; such a product goes up only as a draft
+        price_field.flag(
+            "warning",
+            f"Без цена за {ctx.store.label}: качва се само като чернова; "
+            "задай цената в Shopify, преди да го активираш.",
+            "price_missing",
+        )
         return
     compare_field = fields.get("compare_at")
     compare = _money(compare_field.value) if compare_field else None

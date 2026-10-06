@@ -122,3 +122,15 @@ def test_dev_dashboard_app_exchanges_client_credentials(monkeypatch):
     assert credentials(store, http) == ("parfemija.myshopify.com", "shpat_x")
     assert credentials(store, http) == ("parfemija.myshopify.com", "shpat_x")  # cached for 24 h
     assert len(seen) == 1 and "grant_type=client_credentials" in seen[0] and "client_id=id" in seen[0]
+
+
+def test_no_price_goes_up_only_as_a_draft(fields):
+    """decisions #16: prices can be set in Shopify; never active at 0.00."""
+    import copy
+
+    no_price = copy.deepcopy(fields)
+    no_price["price"].value = ""
+    assert "price" not in product_input(no_price, "draft", None, None)["variants"][0]
+    with pytest.raises(ShopifyError, match="чернова"):
+        upload_product(shop(FakeShopify()), no_price, "active", None, None)
+    assert upload_product(shop(FakeShopify()), no_price, "draft", None, None).status == "DRAFT"

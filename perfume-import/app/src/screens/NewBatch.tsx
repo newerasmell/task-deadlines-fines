@@ -193,7 +193,7 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
               <span className="text-sm text-ink-2">
                 {mode === 'table'
                   ? 'Постави редове от Excel или качи CSV. Останалото попълва системата.'
-                  : 'По един продукт на ред, с обема. AI намира всичко останало; цените се въвеждат в прегледа.'}
+                  : 'По един продукт на ред, с обема. AI прави всичко останало по шаблона на всеки магазин, без цени.'}
               </span>
             </div>
             <input
@@ -274,8 +274,8 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
               {mode === 'names' && (
                 <span className="text-sm leading-normal text-ink-2">
                   Без EAN: проучването показва EAN-а, който източниците дават за този обем, и ти го избираш в прегледа.
-                  Цените за {plural(shownStores.length, 'сайт', 'сайта')} се въвеждат в прегледа; дотогава продуктът е
-                  спрян.
+                  Цени не се слагат за никой от {plural(shownStores.length, 'сайт', 'сайта')}: продуктите се качват като
+                  чернови и цената се задава в Shopify.
                 </span>
               )}
             </>

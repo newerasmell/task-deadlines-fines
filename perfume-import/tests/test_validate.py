@@ -103,12 +103,19 @@ def test_sku_must_match_given_ean(ctx):
 
 @pytest.mark.parametrize(
     ("price", "compare", "rule"),
-    [("", "149", "price_missing"), ("99", "99", "compare_at_not_above"), ("99", "258", "compare_at_ratio")],
+    [("99", "99", "compare_at_not_above"), ("99", "258", "compare_at_ratio")],
 )
 def test_price_rules_block(ctx, price, compare, rule):
     p = run(ctx, price=price, compare_at=compare)
     blocked = [f.rule for f in p.values() if f.status == "blocked"]
     assert blocked == [rule]
+
+
+def test_missing_price_is_a_warning_not_a_block(ctx):
+    """decisions #16: prices can be set in Shopify; the product only goes up as a draft."""
+    p = run(ctx, price="", compare_at="149")
+    assert (p["price"].status, p["price"].rule) == ("warning", "price_missing")
+    assert not [f for f in p.values() if f.status == "blocked"]
 
 
 def test_missing_compare_at_is_fine(ctx):
