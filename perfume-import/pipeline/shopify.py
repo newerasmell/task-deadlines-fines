@@ -37,18 +37,60 @@ class Uploaded:
 # ---- connection ----------------------------------------------------------------------------------------
 
 
-def credentials(store: StoreConfig) -> tuple[str, str]:
-    shop = (store.shop or "").strip()
-    if not shop or shop == "CHANGE_ME":
-        raise ShopifyError(
+def client_credential_names(store: StoreConfig) -> tuple[str, str]:
+    """SHOPIFY_TOKEN_PARFEMIJA -> SHOPIFY_CLIENT_ID_PARFEMIJA, SHOPIFY_CLIENT_SECRET_PARFEMIJA."""
+    suffix = (store.token_env or f"SHOPIFY_TOKEN_{store.key.upper()}").removeprefix("SHOPIFY_TOKEN_")
+    return f"SHOPIFY_CLIENT_ID_{suffix}", f"SHOPIFY_CLIENT_SECRET_{suffix}"
+
+
+_exchanged: dict[str, tuple[str, float]] = {}  # shop -> (token, expires at)
+
+
+def missing_settings(store: StoreConfig) -> str | None:
+    """What is not set up for this store, without calling Shopify (the Upload screen polls it)."""
+    if not (store.shop or "").strip() or store.shop == "CHANGE_ME":
+        return (
             f"Няма Shopify домейн за {store.label}. Попълни shop (…myshopify.com) в config/groups/<група>/stores.yaml."
         )
-    token = os.environ.get(store.token_env or "", "")
-    if not token:
-        raise ShopifyError(
-            f"Няма токен за {store.label}. Добави променливата {store.token_env} в средата (в Render: Environment)."
+    id_name, secret_name = client_credential_names(store)
+    if not os.environ.get(store.token_env or "") and not (os.environ.get(id_name) and os.environ.get(secret_name)):
+        return (
+            f"Няма достъп до {store.label}. Добави в средата (в Render: Environment) {id_name} и {secret_name} "
+            f"от приложението в Shopify Dev Dashboard, или {store.token_env} с готов токен."
         )
-    return shop, token
+    return None
+
+
+def credentials(store: StoreConfig, http: httpx.Client | None = None) -> tuple[str, str]:
+    """(shop, Admin API token). Either a fixed token (an app made before 2026 in the store admin) in
+    token_env, or a Dev Dashboard app's client id and secret, exchanged for a 24-hour token (client credentials
+    grant; works when the app and the store belong to the same Shopify organization)."""
+    if problem := missing_settings(store):
+        raise ShopifyError(problem)
+    shop = store.shop.strip()
+    token = os.environ.get(store.token_env or "", "")
+    if token:
+        return shop, token
+    id_name, secret_name = client_credential_names(store)
+    client_id, secret = os.environ[id_name], os.environ[secret_name]
+    cached = _exchanged.get(shop)
+    if cached and cached[1] > time.time() + 300:
+        return shop, cached[0]
+    try:
+        response = (http or httpx.Client(timeout=TIMEOUT)).post(
+            f"https://{shop}/admin/oauth/access_token",
+            data={"grant_type": "client_credentials", "client_id": client_id, "client_secret": secret},
+        )
+    except httpx.HTTPError as exc:
+        raise ShopifyError(f"Няма връзка с {shop}: {type(exc).__name__}.") from exc
+    if response.status_code >= 400:
+        raise ShopifyError(
+            f"{shop} не даде токен (HTTP {response.status_code}). Провери Client ID и Secret и че приложението е "
+            "инсталирано в магазина от същата организация."
+        )
+    body = response.json()
+    _exchanged[shop] = (body["access_token"], time.time() + float(body.get("expires_in", 86399)))
+    return shop, body["access_token"]
 
 
 class Shopify:
@@ -313,5 +355,5 @@ def upload_product(
 
 
 def store_client(group: Group, store_key: str, http: httpx.Client | None = None) -> Shopify:
-    shop, token = credentials(group.store(store_key))
+    shop, token = credentials(group.store(store_key), http)
     return Shopify(shop, token, http=http)

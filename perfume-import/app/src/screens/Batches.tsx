@@ -20,6 +20,7 @@ function summary(b: BatchSummary): string {
       .filter(Boolean)
       .join(' · ')
   }
+  if (b.publish_status === 'uploaded') return 'качени в магазините'
   if (b.products && b.approved === b.products) return 'всички одобрени, чакат качване'
   return [
     b.ready && `${b.ready} ${b.ready === 1 ? 'готов' : 'готови'}`,
@@ -30,10 +31,13 @@ function summary(b: BatchSummary): string {
     .join(' · ')
 }
 
-function action(b: BatchSummary): string {
-  if (b.kind === 'audit') return 'Отвори одита'
-  if (b.review || b.blocked) return b.ready || b.approved ? 'Продължи прегледа' : 'Започни прегледа'
-  return 'Виж продуктите'
+function action(b: BatchSummary): { label: string; to: string } {
+  if (b.kind === 'audit') return { label: 'Отвори одита', to: `/batches/${b.id}/grid` }
+  if (b.publish_status === 'uploaded') return { label: 'Виж резултата', to: `/batches/${b.id}/upload` }
+  if (b.products && b.approved === b.products) return { label: `Качи ${b.approved}`, to: `/batches/${b.id}/upload` }
+  if (b.review || b.blocked)
+    return { label: b.ready || b.approved ? 'Продължи прегледа' : 'Започни прегледа', to: `/batches/${b.id}` }
+  return { label: 'Виж продуктите', to: `/batches/${b.id}` }
 }
 
 function Progress({ b }: { b: BatchSummary }) {
@@ -134,7 +138,7 @@ export function BatchesScreen() {
                 </div>
                 <div role="cell" className="flex justify-end px-4">
                   <Button asChild>
-                    <Link to={b.kind === 'audit' ? `/batches/${b.id}/grid` : `/batches/${b.id}`}>{action(b)}</Link>
+                    <Link to={action(b).to}>{action(b).label}</Link>
                   </Button>
                 </div>
               </div>

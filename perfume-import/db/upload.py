@@ -17,7 +17,7 @@ from db.models import Batch, Event, FieldRow, Media, Product, StoreProduct
 from db.review import to_field
 from pipeline import media
 from pipeline.config import load_group
-from pipeline.shopify import Shopify, ShopifyError, credentials, store_client, upload_product
+from pipeline.shopify import Shopify, ShopifyError, missing_settings, store_client, upload_product
 
 STATUSES = ("draft", "active")
 _jobs: dict[int, dict] = {}
@@ -202,7 +202,7 @@ def state(batch_id: int) -> dict:
             select(StoreProduct, Product)
             .join(Product, Product.id == StoreProduct.product_id)
             .where(Product.batch_id == batch_id)
-            .order_by(StoreProduct.store_key, Product.id)
+            .order_by(Product.id, StoreProduct.id)
         ).all()
         titles = dict(
             session.execute(
@@ -251,12 +251,8 @@ def state(batch_id: int) -> dict:
 
 
 def _configured(group, store_key: str) -> str | None:
-    """None when the store can be reached, else what is missing."""
-    try:
-        credentials(group.store(store_key))
-    except ShopifyError as exc:
-        return str(exc)
-    return None
+    """None when the store is set up, else what is missing (no call to Shopify)."""
+    return missing_settings(group.store(store_key))
 
 
 def _admin_url(shop: str | None, product_id: str | None) -> str | None:

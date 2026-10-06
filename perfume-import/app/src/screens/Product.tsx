@@ -123,6 +123,7 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
   const fields = allFields(product)
   const suggested = fields.filter((f) => f.status === 'suggested').length
   const blocked = fields.filter((f) => f.status === 'blocked').length
+  const approvedInBatch = batch.products.filter((p) => Object.values(p.stores).every((s) => s.approved_at)).length
   const pendingInBatch = batch.products.flatMap(allFields).filter((f) => f.status === 'suggested' || f.status === 'blocked').length
   const first = Object.values(product.stores)[0]?.fields ?? {}
   const approved = Object.values(product.stores).every((s) => s.approved_at)
@@ -142,6 +143,11 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
         {pendingInBatch > 0 && (
           <Button size="lg" asChild>
             <Link to={`/batches/${batch.id}/queue`}>Реши чакащите в партидата ({pendingInBatch})</Link>
+          </Button>
+        )}
+        {approvedInBatch > 0 && (
+          <Button size="lg" asChild>
+            <Link to={`/batches/${batch.id}/upload`}>Качи {plural(approvedInBatch, 'одобрен', 'одобрени')}</Link>
           </Button>
         )}
         <Button

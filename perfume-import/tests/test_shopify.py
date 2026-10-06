@@ -93,9 +93,32 @@ def test_missing_shop_or_token_says_what_to_do(monkeypatch):
         credentials(store)  # shop is CHANGE_ME in the seed
     monkeypatch.setattr(store, "shop", "premier.myshopify.com")
     monkeypatch.delenv(store.token_env, raising=False)
-    with pytest.raises(ShopifyError, match=store.token_env):
+    with pytest.raises(ShopifyError, match="SHOPIFY_CLIENT_ID_PREMIERPARFUMS"):
         credentials(store)
     monkeypatch.setenv(store.token_env, "tok")
     assert credentials(store) == ("premier.myshopify.com", "tok")
     with pytest.raises(ShopifyError, match="отказа достъпа"):
         Shopify("x.myshopify.com", "wrong", http=FakeShopify().client()).graphql("{ shop { id } }")
+
+
+def test_dev_dashboard_app_exchanges_client_credentials(monkeypatch):
+    import httpx
+
+    from pipeline import shopify
+
+    store = GROUP.store("parfemija")
+    monkeypatch.setattr(store, "shop", "parfemija.myshopify.com")
+    monkeypatch.delenv(store.token_env, raising=False)
+    monkeypatch.setenv("SHOPIFY_CLIENT_ID_PARFEMIJA", "id")
+    monkeypatch.setenv("SHOPIFY_CLIENT_SECRET_PARFEMIJA", "secret")
+    monkeypatch.setattr(shopify, "_exchanged", {})
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.content.decode())
+        return httpx.Response(200, json={"access_token": "shpat_x", "scope": "write_products", "expires_in": 86399})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    assert credentials(store, http) == ("parfemija.myshopify.com", "shpat_x")
+    assert credentials(store, http) == ("parfemija.myshopify.com", "shpat_x")  # cached for 24 h
+    assert len(seen) == 1 and "grant_type=client_credentials" in seen[0] and "client_id=id" in seen[0]

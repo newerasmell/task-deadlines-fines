@@ -89,6 +89,37 @@ export type Batch = {
   products: Product[]
 }
 
+export type UploadItem = {
+  store_product_id: number
+  product_id: number
+  title: string
+  blocker: string | null
+  upload_status: 'uploaded' | 'failed' | null
+  upload_message: string | null
+  attempted_at: string | null
+  shopify_url: string | null
+}
+
+export type UploadStore = {
+  key: string
+  label: string
+  language: string | null
+  country: string | null
+  configured: string | null
+  items: UploadItem[]
+}
+
+export type UploadState = {
+  batch_id: number
+  kind: 'new' | 'audit'
+  publish_status: string
+  running: boolean
+  done: number
+  total: number
+  error: string | null
+  stores: UploadStore[]
+}
+
 const ACTOR_KEY = 'perfume-import.actor'
 
 export function getActor(): string {
@@ -141,6 +172,9 @@ export const api = {
     post<Product>(`/api/fields/${fieldId}/decision`, { action, value }),
   acceptAll: (productId: number, store?: string) => post<Product>(`/api/products/${productId}/accept-all`, { store }),
   approve: (productId: number) => post<Product>(`/api/products/${productId}/approve`, {}),
+  uploadState: (batchId: number) => request<UploadState>(`/api/batches/${batchId}/upload`),
+  startUpload: (batchId: number, body: { status: 'draft' | 'active'; stores?: string[]; only_failed?: boolean }) =>
+    post<{ started: boolean }>(`/api/batches/${batchId}/upload`, body),
   acceptColumn: (batchId: number, store: string, key: string) =>
     post<{ accepted: number }>(`/api/batches/${batchId}/accept-column`, { store, key }),
 }
