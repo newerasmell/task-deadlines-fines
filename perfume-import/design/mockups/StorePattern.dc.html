@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Разпознат модел на магазин</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1A1D21;background:#FFFFFF}
+a{color:#2F5BEA}a:hover{color:#1F44BF}
+button{font-family:inherit}
+input,select{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #FFFFFF">
+  <header style="height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 28px; border-bottom: 1px solid #E3E6EA; font-size: 14px"><a href="Stores.dc.html" style="text-decoration: none; color: #5B6470">Магазини</a><span style="color: #9AA2AD">/</span><a href="NewStore.dc.html" style="text-decoration: none; color: #5B6470">Нов магазин</a><span style="color: #9AA2AD">/</span><span style="font-weight: 600">Разпознат модел</span></header>
+  <div style="flex-grow: 1; display: flex; min-height: 0">
+    <main style="flex-grow: 1; padding: 28px; display: flex; flex-direction: column; gap: 18px; min-width: 0">
+      <div style="display: flex; align-items: flex-end; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1">
+          <span style="font-size: 13px; color: #5B6470">PremierParfums (1-GR) · 846 продукта в експорта</span>
+          <h1 style="margin: 0; font-size: 24px; font-weight: 600">Профил на магазина</h1>
+        </div>
+        <span style="font-size: 12px; color: #5B6470">Профилът важи само за този магазин. Сините редове са заключения за потвърждение.</span>
+      </div>
+      <div style="border: 1px solid #E3E6EA; border-radius: 8px; overflow: hidden">
+        <div style="display: grid; grid-template-columns: 190px minmax(0, 1fr) 150px 130px; background: #F5F6F8; font-size: 12px; font-weight: 500; color: #5B6470; border-bottom: 1px solid #E3E6EA">
+          <div style="padding: 10px 16px">Свойство</div><div style="padding: 10px 16px">Разпознато</div><div style="padding: 10px 16px">Съвпадение</div><div style="padding: 10px 16px"></div>
+        </div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+          <div style="{{r.style}}">
+            <div style="padding: 11px 16px; color: #5B6470">{{r.k}}</div>
+            <div style="padding: 11px 16px; display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 500; line-height: 1.5">{{r.v}}</span><span style="font-size: 12px; color: #5B6470; line-height: 1.5">{{r.note}}</span></div>
+            <div style="padding: 11px 16px; font-variant-numeric: tabular-nums; {{r.pctStyle}}">{{r.pct}}</div>
+            <div style="padding: 8px 16px"><button style="height: 30px; padding: 0 10px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px">Промени</button></div>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+
+    <aside style="width: 400px; flex-shrink: 0; border-left: 1px solid #E3E6EA; background: #F5F6F8; padding: 28px 24px; display: flex; flex-direction: column; gap: 18px">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600">Към коя група</h2>
+      <div style="background: #FFFFFF; border: 2px solid #2F5BEA; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-size: 16px; font-weight: 600">Група 1</span><span style="font-size: 13px; color: #1F44BF; font-weight: 500">препоръчано</span></div>
+        <span style="font-size: 13px; color: #3A424D; line-height: 1.5">Същите 72 колони, същите 9 метаполета, същите формати на заглавие и SKU. Разликите са само на ниво магазин: език, пазари и цени.</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3E6EA; margin: 1px; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 16px; font-weight: 600">Група 2</span>
+        <span style="font-size: 13px; color: #3A424D; line-height: 1.5">8 магазина: Aromizo, Fragracy, Luxaromi, Luxcentio, Scentaoro, Scentilos, Scentilux, Scentivio. Структурата ще се сравни, щом има експорт от някой от тях.</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3E6EA; margin: 1px; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 16px; font-weight: 600">Нова група</span>
+        <span style="font-size: 13px; color: #3A424D; line-height: 1.5">Създава шаблон от този магазин. За магазини с различна структура.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.5; color: #3A424D">
+        <h3 style="margin: 0; font-size: 13px; font-weight: 600; color: #1A1D21">След запазване</h3>
+        <span>Новите продукти за този магазин ще се генерират точно по този профил, независимо от другите магазини в групата.</span>
+        <span>Намерените грешки (пол, семейство, цени) отиват в одит на каталога.</span>
+        <span>Бележките от нотките на гръцки допълват речника el.</span>
+      </div>
+      <div style="flex-grow: 1"></div>
+      <a href="Audit.dc.html" style="height: 40px; padding: 0 18px; border: 0; background: #2F5BEA; color: #FFFFFF; border-radius: 6px; font-size: 14px; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; justify-content: center">Запази профила и пусни одит</a>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const base = 'display: grid; grid-template-columns: 190px minmax(0, 1fr) 150px 130px; border-bottom: 1px solid #EDEFF2; font-size: 13px; align-items: center; background: ';
+    const r = (k, v, note, pct, kind) => ({ k, v, note, pct,
+      style: base + (kind === 'infer' ? '#EAF0FD' : kind === 'warn' ? '#FDEEE1' : '#FFFFFF'),
+      pctStyle: kind === 'warn' ? 'color: #B65A0E; font-weight: 500' : 'color: #3A424D' });
+    const rows = [
+      r('Език на съдържанието', 'гръцки (el)', 'от описанията и нотките; заглавията са на английски', '99%'),
+      r('Валута и пазари', 'EUR · пазари Гърция и България', 'няма отделни цени за България', '', 'infer'),
+      r('Заглавие', '{марка} {име} {концентрация} {ml} ml [TESTER]', '379 тестера, английски, не се превежда', '823 от 846'),
+      r('SKU', 'SK + EAN', 'EAN се дублира в метаполето sklad', '770 от 846'),
+      r('Метаполета', '9 в custom: семейство, пол, 3 нотки, съставки, ml, тип, sklad', 'идентични с Група 1', '9 от 9'),
+      r('Пол', "английски речник: Women's / Men's / Unisex Perfume", '16 изписвания, ще се уеднаквят', '252 от 815 различни', 'warn'),
+      r('Семейство', 'английски речник', 'смесено с гръцки стойности и синоними', 'уеднаквяване', 'warn'),
+      r('Описание', 'един абзац в <p>, около 300 знака', 'при тестер изречение за опаковката', '', 'infer'),
+      r('Цени', 'цели числа, зачеркната около 1,7 пъти цената', 'от 1,5 до 1,9 при повечето продукти', '', 'infer'),
+      r('Фиксирани полета', 'категория Perfumes, Google 479, 300 г, без ДДС флаг', '', 'съвпада')
+    ];
+    return { rows };
+  }
+}
+</script>
+</body>
+</html>

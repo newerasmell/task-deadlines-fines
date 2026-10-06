@@ -1,0 +1,42 @@
+[project]
+name = "perfume-import"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "sqlalchemy>=2.0",
+  "alembic>=1.13",
+  "psycopg[binary]>=3.2",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "pyyaml>=6.0",
+  "lingua-language-detector>=2.0",
+  "anthropic>=1.11,<2",
+  "openpyxl>=3.1",
+  "httpx>=0.27",
+  "pillow>=10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pipeline*", "api*", "db*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["app", "design"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["db: needs a running Postgres at DATABASE_URL", "live: calls the real Claude API (needs ANTHROPIC_API_KEY, costs money)"]
+addopts = "-m 'not live'"

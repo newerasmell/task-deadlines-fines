@@ -1,0 +1,10 @@
+.git
+.venv
+.env
+app/node_modules
+app/dist
+tests
+design
+input
+output
+**/__pycache__

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<title>Качване</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1A1D21;background:#FFFFFF}
+a{color:#2F5BEA}a:hover{color:#1F44BF}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #FFFFFF">
+  <header style="height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 28px; border-bottom: 1px solid #E3E6EA">
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 14px"><a href="Batches.dc.html" style="text-decoration: none; color: #5B6470">Партиди</a><span style="color: #9AA2AD">/</span><a href="Product.dc.html" style="text-decoration: none; color: #5B6470">30 септ., Група 1</a><span style="color: #9AA2AD">/</span><span style="font-weight: 600">Качване</span></div>
+    <div style="flex-grow: 1"></div>
+  </header>
+  <div style="padding: 28px; display: flex; flex-direction: column; gap: 20px; max-width: 1100px">
+    <div style="display: flex; flex-direction: column; gap: 4px">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 600">Качване на 5 одобрени продукта</h1>
+      <span style="font-size: 13px; color: #5B6470">Като чернови. 5 продукта остават в партидата, докато не бъдат решени.</span>
+    </div>
+    <sc-for list="{{stores}}" as="s" hint-placeholder-count="2">
+      <section style="border: 1px solid #E3E6EA; border-radius: 8px; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: #F5F6F8; border-bottom: 1px solid #E3E6EA">
+          <span style="font-size: 14px; font-weight: 600">{{s.name}}</span>
+          <span style="font-size: 13px; color: {{s.color}}">{{s.summary}}</span>
+          <div style="flex-grow: 1"></div>
+          <button style="{{s.retryStyle}}">Опитай отново неуспешните</button>
+        </div>
+        <sc-for list="{{s.items}}" as="i" hint-placeholder-count="5">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) 150px 320px; gap: 16px; padding: 10px 18px; border-bottom: 1px solid #EDEFF2; font-size: 13px; align-items: center">
+            <span>{{i.title}}</span>
+            <span style="{{i.style}}">{{i.state}}</span>
+            <span style="color: #5B6470">{{i.note}}</span>
+          </div>
+        </sc-for>
+      </section>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const done = 'font-weight: 500; color: #2E7D4F';
+    const fail = 'font-weight: 500; color: #A82020';
+    const it = (title, ok, note) => ({ title, state: ok ? 'качен' : 'грешка', style: ok ? done : fail, note });
+    const titles = ['Dior Sauvage EDT 100 ml', 'Chanel No 5 EDP 100 ml TESTER', 'Burberry Her EDP 100 ml', "Givenchy L'Interdit EDP 80 ml", 'Bvlgari Aqva Marine EDT 100 ml'];
+    const hide = 'display: none';
+    const btn = 'height: 32px; padding: 0 12px; border: 1px solid #E3E6EA; background: #FFFFFF; border-radius: 6px; font-size: 13px';
+    const stores = [
+      { name: 'GR · гръцки', summary: '5 от 5 качени', color: '#2E7D4F', retryStyle: hide, items: titles.map((t) => it(t, true, 'чернова, снимка качена')) },
+      { name: 'HR · хърватски', summary: '4 от 5 качени', color: '#A82020', retryStyle: btn, items: titles.map((t, k) => k === 2 ? it(t, false, 'SKU вече съществува в магазина. Провери дублирания продукт.') : it(t, true, 'чернова, снимка качена')) }
+    ];
+    return { stores };
+  }
+}
+</script>
+</body>
+</html>
