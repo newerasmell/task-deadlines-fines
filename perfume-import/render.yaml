@@ -14,7 +14,15 @@ services:
       paths:
         - perfume-import/**
     healthCheckPath: /api/health
+    # Finished and original pictures (SPEC §6). A disk survives deploys; it also means one instance and a short
+    # stop on each deploy (Render does not do zero-downtime deploys for services with a disk).
+    disk:
+      name: perfume-media
+      mountPath: /var/data/media
+      sizeGB: 5
     envVars:
+      - key: MEDIA_DIR
+        value: /var/data/media
       - key: DATABASE_URL
         fromDatabase:
           name: perfume-import-db

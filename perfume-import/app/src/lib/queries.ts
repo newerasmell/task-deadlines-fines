@@ -1,0 +1,56 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useActor } from './actorContext'
+import { api, type Batch, type Product } from './api'
+
+export const useBatches = () => useQuery({ queryKey: ['batches'], queryFn: api.batches })
+
+export const useBatch = (id: number) => useQuery({ queryKey: ['batch', id], queryFn: () => api.batch(id) })
+
+export const useVocab = (group: string | undefined) =>
+  useQuery({ queryKey: ['vocab', group], queryFn: () => api.vocab(group!), enabled: !!group, staleTime: Infinity })
+
+/** A change to one product: the API returns the product, which replaces it in the cached batch. */
+export function useProductMutation<A>(batchId: number, fn: (args: A) => Promise<Product>) {
+  const client = useQueryClient()
+  const { ensure } = useActor()
+  return useMutation({
+    mutationFn: async (args: A) => {
+      if (!(await ensure())) throw new Error('Без име решението не се записва.')
+      return fn(args)
+    },
+    onSuccess: (product) => {
+      client.setQueryData<Batch>(['batch', batchId], (old) =>
+        old ? { ...old, products: old.products.map((p) => (p.id === product.id ? product : p)) } : old,
+      )
+      client.invalidateQueries({ queryKey: ['batches'] })
+    },
+  })
+}
+
+export type DecideArgs = { fieldId: number; action: 'accept' | 'edit' | 'pick'; value?: unknown }
+
+export const useDecide = (batchId: number) =>
+  useProductMutation<DecideArgs>(batchId, ({ fieldId, action, value }) => api.decide(fieldId, action, value))
+
+export const useAcceptAll = (batchId: number) =>
+  useProductMutation<{ productId: number; store?: string }>(batchId, ({ productId, store }) =>
+    api.acceptAll(productId, store),
+  )
+
+export const useApprove = (batchId: number) =>
+  useProductMutation<number>(batchId, (productId) => api.approve(productId))
+
+export function useAcceptColumn(batchId: number) {
+  const client = useQueryClient()
+  const { ensure } = useActor()
+  return useMutation({
+    mutationFn: async ({ store, key }: { store: string; key: string }) => {
+      if (!(await ensure())) throw new Error('Без име решението не се записва.')
+      return api.acceptColumn(batchId, store, key)
+    },
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['batch', batchId] })
+      client.invalidateQueries({ queryKey: ['batches'] })
+    },
+  })
+}

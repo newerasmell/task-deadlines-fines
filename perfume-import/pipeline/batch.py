@@ -12,10 +12,11 @@ from dataclasses import asdict, dataclass, field
 
 from pipeline.ai import Usage
 from pipeline.build import ProductInput, build_store_fields, google_gender
+from pipeline.compose import Composed, compose_for_stores
 from pipeline.config import Group
 from pipeline.fields import SEVERITY, Field, worst
 from pipeline.generate import NOTE_KEYS, Text, generate_texts, text_fields
-from pipeline.images import Checked, check_all, image_field
+from pipeline.images import Checked, best, check_all, image_field
 from pipeline.input import InputRow
 from pipeline.research import EanCheck, Research, find_images, fragrantica_bottle, from_saved, research_product
 from pipeline.tiers import DEFAULT_TIER, OVERRUN, TIERS, Tier, ceiling, tier
@@ -38,6 +39,9 @@ class ProductResult:
     tier: Tier = field(default_factory=lambda: TIERS[DEFAULT_TIER])
     max_cost: float | None = None
     skipped: dict[str, str] = field(default_factory=dict)  # step -> why it was not run (the cost ceiling)
+    original: Checked | None = None  # the picture the finished images were made from
+    composed: dict[str, Composed] = field(default_factory=dict)  # store -> finished image (shared per layout)
+    compose_error: str | None = None
 
     @property
     def cost_usd(self) -> float:
@@ -159,6 +163,7 @@ def store_fields(result: ProductResult, group: Group, store_key: str) -> dict[st
         fields["image"] = image_field(result.images, group.spec.rules.image_min_height)
         if "image_search" in result.skipped and fields["image"].status == "blocked":
             fields["image"].message += " Търсене на снимка: " + result.skipped["image_search"]
+        image_composed(fields["image"], result.composed.get(store_key), result.compose_error)
         if research.ean_check:
             flag_ean(fields["ean"], research.ean_check, row)
 
@@ -173,6 +178,38 @@ def store_fields(result: ProductResult, group: Group, store_key: str) -> dict[st
     fields["compare_at"] = Field("compare_at", "", "input", "ok")
     validate_product(fields, Context(group, store))
     return fields
+
+
+def image_composed(f: Field, composed: Composed | None, error: str | None = None) -> None:
+    """The finished picture for this store (SPEC §6). Until the batch is saved the value is still the source URL;
+    db.repo.save_batch stores the files and points the value at the finished one."""
+    if f.status == "blocked":
+        return
+    if error:
+        f.flag("warning", f"Снимката не е сглобена: {error} Остава оригиналът.", "image_compose")
+        return
+    if composed is None:
+        return
+    f.message = (
+        f"{f.message} Сглобена върху фона на магазина: {composed.width}×{composed.height} px, "
+        f"шише {composed.bottle[0]}×{composed.bottle[1]} px"
+        f"{'' if composed.scaled >= 1 else f' (смалено до {composed.scaled:.0%})'}."
+    )
+    for warning in composed.warnings:
+        f.flag("warning", warning, "image_compose")
+
+
+def compose_step(result: ProductResult, group: Group, stores: list[str]) -> None:
+    """Cut out the best downloaded picture and place it on each layout. No AI, no cost."""
+    result.original = best(result.images)
+    if result.original is None or result.original.data is None:
+        return
+    try:
+        result.composed = compose_for_stores(result.original.data, group, stores)
+    except FileNotFoundError as exc:  # the group has no layout yet
+        result.compose_error = str(exc)
+    except Exception as exc:  # one bad picture must not stop the batch
+        result.compose_error = f"{type(exc).__name__}: {exc}"
 
 
 def flag_ean(f: Field, check: EanCheck, row: InputRow) -> None:
@@ -292,6 +329,8 @@ def run_batch(
                 zip(rows, tiers, strict=True),
             )
         )
+
+        list(pool.map(lambda p: compose_step(p, group, stores), products))
 
     ready = [p for p in products if not p.research.error and p.affords("texts", n_texts * p.tier.text_cost)]
     texts = generate_texts(

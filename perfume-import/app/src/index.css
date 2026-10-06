@@ -1,37 +1,77 @@
-/* Tokens from docs/DESIGN.md. Light theme only for v1. */
-:root {
-  --ink: #1a1d21;
-  --ink-2: #5b6470;
-  --line: #e3e6ea;
-  --canvas: #ffffff;
-  --surface: #f5f6f8;
-  --accent: #2f5bea;
+@import 'tailwindcss';
 
-  --status-ok: #2e7d4f;
-  --status-suggested: #2f5bea;
-  --status-fixed: #b7791f;
-  --status-warning: #d9731a;
-  --status-blocked: #c62b2b;
+/* Tokens from docs/DESIGN.md (light theme only for v1) and the approved mockups in design/mockups/. */
+@theme {
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
 
-  --radius: 6px;
-  --row-height: 36px;
+  --color-ink: #1a1d21;
+  --color-ink-2: #5b6470;
+  --color-ink-3: #3a424d;
+  --color-muted: #9aa2ad;
+  --color-line: #e3e6ea;
+  --color-line-2: #edeff2;
+  --color-canvas: #ffffff;
+  --color-surface: #f5f6f8;
+  --color-well: #f1f2f4;
+  --color-accent: #2f5bea;
+  --color-accent-hover: #1f44bf;
+  --color-accent-disabled: #c9d3f5;
 
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.4;
-  color: var(--ink);
-  background: var(--canvas);
+  --color-ok: #2e7d4f;
+  --color-suggested: #2f5bea;
+  --color-fixed: #b7791f;
+  --color-warning: #d9731a;
+  --color-blocked: #c62b2b;
+
+  --color-ok-tint: #ffffff;
+  --color-suggested-tint: #eaf0fd;
+  --color-fixed-tint: #fbf3e2;
+  --color-warning-tint: #fdeee1;
+  --color-blocked-tint: #fbe6e6;
+
+  --color-suggested-text: #1f44bf;
+  --color-fixed-text: #8a5a12;
+  --color-warning-text: #b65a0e;
+  --color-blocked-text: #a82020;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+
+  --radius-md: 6px;
+  --radius-lg: 8px;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--canvas);
+@layer base {
+  html,
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.4;
+    /* Same Cyrillic letter forms everywhere: the Bulgarian localized forms switched on only sometimes. */
+    font-feature-settings: 'locl' 0;
+  }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+  }
+  a {
+    color: var(--color-accent);
+  }
+  a:hover {
+    color: var(--color-accent-hover);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
 }
 
 .tabular {
