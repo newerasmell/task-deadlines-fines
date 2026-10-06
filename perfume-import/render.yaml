@@ -1,13 +1,14 @@
 # Render Blueprint: one web service (API + built app, Docker) and a managed Postgres.
 # This project lives in perfume-import/ of a repo that also hosts other apps, so the Blueprint path is
 # perfume-import/render.yaml (set it explicitly when creating the Blueprint), and paths below are repo-relative.
-# Secrets are never in this file. Keys marked `sync: false` are entered in the Render dashboard
-# when the Blueprint is created (or later under Environment).
+# Secrets are never in this file. ANTHROPIC_API_KEY (`sync: false`) is entered in the Render dashboard when the
+# Blueprint is created (or later under Environment).
 services:
   - type: web
     name: perfume-import
     runtime: docker
     plan: starter
+    region: frankfurt  # closest to the team; must match the database, chosen only at creation
     dockerContext: ./perfume-import
     dockerfilePath: ./perfume-import/Dockerfile
     buildFilter:
@@ -29,48 +30,14 @@ services:
           property: connectionString
       - key: ANTHROPIC_API_KEY
         sync: false
-      # Shopify access per store: SHOPIFY_TOKEN_<STORE> (an older custom app's token) below, or add
-      # SHOPIFY_CLIENT_ID_<STORE> and SHOPIFY_CLIENT_SECRET_<STORE> from a Dev Dashboard app under Environment.
-      - key: SHOPIFY_TOKEN_PREMIERPARFUMS
-        sync: false
-      - key: SHOPIFY_TOKEN_PARFEMIJA
-        sync: false
-      - key: SHOPIFY_TOKEN_PARFEM4U
-        sync: false
-      - key: SHOPIFY_TOKEN_LUXILLAT
-        sync: false
-      - key: SHOPIFY_TOKEN_SCENTELLAS
-        sync: false
-      - key: SHOPIFY_TOKEN_SENZAROMI
-        sync: false
-      - key: SHOPIFY_TOKEN_TVOJAPARFUM
-        sync: false
-      - key: SHOPIFY_TOKEN_AROMACHIC
-        sync: false
-      - key: SHOPIFY_TOKEN_FRAGRALUX
-        sync: false
-      - key: SHOPIFY_TOKEN_PERFEMIO
-        sync: false
-      - key: SHOPIFY_TOKEN_AROMIZO
-        sync: false
-      - key: SHOPIFY_TOKEN_FRAGRACY
-        sync: false
-      - key: SHOPIFY_TOKEN_LUXAROMI
-        sync: false
-      - key: SHOPIFY_TOKEN_LUXCENTIO
-        sync: false
-      - key: SHOPIFY_TOKEN_SCENTAORO
-        sync: false
-      - key: SHOPIFY_TOKEN_SCENTILOS
-        sync: false
-      - key: SHOPIFY_TOKEN_SCENTILUX
-        sync: false
-      - key: SHOPIFY_TOKEN_SCENTIVIO
-        sync: false
+      # Shopify access per store is added later under Environment (not asked at creation):
+      # SHOPIFY_CLIENT_ID_<STORE> + SHOPIFY_CLIENT_SECRET_<STORE> from a Dev Dashboard app, or SHOPIFY_TOKEN_<STORE>
+      # from an older custom app, e.g. SHOPIFY_CLIENT_ID_PARFEMIJA. See README "Качване в Shopify".
 
 databases:
   - name: perfume-import-db
     databaseName: perfume
     user: perfume
     plan: basic-256mb
+    region: frankfurt
     postgresMajorVersion: "16"
