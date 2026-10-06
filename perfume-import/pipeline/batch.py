@@ -5,6 +5,7 @@ gets its own fields (deterministic ones from build.py) and is validated with the
 """
 
 import copy
+import threading
 from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -314,29 +315,36 @@ def run_batch(
     default_tier: str = DEFAULT_TIER,
     deep_eans: set[str] = frozenset(),
     profiles: dict[str, dict] | None = None,
+    progress: Callable[[str, int, int], None] | None = None,
 ) -> BatchResult:
     """Research every product (parallel, interactive: it needs web search), then all texts at once
     (English masters in one round, every product x language in the next). Each product has a tier
     (resolve_tier): economy texts go through one Message Batch per round, deep texts are interactive.
     batch_texts=True/False forces all texts one way. max_cost overrides every tier's own limit.
     profiles: accepted store profiles by store key (db.stores.accepted_profiles); a store without one uses the
-    group's formulas."""
+    group's formulas. progress(stage, done, total): research / images / texts / fields, for the app."""
     tiers = [resolve_tier(r, default_tier, deep_eans) for r in rows]
+    report = progress or (lambda stage, done, total: None)
+    done = [0]
+    lock = threading.Lock()
+
+    def researched(rt):
+        result = research_step(client, rt[0], group, saved_research, refresh, fetch_image, rt[1], max_cost, n_texts)
+        with lock:
+            done[0] += 1
+            report("research", done[0], len(rows))
+        return result
+
     languages = [group.store(s).language for s in stores]
     n_texts = 1 + len(set(languages) - {"en"})
     with ThreadPoolExecutor(max_workers=max(1, min(workers, MAX_PARALLEL))) as pool:
-        products = list(
-            pool.map(
-                lambda rt: research_step(
-                    client, rt[0], group, saved_research, refresh, fetch_image, rt[1], max_cost, n_texts
-                ),
-                zip(rows, tiers, strict=True),
-            )
-        )
-
+        report("research", 0, len(rows))
+        products = list(pool.map(researched, zip(rows, tiers, strict=True)))
+        report("images", 0, len(products))
         list(pool.map(lambda p: compose_step(p, group, stores), products))
 
     ready = [p for p in products if not p.research.error and p.affords("texts", n_texts * p.tier.text_cost)]
+    report("texts", 0, len(ready))
     texts = generate_texts(
         client, [(facts_for_text(p.research), p.row.tester, p.tier) for p in ready], group, languages, batch=batch_texts
     )
@@ -347,6 +355,7 @@ def run_batch(
             if language != "en":
                 p.usage[f"text_{language}"] = t.usage.to_dict()
 
+    report("fields", 0, len(products))
     for p in products:
         for store in stores:
             p.stores[store] = store_fields(p, group, store, (profiles or {}).get(store))

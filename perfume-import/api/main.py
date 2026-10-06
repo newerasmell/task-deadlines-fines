@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, text
 
+from api.batches import router as batches_router
 from api.review import router as review_router
 from api.stores import router as stores_router
 from db.stores import install as install_store_settings
@@ -15,6 +16,7 @@ engine = create_engine(settings.sqlalchemy_url, pool_pre_ping=True)
 
 app = FastAPI(title="Perfume Import")
 app.add_middleware(GZipMiddleware, minimum_size=2000)  # an audit batch is ~8 MB of JSON, ~1 MB gzipped
+app.include_router(batches_router)  # before review: /api/batches/check is not /api/batches/{id}
 app.include_router(review_router)
 app.include_router(stores_router)
 install_store_settings()  # stores and Shopify domains set in the app are part of the group config

@@ -1,6 +1,7 @@
 """Read a batch input file (input/products_template.csv). Row problems are kept, not fatal (SPEC §1, §7)."""
 
 import csv
+import io
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,19 +35,29 @@ class InputRow:
 
 
 def read_input(path: str | Path, group: Group, stores: list[str] | None = None) -> list[InputRow]:
+    with Path(path).open(encoding="utf-8-sig", newline="") as fh:
+        return _read(fh, group, stores)
+
+
+def read_input_text(text: str, group: Group, stores: list[str] | None = None) -> list[InputRow]:
+    """The same input as text: an uploaded CSV, or rows pasted from Excel (tab-separated) in the app."""
+    text = text.lstrip("\ufeff")
+    first = text.split("\n", 1)[0]
+    delimiter = "\t" if first.count("\t") > first.count(",") else ("," if "," in first else ";")
+    return _read(io.StringIO(text), group, stores, delimiter)
+
+
+def _read(fh, group: Group, stores: list[str] | None, delimiter: str = ",") -> list[InputRow]:
     stores = stores or list(group.stores)
     for key in stores:
         group.store(key)  # unknown store -> clear error
-    with Path(path).open(encoding="utf-8-sig", newline="") as fh:
-        reader = csv.DictReader(fh)
-        columns = [c.strip() for c in reader.fieldnames or []]
-        needed = [*INPUT_BASE_COLUMNS, *(f"price_{k}" for k in stores)]
-        missing = [c for c in needed if c not in columns]
-        if missing:
-            raise InputError(f"Във файла липсват колони: {', '.join(missing)}. Шаблон: input/products_template.csv")
-        rows = [
-            _row(i, {k.strip(): (v or "").strip() for k, v in r.items() if k}, stores) for i, r in enumerate(reader, 2)
-        ]
+    reader = csv.DictReader(fh, delimiter=delimiter)
+    columns = [c.strip() for c in reader.fieldnames or []]
+    needed = [*INPUT_BASE_COLUMNS, *(f"price_{k}" for k in stores)]
+    missing = [c for c in needed if c not in columns]
+    if missing:
+        raise InputError(f"Във файла липсват колони: {', '.join(missing)}. Изтегли шаблона и попълни него.")
+    rows = [_row(i, {k.strip(): (v or "").strip() for k, v in r.items() if k}, stores) for i, r in enumerate(reader, 2)]
     rows = [r for r in rows if r.name or r.ean]
     if not rows:
         raise InputError("Файлът няма нито един продукт.")

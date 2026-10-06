@@ -11,17 +11,16 @@ expected cost without calling the API.
 import argparse
 import json
 import sys
-from collections import Counter
 from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pipeline.ai import api_key  # noqa: E402
-from pipeline.batch import resolve_tier  # noqa: E402
 from pipeline.config import load_group  # noqa: E402
+from pipeline.estimate import estimate, usd  # noqa: E402
 from pipeline.input import InputError, read_input  # noqa: E402
-from pipeline.tiers import TIERS, ceiling  # noqa: E402
+from pipeline.tiers import TIERS  # noqa: E402
 
 LABELS = {
     "ok": "ok",
@@ -30,17 +29,6 @@ LABELS = {
     "warning": "предупреждения",
     "blocked": "блокирани",
 }
-# Per-step costs (USD) for --estimate when the database has no measured run of that tier yet.
-# After a run, the averages from events (kind ai_usage) are used instead.
-DEFAULT_COSTS = {
-    "economy": {"research": 0.07, "description_en": 0.002, "language": 0.004},  # Sonnet, search only, Batch
-    "deep": {"research": 0.35, "description_en": 0.02, "language": 0.015},  # Opus, pages, interactive
-}
-
-
-def usd(amount: float) -> str:
-    """$0.125 stays $0.125 (":.2f" would show $0.12); whole cents keep two decimals."""
-    return f"${amount:.3f}".rstrip("0") if round(amount, 2) != amount else f"${amount:.2f}"
 
 
 def main() -> int:
@@ -79,33 +67,24 @@ def main() -> int:
         for problem in row.problems:
             print(f"  {row.label}: {problem}")
 
-    languages = sorted({group.store(s).language for s in stores} - {"en"})
     deep_eans = {e.strip() for e in args.deep.split(",") if e.strip()}
-    counts = Counter(resolve_tier(r, args.tier, deep_eans).name for r in rows)
-    total = 0.0
-    lines = []
-    for name, n in counts.items():
-        costs, source = DEFAULT_COSTS[name], "оценка без измерване"
-        if not args.no_save:
-            try:
-                from db.repo import measured_costs
+    measured = {}
+    if not args.no_save:
+        try:
+            from db.repo import measured_costs
 
-                measured = measured_costs(name)
-                if measured:
-                    costs, source = {**costs, **measured}, "измерено"
-            except Exception:  # no database: fall back to the defaults
-                pass
-        factor = 2 if args.no_batch and TIERS[name].text_batch else 1
-        per_product = costs["research"] + factor * (costs["description_en"] + costs["language"] * len(languages))
-        total += per_product * n
-        limit = args.max_cost if args.max_cost is not None else TIERS[name].max_cost
-        cap = f"лимит {usd(limit)}, таван {usd(ceiling(limit))}"
-        lines.append(f"  {TIERS[name].label}: {n} × ≈ ${per_product:.3f} ({source}; {cap})")
+            measured = {name: measured_costs(name) for name in TIERS}
+        except Exception:  # no database: the defaults
+            pass
+    est = estimate(rows, group, stores, args.tier, deep_eans, measured, args.max_cost, args.no_batch)
     print(
-        f"{len(rows)} продукта × {len(stores)} магазина, езици: {', '.join(languages) or 'en'}. "
-        f"Очаквана цена ≈ ${total:.2f}."
+        f"{len(rows)} продукта × {len(stores)} магазина, езици: {', '.join(est.languages) or 'en'}. "
+        f"Очаквана цена ≈ ${est.total:.2f}."
     )
-    print("\n".join(lines))
+    for t in est.tiers:
+        source = "измерено" if t.measured else "оценка без измерване"
+        cap = f"лимит {usd(t.limit)}, таван {usd(t.ceiling)}"
+        print(f"  {t.label}: {t.products} × ≈ ${t.per_product:.3f} ({source}; {cap})")
     if args.estimate:
         return 0
     if not api_key():
