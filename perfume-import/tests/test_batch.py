@@ -1,5 +1,7 @@
 """A whole batch with the fake client: research once, texts per language, fields per store, validation, DB."""
 
+from dataclasses import replace
+
 import pytest
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -55,6 +57,8 @@ def test_batch_builds_and_validates_every_store(rows, monkeypatch):
     assert gr["top_note"].value == "sicilian lemon-el" and gr["top_note"].value_en == "sicilian lemon"
     assert gr["price"].value == rows[0].prices["premierparfums"]
     assert gr["image"].status == "suggested" and "1200×1200" in gr["image"].message  # downloaded and measured
+    assert "Сглобена върху фона на магазина: 1080×1080 px" in gr["image"].message
+    assert p.composed["premierparfums"] is p.composed["parfemija"]  # same layout -> one picture
     assert "custom.sklad" not in gr
     blocked = {k: f.message for k, f in gr.items() if f.status == "blocked"}
     assert blocked == {}, blocked
@@ -84,8 +88,14 @@ def test_saved_research_is_reused(rows, monkeypatch):
 
 @pytest.mark.db
 def test_batch_is_saved(rows, monkeypatch):
-    from db.models import Batch, Event
-    from db.repo import batch_counts, engine, find_research, save_batch
+    from fastapi.testclient import TestClient
+    from sqlalchemy import select
+
+    from api.main import app
+    from db.models import Batch, Event, FieldRow, Media, Product, StoreProduct
+    from db.repo import batch_counts, batch_pictures, engine, find_research, replace_composed, save_batch
+    from pipeline import media
+    from pipeline.compose import compose_for_stores
 
     monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
     result = run_batch(FakeClient(responder=responder), rows, GROUP, STORES, "test")
@@ -98,6 +108,57 @@ def test_batch_is_saved(rows, monkeypatch):
                     expected[f.status] = expected.get(f.status, 0) + 1
         assert batch_counts(batch_id) == expected
         assert find_research(rows[0].ean)["brand"]["value"] == "Paco Rabanne"
+
+        # Pictures: one original + one composition per layout per product, the field points at the composition.
+        with Session(engine()) as session:
+            pictures = (
+                session.execute(select(Media).join(Product).where(Product.batch_id == batch_id).order_by(Media.id))
+                .scalars()
+                .all()
+            )
+            assert [m.kind for m in pictures] == ["original", "composed"] * len(rows)
+            composed = pictures[1]
+            assert (composed.width, composed.height) == (1080, 1080) and composed.layout == "group"
+            assert media.resolve(composed.path).read_bytes()[:4] == b"\x89PNG"
+            image = (
+                session.execute(
+                    select(FieldRow)
+                    .join(StoreProduct)
+                    .where(StoreProduct.product_id == composed.product_id, FieldRow.key == "image")
+                )
+                .scalars()
+                .all()
+            )
+            assert {f.value for f in image} == {f"/api/media/{composed.id}"}  # both stores share the layout
+            assert image[0].alternatives == [f"/api/media/{pictures[0].id}"]
+            assert image[0].sources[0]["url"].startswith("http")
+
+        response = TestClient(app).get(f"/api/media/{composed.id}")
+        assert response.status_code == 200 and response.headers["content-type"] == "image/png"
+        assert TestClient(app).get("/api/media/999999999").status_code == 404
+
+        # Recompose after a layout change: new picture, old value kept in `previous`.
+        first = batch_pictures(batch_id)[0]
+        assert first["original"].id == pictures[0].id and first["stores"] == STORES
+        data = media.resolve(first["original"].path).read_bytes()
+        smaller = {s: replace(c, layout="smaller") for s, c in compose_for_stores(data, GROUP, STORES).items()}
+        replace_composed(first["product_id"], first["original"], smaller, 1000, "test")
+        with Session(engine()) as session:
+            image = (
+                session.execute(
+                    select(FieldRow)
+                    .join(StoreProduct)
+                    .where(StoreProduct.product_id == first["product_id"], FieldRow.key == "image")
+                )
+                .scalars()
+                .all()
+            )
+            newest = session.execute(
+                select(Media).where(Media.product_id == first["product_id"]).order_by(Media.id.desc()).limit(1)
+            ).scalar_one()
+            assert newest.layout == "smaller"
+            assert {f.value for f in image} == {f"/api/media/{newest.id}"}
+            assert {f.previous for f in image} == {f"/api/media/{composed.id}"}
     finally:
         with Session(engine()) as session, session.begin():
             session.execute(delete(Event).where(Event.batch_id == batch_id))

@@ -1,0 +1,33 @@
+# Main image layout, measured from the stores' current pictures by scripts/learn_layout.py.
+# Shares are of the canvas. The bottle is scaled DOWN to fit max_height x max_width, never up.
+canvas:
+- 1080
+- 1080
+background:
+  color: '#FFFFFF'
+format: png
+product:
+  max_height: 0.837
+  max_width: 0.9
+  center_x: 0.5
+  anchor: center
+  bottom_margin: 0.082
+learned_from:
+  images: 80
+  flat_background: 78
+  designed_background: 2
+  canvas_sizes:
+    1080x1080: 34
+    2400x2400: 17
+    1200x1200: 10
+    1000x1000: 5
+    800x800: 3
+    2000x2000: 2
+    1600x1600: 2
+    900x900: 2
+    2304x2304: 1
+    768x768: 1
+    1702x1702: 1
+  backgrounds:
+    '#FFFFFF': 78
+  height_share_match_rate: 0.615

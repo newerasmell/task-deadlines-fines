@@ -1,10 +1,13 @@
 """Persistence for pipeline results."""
 
+import copy
+
 from sqlalchemy import create_engine, insert, select
 from sqlalchemy.orm import Session
 
-from db.models import Batch, Event, FieldRow, Product, Store, StoreProduct, VocabLearned
-from pipeline.batch import BatchResult, row_dict
+from db.models import Batch, Event, FieldRow, Media, Product, Store, StoreProduct, VocabLearned
+from pipeline import media
+from pipeline.batch import BatchResult, ProductResult, row_dict
 from pipeline.config import load_group
 from pipeline.settings import get_settings
 from pipeline.validate import AuditReport
@@ -118,11 +121,12 @@ def save_batch(result: BatchResult, author: str | None = None) -> int:
             )
             session.add(product)
             session.flush()
+            pictures = save_media(session, product.id, p)
             for store, fields in p.stores.items():
                 sp = StoreProduct(product_id=product.id, store_key=store)
                 session.add(sp)
                 session.flush()
-                session.execute(insert(FieldRow), _field_rows(sp.id, fields))
+                session.execute(insert(FieldRow), _field_rows(sp.id, with_media(fields, store, pictures)))
             session.add(
                 Event(
                     actor=author,
@@ -140,6 +144,151 @@ def save_batch(result: BatchResult, author: str | None = None) -> int:
             )
         session.add(Event(actor=author, kind="batch_created", batch_id=batch.id, payload=result.summary()))
         return batch.id
+
+
+def media_url(media_id: int) -> str:
+    return f"/api/media/{media_id}"
+
+
+def save_media(session: Session, product_id: int, p: ProductResult) -> dict:
+    """Write the original and every finished picture to MEDIA_DIR and record them.
+    Returns {"original": Media | None, "stores": {store: Media}}."""
+    out: dict = {"original": None, "stores": {}}
+    if p.original is None or p.original.data is None:
+        return out
+
+    def add(data: bytes, kind: str, layout: str | None, info: dict) -> Media:
+        stored = media.write(data)
+        row = Media(
+            product_id=product_id,
+            kind=kind,
+            layout=layout,
+            source_url=p.original.url,
+            path=stored.path,
+            content_type=stored.content_type,
+            width=stored.width,
+            height=stored.height,
+            bytes=stored.bytes,
+            sha256=stored.sha256,
+            info=info,
+        )
+        session.add(row)
+        session.flush()
+        return row
+
+    out["original"] = add(p.original.data, "original", None, {"source": p.original.source})
+    by_layout: dict[str, Media] = {}
+    for store, c in p.composed.items():
+        if c.layout not in by_layout:
+            info = {"bottle": list(c.bottle), "scaled": c.scaled, "warnings": c.warnings}
+            by_layout[c.layout] = add(c.data, "composed", c.layout, info)
+        out["stores"][store] = by_layout[c.layout]
+    return out
+
+
+def with_media(fields: dict, store: str, pictures: dict) -> dict:
+    """The image field points at the stored finished picture; the stored original is the alternative to pick
+    instead, and the source URL stays in `sources`."""
+    composed, original = pictures["stores"].get(store), pictures["original"]
+    if "image" not in fields or original is None:
+        return fields
+    image = copy.deepcopy(fields["image"])
+    image.value = media_url((composed or original).id)
+    if composed is not None:
+        image.alternatives = [media_url(original.id)]
+    return {**fields, "image": image}
+
+
+def batch_pictures(batch_id: int) -> list[dict]:
+    """Each product of a batch with its stored original and its stores (for recomposing)."""
+    with Session(engine()) as session:
+        batch = session.get(Batch, batch_id)
+        if batch is None:
+            raise KeyError(f"Няма партида {batch_id}.")
+        out = []
+        for product in session.execute(
+            select(Product).where(Product.batch_id == batch_id).order_by(Product.id)
+        ).scalars():
+            original = session.execute(
+                select(Media)
+                .where(Media.product_id == product.id, Media.kind == "original")
+                .order_by(Media.id.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            stores = session.execute(
+                select(StoreProduct.store_key).where(StoreProduct.product_id == product.id).order_by(StoreProduct.id)
+            ).scalars()
+            out.append(
+                {
+                    "product_id": product.id,
+                    "name": product.input.get("name"),
+                    "group": batch.group_key,
+                    "original": original,
+                    "stores": list(stores),
+                }
+            )
+        return out
+
+
+def replace_composed(product_id: int, original: Media, composed: dict, min_height: int, actor: str | None) -> None:
+    """New finished pictures for a product (after a layout change): new media rows, the image field of every
+    store points at them, the old value goes to `previous`, and the change is logged."""
+    from pipeline.batch import image_composed
+    from pipeline.images import Checked, image_field
+
+    with Session(engine()) as session, session.begin():
+        batch_id = session.get(Product, product_id).batch_id
+        by_layout: dict[str, Media] = {}
+        for store, c in composed.items():
+            if c.layout not in by_layout:
+                stored = media.write(c.data)
+                row = Media(
+                    product_id=product_id,
+                    kind="composed",
+                    layout=c.layout,
+                    source_url=original.source_url,
+                    path=stored.path,
+                    content_type=stored.content_type,
+                    width=stored.width,
+                    height=stored.height,
+                    bytes=stored.bytes,
+                    sha256=stored.sha256,
+                    info={"bottle": list(c.bottle), "scaled": c.scaled, "warnings": c.warnings},
+                )
+                session.add(row)
+                session.flush()
+                by_layout[c.layout] = row
+            field = session.execute(
+                select(FieldRow)
+                .join(StoreProduct, StoreProduct.id == FieldRow.store_product_id)
+                .where(StoreProduct.product_id == product_id, StoreProduct.store_key == store, FieldRow.key == "image")
+            ).scalar_one_or_none()
+            if field is None:
+                continue
+            checked = Checked(url=original.source_url or "", width=original.width, height=original.height)
+            fresh = image_field([checked], min_height)
+            image_composed(fresh, c)
+            new_value = media_url(by_layout[c.layout].id)
+            if field.value != new_value:
+                field.previous = field.value
+            field.value, field.status, field.message = new_value, fresh.status, fresh.message
+            field.issues = fresh.issues
+            field.alternatives = [media_url(original.id)]
+            session.add(
+                Event(
+                    actor=actor,
+                    kind="image_recomposed",
+                    batch_id=batch_id,
+                    store_product_id=field.store_product_id,
+                    field_key="image",
+                    payload={"media_id": by_layout[c.layout].id, "previous": field.previous},
+                )
+            )
+
+
+def get_media(media_id: int) -> Media | None:
+    with Session(engine()) as session:
+        return session.get(Media, media_id)
 
 
 def find_research(ean: str) -> dict | None:

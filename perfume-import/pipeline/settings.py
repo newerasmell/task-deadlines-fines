@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://perfume:perfume@localhost:5432/perfume"
     config_dir: Path = ROOT / "config"
     app_dist: Path = ROOT / "app" / "dist"
+    # Finished and original pictures (SPEC §6). On Render: the persistent disk at /var/data/media.
+    media_dir: Path = ROOT / "output" / "media"
 
     @property
     def sqlalchemy_url(self) -> str:

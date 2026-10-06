@@ -16,6 +16,7 @@ dependencies = [
   "openpyxl>=3.1",
   "httpx>=0.27",
   "pillow>=10",
+  "rembg[cpu]>=2.0.60,<3",  # background removal for scenes and gradients (model u2net, local, no AI cost)
 ]
 
 [project.optional-dependencies]
@@ -38,5 +39,9 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["db: needs a running Postgres at DATABASE_URL", "live: calls the real Claude API (needs ANTHROPIC_API_KEY, costs money)"]
-addopts = "-m 'not live'"
+markers = [
+  "db: needs a running Postgres at DATABASE_URL",
+  "live: calls the real Claude API (needs ANTHROPIC_API_KEY, costs money)",
+  "rembg: runs the real background-removal model (downloads u2net, ~176 MB, on first use)",
+]
+addopts = "-m 'not live and not rembg'"

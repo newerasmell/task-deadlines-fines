@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     Float,
@@ -157,3 +158,24 @@ class VocabLearned(Created, Base):
     status: Mapped[str] = mapped_column(String(16), default="suggested", server_default="suggested")
     confidence: Mapped[float | None] = mapped_column(Float)
     reason: Mapped[str | None] = mapped_column(Text)
+
+
+class Media(Created, Base):
+    """A picture on disk (pipeline/media.py): the downloaded original of a product or a finished composition.
+
+    A composition is per layout, not per store: stores that share a layout share the file."""
+
+    __tablename__ = "media"
+    __table_args__ = (CheckConstraint(_in("kind", ("original", "composed")), name="media_kind_valid"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    layout: Mapped[str | None] = mapped_column(String(64))  # "group" or a store key with its own layout
+    source_url: Mapped[str | None] = mapped_column(Text)
+    path: Mapped[str] = mapped_column(Text)  # relative to MEDIA_DIR
+    content_type: Mapped[str] = mapped_column(String(32))
+    width: Mapped[int]
+    height: Mapped[int]
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    info: Mapped[dict] = mapped_column(JSONB, default=dict)  # compose details: scale, bottle size, warnings

@@ -5,7 +5,7 @@ No AI, no cost. Background removal, layout and export stay in Phase 3.
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from io import BytesIO
 from urllib.parse import urlparse
 
@@ -28,6 +28,7 @@ class Checked:
     width: int = 0
     height: int = 0
     error: str | None = None
+    data: bytes | None = field(default=None, repr=False, compare=False)  # kept for compose; never stored as a source
 
     @property
     def ok(self) -> bool:
@@ -65,6 +66,7 @@ def check(image: dict, fetch_fn=None) -> Checked:
         data = (fetch_fn or fetch)(image["url"])
         with Image.open(BytesIO(data)) as im:
             checked.width, checked.height = im.size
+        checked.data = data
     except FetchError as exc:
         checked.error = str(exc)
     except (UnidentifiedImageError, OSError):
@@ -104,8 +106,14 @@ def best(checked: list[Checked]) -> Checked | None:
     return max(working, key=lambda c: (c.height, c.width)) if working else None
 
 
+def source(c: Checked) -> dict:
+    out = asdict(c)
+    out.pop("data", None)
+    return out
+
+
 def image_field(checked: list[Checked], min_height: int) -> Field:
-    sources = [asdict(c) for c in checked]
+    sources = [source(c) for c in checked]
     if not checked:
         return Field("image", "", "ai_research", "blocked", message="Проучването не намери снимка.")
     chosen = best(checked)
