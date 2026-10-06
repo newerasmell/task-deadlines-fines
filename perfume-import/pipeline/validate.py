@@ -2,8 +2,8 @@
 
 Rules mutate Field records in place: auto_fix keeps the old value in `previous`; everything else raises the
 status (never lowers it) with a Bulgarian message saying what is wrong and how to fix it.
-Rules that need the AI (regenerate a description) or the image pipeline (resolution) arrive in phases 2-3;
-until then those findings stay warnings.
+Findings that need the AI (a description in the wrong language) stay warnings: a person decides whether to
+regenerate (scripts/research_again.py) or fix the text.
 """
 
 import re
@@ -151,7 +151,7 @@ def _language(fields: dict[str, Field], ctx: Context) -> None:
         if found and found != store_lang:
             body.flag(
                 "warning",
-                f"Описанието е на „{found}“, а магазинът е на „{store_lang}“. Регенерирането идва във Фаза 2.",
+                f"Описанието е на „{found}“, а магазинът е на „{store_lang}“. Генерирай го наново или го преведи.",
                 "language_body",
             )
     expect_latin = store_lang not in ("el", "bg")
@@ -165,7 +165,7 @@ def _language(fields: dict[str, Field], ctx: Context) -> None:
             what = "на английски" if found == "en" else ("на латиница" if is_latin(f.value) else "на друга азбука")
             f.flag(
                 "warning",
-                f"Нотите „{f.value[:40]}“ са {what}, а магазинът е на „{store_lang}“. Преводът идва във Фаза 2.",
+                f"Нотите „{f.value[:40]}“ са {what}, а магазинът е на „{store_lang}“. Преведи ги по глосара.",
                 "language_notes",
             )
 
@@ -202,7 +202,8 @@ def _description(fields: dict[str, Field], ctx: Context) -> None:
     if "tester" not in rest.casefold():
         body.flag(
             "warning",
-            f"Тестер без изречение за тестер; за език „{ctx.store.language}“ още няма одобрен превод (Фаза 2).",
+            f"Тестер без изречение за тестер; за език „{ctx.store.language}“ още няма одобрен превод "
+            "в group.yaml tester_sentence.",
             "tester_sentence",
         )
 

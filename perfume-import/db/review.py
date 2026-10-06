@@ -21,7 +21,7 @@ from pipeline.titles import render
 from pipeline.validate import CONTROLLED, Context, validate_product
 
 # Facts researched once per product: a decision applies to every store.
-SHARED = ("vendor", "name", "concentration", "gender", "fragrance_family", "ingredients", "ean", "sku")
+SHARED = ("vendor", "name", "concentration", "gender", "fragrance_family", "ingredients", "ean", "sku", "image")
 # Checks that read two fields: an edit of one revalidates the other.
 RELATED = ({"price", "compare_at"}, {"ean", "sku"}, {"title", "product_milliliters"})
 # Findings that come from research or input, not from validation; revalidation never clears them.
