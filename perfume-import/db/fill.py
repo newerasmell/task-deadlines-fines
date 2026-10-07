@@ -59,7 +59,9 @@ def missing(product_id: int) -> dict:
     for key in [*FILLABLE, "body_html"]:
         for fields in rows.values():
             row = fields.get(key)
-            if row is not None and (_empty(row.value) or row.status == "blocked"):
+            # a field a person accepted as it is (e.g. no published ingredients) is not missing
+            decided = row is not None and row.decided_by and row.status == "ok"
+            if row is not None and not decided and (_empty(row.value) or row.status == "blocked"):
                 keys.append(key)
                 break
     return {"product_id": product_id, "keys": keys, "labels": [LABELS[k] for k in keys]}

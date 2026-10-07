@@ -119,3 +119,12 @@ def test_a_missing_description_is_written_from_the_current_facts(product):
     for store in STORES:
         body = after[store]["fields"]["body_html"]
         assert body["value"].startswith("<p>") and body["status"] in ("suggested", "warning")
+
+
+def test_a_field_accepted_empty_is_not_missing(product):
+    """Ingredients accepted empty by a person (many stores publish none) no longer count as missing."""
+    for store in STORES:
+        f = review.get_product(product["id"])["stores"][store]["fields"]["ingredients"]
+        if f["status"] != "ok":
+            review.decide(f["id"], "accept", "Мария")
+    assert "ingredients" not in fill.missing(product["id"])["keys"]
