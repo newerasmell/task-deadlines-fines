@@ -48,7 +48,9 @@ def ready(session: Session, sp: StoreProduct) -> str | None:
     return None
 
 
-def plan(batch_id: int, stores: list[str] | None = None, only_failed: bool = False) -> list[tuple[int, str]]:
+def plan(
+    batch_id: int, stores: list[str] | None = None, only_failed: bool = False, product_ids: list[int] | None = None
+) -> list[tuple[int, str]]:
     """(store_product_id, store) to send, approved and ready, in product order."""
     with Session(_engine()) as session:
         rows = (
@@ -64,6 +66,8 @@ def plan(batch_id: int, stores: list[str] | None = None, only_failed: bool = Fal
         out = []
         for sp in rows:
             if stores and sp.store_key not in stores:
+                continue
+            if product_ids and sp.product_id not in product_ids:
                 continue
             if only_failed and sp.upload_status != "failed":
                 continue
@@ -93,6 +97,11 @@ def upload_one(session: Session, sp: StoreProduct, shop: Shopify, status: str, a
     fields = {r.key: to_field(r) for r in rows}
     now = datetime.now(UTC)
     sp.upload_attempted_at = now
+    notes = []
+    price = fields.get("price")
+    if status == "active" and not (price and str(price.value or "").strip()):
+        status = "draft"  # decisions #16: never active without a price; the price is set in Shopify
+        notes.append("Без цена: качен като чернова.")
     try:
         result = upload_product(shop, fields, status, sp.shopify_product_id, _image(fields))
     except ShopifyError as exc:
@@ -104,7 +113,7 @@ def upload_one(session: Session, sp: StoreProduct, shop: Shopify, status: str, a
         sp.shopify_product_id, sp.uploaded_at = result.product_id, now
         sp.upload_status = "uploaded"
         sp.upload_message = " ".join(
-            [f"{verb}, {kind}, снимка качена." if fields.get("image") else f"{verb}, {kind}.", *result.notes]
+            [f"{verb}, {kind}, снимка качена." if fields.get("image") else f"{verb}, {kind}.", *notes, *result.notes]
         )
         payload = {"product_id": result.product_id, "action": result.action, "status": result.status}
     batch_id = session.get(Product, sp.product_id).batch_id
@@ -126,6 +135,7 @@ def run(
     only_failed: bool = False,
     actor: str | None = None,
     client: Callable[[object, str], Shopify] | None = None,
+    product_ids: list[int] | None = None,
 ) -> dict:
     """Upload synchronously (the API runs this in a thread). Returns counts per store."""
     if status not in STATUSES:
@@ -138,7 +148,7 @@ def run(
             raise ValueError("Качват се само партиди с нови продукти; одитът се поправя с CSV (Фаза 6).")
         group = load_group(batch.group_key)
     client = client or store_client
-    todo = plan(batch_id, stores, only_failed)
+    todo = plan(batch_id, stores, only_failed, product_ids)
     job = _jobs.setdefault(batch_id, {})
     job.update({"total": len(todo), "done": 0, "running": True, "error": None})
     counts: dict[str, dict[str, int]] = {}

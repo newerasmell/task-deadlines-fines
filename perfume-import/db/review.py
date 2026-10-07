@@ -239,6 +239,8 @@ def _product_dict(p: Product, sps: list[StoreProduct], by_sp: dict[int, list[Fie
             "store_product_id": sp.id,
             "approved_by": sp.approved_by,
             "approved_at": sp.approved_at.isoformat() if sp.approved_at else None,
+            "upload_status": sp.upload_status,
+            "upload_message": sp.upload_message,
             "status": max((r.status for r in rows), key=SEVERITY.__getitem__, default="ok"),
             "fields": {r.key: field_json(r) for r in rows},
         }
@@ -514,6 +516,61 @@ def approve(product_id: int, actor: str | None) -> dict:
         )
         session.flush()
         return _product_json(session, product_id)
+
+
+def publish(product_id: int, stores: list[str] | None, status: str, actor: str | None) -> dict:
+    """Approve and upload one product to the given stores (all of its stores when None). Each store goes on its
+    own: a store with no blocked field and no open suggestion is approved and sent, the others are reported."""
+    from db import upload
+
+    if status not in upload.STATUSES:
+        raise ReviewError(f"Непознат статус „{status}“.")
+    with Session(_engine()) as session, session.begin():
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        batch = session.get(Batch, product.batch_id)
+        batch_id = batch.id
+        rows = _product_rows(session, product_id)
+        sps = session.execute(select(StoreProduct).where(StoreProduct.product_id == product_id)).scalars().all()
+        send, skipped = [], {}
+        from pipeline.shopify import missing_settings
+
+        group = load_group(batch.group_key)
+        for sp in sps:
+            if stores and sp.store_key not in stores:
+                continue
+            pending = Counter(r.status for r in rows.get(sp.store_key, {}).values() if r.status in PENDING)
+            problem = missing_settings(group.stores[sp.store_key]) if sp.store_key in group.stores else "няма група"
+            if pending:
+                parts = [f"{pending['blocked']} спрени"] if pending["blocked"] else []
+                parts += [f"{pending['suggested']} предложения"] if pending["suggested"] else []
+                skipped[sp.store_key] = "още има " + " и ".join(parts)
+            elif problem:
+                skipped[sp.store_key] = problem
+            else:
+                if sp.approved_at is None:
+                    sp.approved_by, sp.approved_at = actor, now()
+                send.append(sp.store_key)
+        if send:
+            session.add(
+                Event(
+                    actor=actor,
+                    kind="product_approved",
+                    batch_id=product.batch_id,
+                    payload={"product": product_id, "stores": send},
+                )
+            )
+    if not send:
+        raise ReviewError(
+            "Нито един магазин не е готов: " + "; ".join(f"{k}: {v}" for k, v in skipped.items())
+            if skipped
+            else "Няма такива магазини за този продукт."
+        )
+    started = upload.start(batch_id, status=status, stores=send, actor=actor, product_ids=[product_id])
+    if not started:
+        raise ReviewError("В момента се качва друго от тази партида; опитай след малко.")
+    return {"stores": send, "skipped": skipped}
 
 
 def _withdraw_approval(session, product_id: int) -> None:

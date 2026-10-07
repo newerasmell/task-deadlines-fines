@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { Batch, FieldRecord, Product, Status } from '../lib/api'
 import { cn } from '../lib/cn'
 import { display, fieldLabel, host, LOCALIZED, storeShort, stripHtml } from '../lib/labels'
-import { useDecide, useVocab } from '../lib/queries'
+import { useDecide, useReplaceImage, useVocab } from '../lib/queries'
 import { TAG_TEXT, TINT } from '../lib/status'
 import { Button } from './ui/button'
 
@@ -217,6 +217,8 @@ export function FieldPanel({
           </div>
         )}
 
+        {isImage && <ReplaceImage batchId={batch.id} productId={product.id} />}
+
         {isImage && original && (
           <div className="flex flex-col gap-2">
             <h3 className="m-0 text-sm font-semibold">Оригинал</h3>
@@ -308,5 +310,54 @@ export function FieldPanel({
         </Button>
       </div>
     </aside>
+  )
+}
+
+/** A correct picture by link or file: it becomes the new original and is composed for every store. */
+function ReplaceImage({ batchId, productId }: { batchId: number; productId: number }) {
+  const [url, setUrl] = useState('')
+  const replace = useReplaceImage(batchId)
+  const run = (source: { url?: string; file?: File }) => replace.mutate({ productId, ...source }, { onSuccess: () => setUrl('') })
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="m-0 text-sm font-semibold">Смени снимката</h3>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (url.trim()) run({ url: url.trim() })
+        }}
+      >
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://… линк към снимка"
+          className="h-9 min-w-0 grow rounded-md border border-line bg-canvas px-2.5 text-sm"
+        />
+        <Button type="submit" size="sm" disabled={!url.trim() || replace.isPending}>
+          Вземи
+        </Button>
+      </form>
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-accent">
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="sr-only"
+          disabled={replace.isPending}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) run({ file })
+            e.target.value = ''
+          }}
+        />
+        или качи файл от компютъра
+      </label>
+      {replace.isPending && <span className="text-xs text-ink-2">Сглобявам за всички магазини… (до половин минута)</span>}
+      {replace.isError && <span className="text-xs text-blocked-text">{(replace.error as Error).message}</span>}
+      <span className="text-xs leading-normal text-ink-2">
+        Снимката се изрязва и се поставя върху фона и размерите на всеки магазин, както при проучването. Важи за
+        всички магазини на продукта; одобрението се сваля.
+      </span>
+    </div>
   )
 }

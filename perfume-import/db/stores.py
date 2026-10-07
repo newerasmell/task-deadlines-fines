@@ -378,6 +378,11 @@ def update_item(profile_id: int, key: str, value, actor: str | None) -> dict:
         item = profile["items"].get(key)
         if not isinstance(item, dict) or "value" not in item:
             raise StoreError(f"Свойството „{key}“ не се променя оттук.")
+        if key == "currency":
+            code = str(value or "").strip().upper()
+            if not re.fullmatch(r"[A-Z]{3}", code):
+                raise StoreError("Въведи само код на валутата, напр. EUR. Пазарите (Cyprus…) се четат от експорта.")
+            value = code
         item.update({"previous": item.get("value"), "value": value, "status": "accepted", "edited_by": actor})
         profile["to_confirm"] = [k for k in profile.get("to_confirm", []) if k != key]
         row.profile = profile

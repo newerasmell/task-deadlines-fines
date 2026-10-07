@@ -27,6 +27,8 @@ export type StoreProduct = {
   store_product_id: number
   approved_by: string | null
   approved_at: string | null
+  upload_status?: 'uploaded' | 'failed' | null
+  upload_message?: string | null
   status: Status
   fields: Record<string, FieldRecord>
 }
@@ -360,6 +362,14 @@ export const api = {
     post<Product>(`/api/fields/${fieldId}/decision`, { action, value }),
   acceptAll: (productId: number, store?: string) => post<Product>(`/api/products/${productId}/accept-all`, { store }),
   approve: (productId: number) => post<Product>(`/api/products/${productId}/approve`, {}),
+  replaceImage: (productId: number, source: { url?: string; file?: File }) => {
+    const form = new FormData()
+    if (source.file) form.append('file', source.file)
+    else form.append('url', source.url ?? '')
+    return upload<Product>(`/api/products/${productId}/image`, form)
+  },
+  publish: (productId: number, stores: string[] | null, status: 'draft' | 'active') =>
+    post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, { stores, status }),
   stores: () => request<StoreRow[]>('/api/stores'),
   groups: () => request<GroupInfo[]>('/api/groups'),
   checkBatch: (form: FormData) => upload<CheckResult>('/api/batches/check', form),

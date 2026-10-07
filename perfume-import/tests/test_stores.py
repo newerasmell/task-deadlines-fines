@@ -112,3 +112,13 @@ def test_new_products_follow_the_store_profile(monkeypatch):
     result = run_batch(FakeClient(responder=responder), rows, GROUP, STORES, "t", profiles={"parfemija": profile})
     hr, gr = result.products[0].stores["parfemija"], result.products[0].stores["premierparfums"]
     assert "EDP" in gr["title"].value and "EDP" not in hr["title"].value
+
+
+@pytest.mark.db
+def test_currency_is_only_a_currency_code(clean):
+    """„Валута“ in the profile takes a code; the markets come from the export (a live entry was "EUR, Cyprus")."""
+    profile_id = upload()
+    with pytest.raises(stores.StoreError, match="код на валутата"):
+        stores.update_item(profile_id, "currency", "EUR, Cyprus", "Мария")
+    edited = stores.update_item(profile_id, "currency", " eur ", "Мария")
+    assert edited["profile"]["items"]["currency"]["value"] == "EUR"

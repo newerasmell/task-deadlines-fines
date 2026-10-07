@@ -42,6 +42,11 @@ export const useAcceptAll = (batchId: number) =>
     api.acceptAll(productId, store),
   )
 
+export const useReplaceImage = (batchId: number) =>
+  useProductMutation<{ productId: number; url?: string; file?: File }>(batchId, ({ productId, ...source }) =>
+    api.replaceImage(productId, source),
+  )
+
 export const useApprove = (batchId: number) =>
   useProductMutation<number>(batchId, (productId) => api.approve(productId))
 

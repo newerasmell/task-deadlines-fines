@@ -1,9 +1,10 @@
 """Review endpoints for the app (SPEC §8). The person deciding is the logged-in user (api.auth); the X-Actor
 header (URL-encoded name) is used only where there is no login, i.e. in tests and scripts."""
 
+from typing import Annotated
 from urllib.parse import unquote
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from api.auth import current_user
@@ -72,6 +73,17 @@ def accept_all(product_id: int, body: StoreScope, x_actor: str | None = Header(d
     return _call(review.accept_all, product_id, actor_name(x_actor), body.store)
 
 
+class Publish(BaseModel):
+    stores: list[str] | None = None  # None: every store of the product that is ready
+    status: str = "draft"
+
+
+@router.post("/products/{product_id}/publish", status_code=202)
+def publish(product_id: int, body: Publish, x_actor: str | None = Header(default=None)):
+    """Approve and upload one product, per store: the ready ones go, the others are listed with why."""
+    return _call(review.publish, product_id, body.stores, body.status, actor_name(x_actor))
+
+
 @router.post("/products/{product_id}/approve")
 def approve(product_id: int, x_actor: str | None = Header(default=None)):
     return _call(review.approve, product_id, actor_name(x_actor))
@@ -137,3 +149,32 @@ def audit_fix_csv(batch_id: int):
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/products/{product_id}/image")
+async def replace_image(
+    product_id: int,
+    url: Annotated[str, Form()] = "",
+    file: Annotated[UploadFile | None, File()] = None,
+    x_actor: str | None = Header(default=None),
+):
+    """A correct picture by link or upload: the new original, composed for every store by its layout."""
+    from starlette.concurrency import run_in_threadpool
+
+    from db import images
+
+    actor = actor_name(x_actor)
+    try:
+        if file is not None:
+            data = await file.read(images.MAX_UPLOAD + 1)
+            source = file.filename or "качен файл"
+        elif url.strip():
+            data = await run_in_threadpool(images.from_url, url)
+            source = url.strip()
+        else:
+            raise HTTPException(422, "Постави линк към снимката или качи файл.")
+        return await run_in_threadpool(images.replace, product_id, data, source, actor)
+    except images.ImageError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, str(exc.args[0])) from exc

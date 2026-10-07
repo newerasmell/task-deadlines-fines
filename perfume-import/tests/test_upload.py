@@ -105,3 +105,45 @@ def test_api_starts_in_the_background_and_reports(batch, shops, monkeypatch):
     assert state["done"] == state["total"] == 2 and not state["error"]
     assert {s["key"] for s in state["stores"]} == set(STORES)
     assert api.post(f"/api/batches/{batch['id']}/upload", json={"status": "live"}).status_code == 422
+
+
+def test_one_product_is_published_per_store_and_without_price_as_a_draft(batch, shops, monkeypatch):
+    """Product → „Публикувай“: only the stores that are ready go; active without a price goes as a draft."""
+    import threading
+
+    fakes, client = shops
+    monkeypatch.setattr(upload, "store_client", client)
+    monkeypatch.setattr("pipeline.shopify.missing_settings", lambda store: None)
+    second = batch["products"][1]
+    review.accept_all(second["id"], "Мария")
+    result = review.publish(second["id"], ["premierparfums"], "active", "Мария")
+    assert result["stores"] == ["premierparfums"]
+    for t in [t for t in threading.enumerate() if t.name == f"upload-{batch['id']}"]:
+        t.join(timeout=60)
+    after = review.get_product(second["id"])["stores"]
+    assert after["premierparfums"]["upload_status"] == "uploaded" and after["premierparfums"]["approved_at"]
+    assert after["parfemija"]["upload_status"] is None  # not asked for
+    assert len(fakes["premierparfums"].products) == 1
+
+
+def test_a_picture_is_replaced_by_upload_and_composed_for_every_store(batch):
+    """Product → Снимка → upload a correct picture: new original, composed per store, approval withdrawn."""
+    from tests.conftest import png
+
+    product = batch["products"][0]
+    client = TestClient(app)
+    r = client.post(
+        f"/api/products/{product['id']}/image",
+        files={"file": ("bvlgari.png", png(1400, 1400), "image/png")},
+        headers={"X-Actor": quote("Мария")},
+    )
+    assert r.status_code == 200, r.text
+    stores = r.json()["stores"]
+    for key in STORES:
+        image = stores[key]["fields"]["image"]
+        assert image["value"].startswith("/api/media/") and image["decided_by"] == "Мария"
+        assert "Сменена от Мария" in image["message"] and "bvlgari.png" in image["message"]
+        assert image["value"] != product["stores"][key]["fields"]["image"]["value"]
+    assert all(s["approved_at"] is None for s in stores.values())  # a new picture needs a new approval
+    bad = client.post(f"/api/products/{product['id']}/image", data={"url": "http://127.0.0.1/x.png"})
+    assert bad.status_code == 422 and "публичен" in bad.json()["detail"]

@@ -1,5 +1,5 @@
 import { ImageOff } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { FieldPanel } from '../components/FieldPanel'
 import { Failure, Loading } from '../components/States'
@@ -7,7 +7,7 @@ import { StatusMark } from '../components/StatusMark'
 import { BAR, TAG_TEXT, TINT } from '../lib/status'
 import { Button } from '../components/ui/button'
 import { Dialog } from '../components/ui/dialog'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type Batch, type FieldRecord, type Product, type StoreInfo } from '../lib/api'
 import { cn } from '../lib/cn'
 import {
@@ -27,7 +27,7 @@ import {
   storeShort,
   stripHtml,
 } from '../lib/labels'
-import { useAcceptAll, useApprove, useBatch, useDecide } from '../lib/queries'
+import { useAcceptAll, useApprove, useBatch, useDecide, useUploadState } from '../lib/queries'
 
 // Main review screen (Product.dc.html): product list, the finished picture, every store side by side.
 
@@ -371,33 +371,97 @@ function Cell({ field, selected, onClick }: { field?: FieldRecord; selected: boo
 /** Every store of the batch: whether it can be published to (template + Shopify access), and its price and
  * compare-at price, editable here (decisions #16: without a price the product goes up only as a draft). */
 function PricesSection({ batch, product }: { batch: Batch; product: Product }) {
+  const client = useQueryClient()
+  const upload = useUploadState(batch.id)
+  const [status, setStatus] = useState<'draft' | 'active'>('draft')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  const running = !!upload.data?.running
+  const wasRunning = useRef(false)
+  useEffect(() => {
+    if (wasRunning.current && !running) void client.invalidateQueries({ queryKey: ['batch', batch.id] })
+    wasRunning.current = running
+  }, [running, client, batch.id])
+
+  const ready = batch.stores.filter((s) => product.stores[s.key] && publishable(s, product.stores[s.key].fields))
+  const publish = async (stores: string[]) => {
+    setBusy(true)
+    setNote(null)
+    try {
+      const r = await api.publish(product.id, stores, status)
+      const skipped = Object.entries(r.skipped)
+      setNote(
+        `Качва се в ${r.stores.length} ${r.stores.length === 1 ? 'магазин' : 'магазина'}` +
+          (status === 'active' ? ' (където няма цена: като чернова).' : ' като чернова.') +
+          (skipped.length ? ` Пропуснати: ${skipped.map(([k, v]) => `${k} (${v})`).join('; ')}.` : ''),
+      )
+      await upload.refetch()
+    } catch (e) {
+      setNote((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section className="flex flex-col gap-2" aria-label="Цени и магазини">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h2 className="m-0 grow text-base font-semibold">Цени и магазини</h2>
+        {batch.kind === 'new' && (
+          <>
+            <label className="flex items-center gap-1.5 text-sm">
+              <input type="radio" name={`status-${product.id}`} checked={status === 'draft'} onChange={() => setStatus('draft')} />
+              като чернова
+            </label>
+            <label className="flex items-center gap-1.5 text-sm" title="Магазин без цена се качва като чернова">
+              <input type="radio" name={`status-${product.id}`} checked={status === 'active'} onChange={() => setStatus('active')} />
+              активен
+            </label>
+            <Button size="sm" variant="primary" disabled={!ready.length || running || busy} onClick={() => void publish(ready.map((s) => s.key))}>
+              {running ? `Качва се… ${upload.data?.done ?? 0}/${upload.data?.total ?? 0}` : `Публикувай във всички готови (${ready.length})`}
+            </Button>
+          </>
+        )}
         <AddStores batch={batch} />
       </div>
+      {note && <div className="text-sm leading-normal text-ink-3">{note}</div>}
       <div className="flex flex-col rounded-lg border border-line" role="table">
         <div
           role="row"
-          className="grid grid-cols-[minmax(0,1.4fr)_120px_120px_minmax(0,1fr)_90px] gap-3 border-b border-line bg-surface px-4 py-2 text-xs font-medium text-ink-2"
+          className="grid grid-cols-[minmax(0,1.3fr)_110px_110px_minmax(0,1fr)_80px_110px] gap-3 border-b border-line bg-surface px-4 py-2 text-xs font-medium text-ink-2"
         >
           <span role="columnheader">Магазин</span>
           <span role="columnheader">Цена</span>
           <span role="columnheader">Зачеркната</span>
           <span role="columnheader">Състояние</span>
           <span role="columnheader" />
+          <span role="columnheader" />
         </div>
         {batch.stores.map((s) =>
-          product.stores[s.key] ? <PriceRow key={`${product.id}-${s.key}-${display(product.stores[s.key].fields.price?.value)}-${display(product.stores[s.key].fields.compare_at?.value)}`} batch={batch} product={product} store={s} /> : null,
+          product.stores[s.key] ? <PriceRow canPublish={batch.kind === 'new'} busy={running || busy} onPublish={() => void publish([s.key])} key={`${product.id}-${s.key}-${display(product.stores[s.key].fields.price?.value)}-${display(product.stores[s.key].fields.compare_at?.value)}`} batch={batch} product={product} store={s} /> : null,
         )}
       </div>
     </section>
   )
 }
 
-function PriceRow({ batch, product, store }: { batch: Batch; product: Product; store: StoreInfo }) {
-  const fields = product.stores[store.key].fields
+function PriceRow({
+  batch,
+  product,
+  store,
+  canPublish,
+  busy,
+  onPublish,
+}: {
+  batch: Batch
+  product: Product
+  store: StoreInfo
+  canPublish: boolean
+  busy: boolean
+  onPublish: () => void
+}) {
+  const sp = product.stores[store.key]
+  const fields = sp.fields
   const price = fields.price
   const compare = fields.compare_at
   const initial = { price: money(price?.value), compare: money(compare?.value) }
@@ -407,7 +471,10 @@ function PriceRow({ batch, product, store }: { batch: Batch; product: Product; s
   const [error, setError] = useState<string | null>(null)
   const changed = draft.price !== initial.price || draft.compare !== initial.compare
   const ready = store.template && !store.access
-  const why = !store.template ? 'няма шаблон: качи каталога му в „Магазини“' : shortReason(store.access)
+  const pending = pendingText(fields)
+  const why = !store.template
+    ? 'няма шаблон: качи каталога му в „Магазини“'
+    : (shortReason(store.access) ?? (pending ? `${pending}: реши ги в таблицата долу` : null))
   const issue = [price, compare].find((f) => f && f.status !== 'ok' && f.message)
 
   const save = async () => {
@@ -429,7 +496,7 @@ function PriceRow({ batch, product, store }: { batch: Batch; product: Product; s
   return (
     <form
       role="row"
-      className="grid grid-cols-[minmax(0,1.4fr)_120px_120px_minmax(0,1fr)_90px] items-center gap-3 border-b border-line-2 px-4 py-2 text-sm last:border-b-0"
+      className="grid grid-cols-[minmax(0,1.3fr)_110px_110px_minmax(0,1fr)_80px_110px] items-center gap-3 border-b border-line-2 px-4 py-2 text-sm last:border-b-0"
       onSubmit={(e) => {
         e.preventDefault()
         void save()
@@ -466,7 +533,12 @@ function PriceRow({ batch, product, store }: { batch: Batch; product: Product; s
       <span role="cell" className="min-w-0 text-xs leading-snug">
         {error ? (
           <span className="text-blocked-text">{error}</span>
-        ) : !ready ? (
+        ) : sp.upload_status ? (
+          <span className={sp.upload_status === 'uploaded' ? 'text-ok' : 'text-blocked-text'}>
+            {sp.upload_status === 'uploaded' ? 'качен: ' : 'грешка: '}
+            {sp.upload_message}
+          </span>
+        ) : !ready || pending ? (
           <span className="text-ink-2">{why}</span>
         ) : issue ? (
           <span className={TAG_TEXT[issue.status]}>{issue.message}</span>
@@ -478,6 +550,20 @@ function PriceRow({ batch, product, store }: { batch: Batch; product: Product; s
         <Button type="submit" size="sm" disabled={!changed || saving}>
           Запази
         </Button>
+      </span>
+      <span role="cell" className="flex justify-end">
+        {canPublish && (
+          <Button
+            type="button"
+            size="sm"
+            variant={sp.upload_status === 'uploaded' ? 'secondary' : 'primary'}
+            disabled={busy || changed || !publishable(store, fields)}
+            title={publishable(store, fields) ? undefined : (why ?? undefined)}
+            onClick={onPublish}
+          >
+            {sp.upload_status === 'uploaded' ? 'Обнови' : 'Публикувай'}
+          </Button>
+        )}
       </span>
     </form>
   )
@@ -579,4 +665,17 @@ function AddStores({ batch }: { batch: Batch }) {
       </Dialog>
     </>
   )
+}
+
+/** A store can be published to: template, Shopify access, and no blocked field or open suggestion in it. */
+function publishable(store: StoreInfo, fields: Record<string, FieldRecord>): boolean {
+  return !!store.template && !store.access && !pendingText(fields)
+}
+
+function pendingText(fields: Record<string, FieldRecord>): string | null {
+  const all = Object.values(fields)
+  const blocked = all.filter((f) => f.status === 'blocked').length
+  const suggested = all.filter((f) => f.status === 'suggested').length
+  const parts = [blocked && `${blocked} спрени`, suggested && `${suggested} предложения`].filter(Boolean)
+  return parts.length ? parts.join(', ') : null
 }

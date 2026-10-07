@@ -72,7 +72,13 @@ export function rows(p: StoreProfile): Row[] {
   const notes = item(p, 'notes_language')
   if (notes) add('notes_language', 'Език на нотките', `${languageName(String(notes.value))} (${notes.value})`, counts(notes), true)
   const markets = (item(p, 'markets')?.value as { market: string; country: string; currency: string }[]) ?? []
-  add('currency', 'Валута и пазари', `${item(p, 'currency')?.value ?? '?'}${markets.length ? ` · пазари ${markets.map((m) => m.market).join(', ')}` : ''}`, '', true)
+  add(
+    'currency',
+    'Валута',
+    String(item(p, 'currency')?.value ?? '?'),
+    `само код, напр. EUR${markets.length ? ` · пазари от експорта: ${markets.map((m) => m.market).join(', ')}` : ''}`,
+    true,
+  )
   const title = item(p, 'title_pattern')
   const tester = item(p, 'tester_marker')
   add('title_pattern', 'Заглавие', formula(title?.value), tester ? `маркер за тестер „${tester.value}“` : '', true)
