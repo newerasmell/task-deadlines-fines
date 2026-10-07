@@ -91,7 +91,12 @@ function JobBanner() {
           <span className="size-2 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden />
           <div className="flex min-w-0 grow flex-col gap-0.5">
             <span className="font-medium">
-              {j.kind === 'extend' ? 'Добавят се магазини към партида' : 'Проучва се нова партида'} · {j.stage_label}
+              {j.kind === 'extend'
+                ? 'Добавят се магазини към партида'
+                : j.kind === 'fill'
+                  ? 'Попълва се липсващото в продукт'
+                  : 'Проучва се нова партида'}{' '}
+              · {j.stage_label}
               {j.stage === 'research' ? ` · ${j.done} от ${j.total}` : '…'}
             </span>
             <span className="text-xs text-ink-2">
@@ -183,11 +188,21 @@ export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
               role="row"
               className={`grid ${COLUMNS} border-b border-line bg-surface text-xs font-medium text-ink-2`}
             >
-              <div role="columnheader" className="px-4 py-2.5">Партида</div>
-              <div role="columnheader" className="px-4 py-2.5">Група</div>
-              <div role="columnheader" className="px-4 py-2.5">Сайтове</div>
-              <div role="columnheader" className="px-4 py-2.5 text-right">Продукти</div>
-              <div role="columnheader" className="px-4 py-2.5">Състояние</div>
+              <div role="columnheader" className="px-4 py-2.5">
+                Партида
+              </div>
+              <div role="columnheader" className="px-4 py-2.5">
+                Група
+              </div>
+              <div role="columnheader" className="px-4 py-2.5">
+                Сайтове
+              </div>
+              <div role="columnheader" className="px-4 py-2.5 text-right">
+                Продукти
+              </div>
+              <div role="columnheader" className="px-4 py-2.5">
+                Състояние
+              </div>
               <div role="columnheader" className="px-4 py-2.5" />
             </div>
             {shown.map((b) => (
@@ -203,11 +218,15 @@ export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
                     {b.name.startsWith('Демо') ? ' · демо' : ''}
                   </span>
                 </div>
-                <div role="cell" className="px-4">{groupLabel(b.group)}</div>
+                <div role="cell" className="px-4">
+                  {groupLabel(b.group)}
+                </div>
                 <div role="cell" className="truncate px-4 text-ink-3">
                   {b.stores.map(storeShort).join(', ')}
                 </div>
-                <div role="cell" className="tabular px-4 text-right">{b.products}</div>
+                <div role="cell" className="tabular px-4 text-right">
+                  {b.products}
+                </div>
                 <div role="cell" className="flex flex-col gap-1.5 px-4 py-2">
                   <Progress b={b} />
                   <span className="text-xs text-ink-2">{summary(b)}</span>

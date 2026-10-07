@@ -155,3 +155,23 @@ def add_stores(batch_id: int, body: AddStores, x_actor: str | None = Header(defa
     from db import extend
 
     return {"job_id": _call(extend.start, batch_id, body.stores, actor_name(x_actor), body.fast)}
+
+
+@router.get("/products/{product_id}/missing")
+def product_missing(product_id: int):
+    """The product's empty or blocked facts that „Попълни липсващото“ can fill."""
+    from db import fill
+
+    return _call(fill.missing, product_id)
+
+
+class Fill(BaseModel):
+    url: str | None = None
+
+
+@router.post("/products/{product_id}/fill", status_code=202)
+def fill_missing(product_id: int, body: Fill, x_actor: str | None = Header(default=None)):
+    """Only the missing facts, from a linked page (one fetch) or a short search; suggestions for every store."""
+    from db import fill
+
+    return {"job_id": _call(fill.start, product_id, (body.url or "").strip() or None, actor_name(x_actor))}

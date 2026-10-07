@@ -262,7 +262,9 @@ export type Job = {
   batch_id: number | null
   cost_usd: number | null
   fast?: boolean
-  kind?: 'extend' // adding stores to a researched batch (db/extend.py)
+  kind?: 'extend' | 'fill' // adding stores (db/extend.py) or filling a product's missing facts (db/fill.py)
+  product_id?: number
+  result?: Record<string, string> | null
   target_batch_id?: number
   started_at?: number // unix seconds
   finished_at?: number | null
@@ -379,6 +381,10 @@ export const api = {
     post<PricePlan>(`/api/products/${productId}/prices/plan`, { price_eur, compare_eur }),
   setPrices: (productId: number, stores: Record<string, { price: string; compare_at: string }>) =>
     put<Product>(`/api/products/${productId}/prices`, { stores }),
+  missing: (productId: number) =>
+    request<{ product_id: number; keys: string[]; labels: string[] }>(`/api/products/${productId}/missing`),
+  fill: (productId: number, url: string | null) =>
+    post<{ job_id: string }>(`/api/products/${productId}/fill`, { url }),
   publish: (productId: number, stores: string[] | null, status: 'draft' | 'active') =>
     post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, { stores, status }),
   stores: () => request<StoreRow[]>('/api/stores'),

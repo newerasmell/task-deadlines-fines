@@ -153,6 +153,7 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
           </div>
           <h1 className="m-0 line-clamp-2 text-[24px] font-semibold leading-tight">{product.title}</h1>
         </div>
+        <FillMissing batch={batch} product={product} />
         {pendingInBatch > 0 && (
           <Button size="lg" asChild>
             <Link to={`/batches/${batch.id}/queue`}>Реши чакащите в партидата ({pendingInBatch})</Link>
@@ -924,5 +925,101 @@ function EuroPrices({
       )}
       {error && <span className="basis-full text-xs text-blocked-text">{error}</span>}
     </div>
+  )
+}
+
+/** „Попълни липсващото“: only the product's empty or blocked facts, from a page the person links (one read) or
+ * a short search; the results come back as suggestions in every store, notes in each store's language. */
+function FillMissing({ batch, product }: { batch: Batch; product: Product }) {
+  const client = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [url, setUrl] = useState('')
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const missing = useQuery({
+    queryKey: ['missing', product.id, product.counts],
+    queryFn: () => api.missing(product.id),
+    enabled: batch.kind === 'new',
+  })
+  const job = useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => api.job(jobId!),
+    enabled: !!jobId,
+    refetchInterval: (q) => (q.state.data && !q.state.data.running ? false : 2000),
+  })
+  const finished = job.data && !job.data.running
+  useEffect(() => {
+    if (finished) void client.invalidateQueries({ queryKey: ['batch', batch.id] })
+  }, [finished, client, batch.id])
+  const keys = missing.data?.keys ?? []
+  if (batch.kind !== 'new' || (!keys.length && !jobId)) return null
+
+  const start = async (withLink: boolean) => {
+    setError(null)
+    try {
+      const r = await api.fill(product.id, withLink ? url.trim() : null)
+      setJobId(r.job_id)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+  const j = job.data
+  return (
+    <>
+      <Button size="lg" onClick={() => setOpen(true)}>
+        Попълни липсващото ({keys.length})
+      </Button>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o)
+          if (!o && finished) setJobId(null)
+        }}
+        title="Попълни липсващото"
+        description={`Липсва: ${missing.data?.labels.join(', ') || '—'}. Попълват се само те, като предложения във всички магазини (нотките на езика на всеки магазин). Останалото не се пипа.`}
+        footer={
+          j ? (
+            <Button onClick={() => setOpen(false)}>{j.running ? 'Скрий (продължава)' : 'Затвори'}</Button>
+          ) : (
+            <>
+              <Button disabled={!!jobId} onClick={() => void start(false)} title="Насочено търсене само за липсващото">
+                Потърси (≈ $0.05)
+              </Button>
+              <Button variant="primary" disabled={!url.trim() || !!jobId} onClick={() => void start(true)}>
+                Вземи от линка (≈ $0.02)
+              </Button>
+            </>
+          )
+        }
+      >
+        {!j ? (
+          <label className="flex flex-col gap-1.5 text-sm text-ink-2">
+            Линк към продукта (Fragrantica, Notino, сайта на марката…)
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://www.fragrantica.com/perfume/…"
+              className="h-9 rounded-md border border-line bg-canvas px-2.5 text-sm text-ink"
+            />
+          </label>
+        ) : j.running ? (
+          <span className="text-sm text-ink-2">{j.stage_label}… обикновено под минута.</span>
+        ) : j.error ? (
+          <span className="text-sm text-blocked-text">{j.error}</span>
+        ) : (
+          <div className="flex flex-col gap-1 text-sm">
+            <span className="text-ok">
+              Готово{j.cost_usd != null ? ` · $${j.cost_usd.toFixed(3)}` : ''}. Прегледай предложенията в таблицата.
+            </span>
+            {Object.entries(j.result ?? {}).map(([k, v]) => (
+              <span key={k} className={v === 'не е намерено' ? 'text-ink-2' : 'text-ink'}>
+                {fieldLabel(k)}: {v}
+              </span>
+            ))}
+          </div>
+        )}
+        {error && <span className="text-sm text-blocked-text">{error}</span>}
+      </Dialog>
+    </>
   )
 }

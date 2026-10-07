@@ -86,7 +86,10 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
 
   /** The stores that have prices in the pasted or uploaded rows (a price_<store> column with values). */
   const storesFromHeader = (content: string) => {
-    const lines = content.replace(/^\ufeff/, '').split(/\r?\n/).filter((l) => l.trim())
+    const lines = content
+      .replace(/^\ufeff/, '')
+      .split(/\r?\n/)
+      .filter((l) => l.trim())
     if (lines.length < 2) return
     const sep = lines[0].includes('\t') ? '\t' : lines[0].includes(',') ? ',' : ';'
     const header = lines[0].split(sep).map((c) => c.trim())
@@ -148,7 +151,13 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
                   !g.ready && 'text-ink-2',
                 )}
               >
-                <input type="radio" name="group" disabled={!g.ready} checked={g.key === groupKey} onChange={() => pickGroup(g.key)} />
+                <input
+                  type="radio"
+                  name="group"
+                  disabled={!g.ready}
+                  checked={g.key === groupKey}
+                  onChange={() => pickGroup(g.key)}
+                />
                 {g.ready ? g.name : groupLabel(g.key)}
                 {!g.ready && <span className="text-xs">без структура</span>}
               </label>
@@ -166,7 +175,11 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
                     type="checkbox"
                     checked={stores.includes(s.key)}
                     onChange={(e) =>
-                      setStores(e.target.checked ? group.stores.map((x) => x.key).filter((k) => k === s.key || stores.includes(k)) : stores.filter((k) => k !== s.key))
+                      setStores(
+                        e.target.checked
+                          ? group.stores.map((x) => x.key).filter((k) => k === s.key || stores.includes(k))
+                          : stores.filter((k) => k !== s.key),
+                      )
                     }
                   />
                   {s.label.split(' (')[0]}
@@ -175,7 +188,9 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
                   </span>
                 </label>
               ))}
-              <span className="text-xs leading-normal text-ink-2">Всеки сайт добавя колона за цена във валутата си.</span>
+              <span className="text-xs leading-normal text-ink-2">
+                Всеки сайт добавя колона за цена във валутата си.
+              </span>
             </fieldset>
           )}
 
@@ -183,14 +198,22 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
             <legend className="mb-2 text-sm font-semibold">Проучване</legend>
             {TIERS.map((t) => (
               <label key={t.key} className="flex items-start gap-2.5 text-base">
-                <input type="radio" name="tier" className="mt-1" checked={tier === t.key} onChange={() => setTier(t.key)} />
+                <input
+                  type="radio"
+                  name="tier"
+                  className="mt-1"
+                  checked={tier === t.key}
+                  onChange={() => setTier(t.key)}
+                />
                 <span className="flex flex-col">
                   {t.label}
                   <span className="text-xs text-ink-2">{t.note}</span>
                 </span>
               </label>
             ))}
-            <span className="text-xs leading-normal text-ink-2">Колоната research във файла избира режима за отделен ред.</span>
+            <span className="text-xs leading-normal text-ink-2">
+              Колоната research във файла избира режима за отделен ред.
+            </span>
           </fieldset>
 
           <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
@@ -199,7 +222,9 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
               <input type="radio" name="speed" className="mt-1" checked={fast} onChange={() => setFast(true)} />
               <span className="flex flex-col">
                 Бързо
-                <span className="text-xs text-ink-2">няколко минути; описанията струват двойно (≈ +$0.01 на продукт)</span>
+                <span className="text-xs text-ink-2">
+                  няколко минути; описанията струват двойно (≈ +$0.01 на продукт)
+                </span>
               </span>
             </label>
             <label className="flex items-start gap-2.5 text-base">
@@ -320,8 +345,8 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
           )}
           {result && !result.api_key && (
             <div className="rounded-md bg-warning-tint px-3.5 py-2.5 text-sm text-warning-text">
-              Няма ключ за Claude на сървъра. Добави ANTHROPIC_API_KEY в Render → perfume-import → Environment; проверката
-              работи и без него.
+              Няма ключ за Claude на сървъра. Добави ANTHROPIC_API_KEY в Render → perfume-import → Environment;
+              проверката работи и без него.
             </div>
           )}
 
@@ -352,7 +377,9 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
               disabled={!result?.ready || !result.api_key || checking}
               onClick={() => setConfirm(true)}
             >
-              {result?.ready ? `Започни проучване на ${plural(result.ready, 'продукт', 'продукта')}` : 'Добави продукти'}
+              {result?.ready
+                ? `Започни проучване на ${plural(result.ready, 'продукт', 'продукта')}`
+                : 'Добави продукти'}
             </Button>
           </div>
         </section>
@@ -365,8 +392,14 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
         description={
           est ? (
             <>
-              Очаквана цена ≈ {money(est.total)} общо ({est.tiers.map((t) => `${t.label}: ${t.products} × ≈ $${t.per_product.toFixed(3)}, таван $${t.ceiling.toFixed(2)} на продукт`).join('; ')}).
-              Плаща се към Anthropic по ключа в Render. Отнема 5–15 минути; страницата може да се затвори.
+              Очаквана цена ≈ {money(est.total)} общо (
+              {est.tiers
+                .map(
+                  (t) =>
+                    `${t.label}: ${t.products} × ≈ $${t.per_product.toFixed(3)}, таван $${t.ceiling.toFixed(2)} на продукт`,
+                )
+                .join('; ')}
+              ). Плаща се към Anthropic по ключа в Render. Отнема 5–15 минути; страницата може да се затвори.
             </>
           ) : undefined
         }
@@ -391,7 +424,10 @@ function RowsTable({ rows, stores }: { rows: CheckedRow[]; stores: GroupInfo['st
   return (
     <div className="shrink-0 overflow-x-auto rounded-lg border border-line">
       <div style={{ minWidth: 420 + stores.length * 72 }}>
-        <div className="grid border-b border-line bg-surface text-xs font-medium text-ink-2" style={{ gridTemplateColumns: cols }}>
+        <div
+          className="grid border-b border-line bg-surface text-xs font-medium text-ink-2"
+          style={{ gridTemplateColumns: cols }}
+        >
           <div className="px-2.5 py-2.5">Име</div>
           <div className="px-2 py-2.5 text-right">ml</div>
           <div className="px-2 py-2.5">Тестер</div>
@@ -404,7 +440,11 @@ function RowsTable({ rows, stores }: { rows: CheckedRow[]; stores: GroupInfo['st
           ))}
         </div>
         {rows.map((r) => (
-          <div key={r.line} className="grid min-h-10 border-b border-line-2 text-sm last:border-b-0" style={{ gridTemplateColumns: cols }}>
+          <div
+            key={r.line}
+            className="grid min-h-10 border-b border-line-2 text-sm last:border-b-0"
+            style={{ gridTemplateColumns: cols }}
+          >
             <div className={cn('truncate px-2.5 py-2.5', bad(r, ['име']) && err)}>{r.name || '—'}</div>
             <div className={cn(cell, 'text-right', bad(r, ['обем', 'ml']) && err)}>{r.ml ?? '—'}</div>
             <div className={cn(cell, bad(r, ['tester']) && err)}>{r.tester ? 'да' : 'не'}</div>
@@ -453,7 +493,11 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) 
       </header>
       <main className="flex max-w-[640px] flex-col gap-4 p-7">
         <h1 className="m-0 text-[22px] font-semibold">
-          {j?.kind === 'extend' ? 'Добавят се магазини (без ново проучване)' : 'Проучването върви'}
+          {j?.kind === 'extend'
+            ? 'Добавят се магазини (без ново проучване)'
+            : j?.kind === 'fill'
+              ? 'Попълва се липсващото в продукт'
+              : 'Проучването върви'}
         </h1>
         {job.isError ? (
           <Failure error={job.error} />
@@ -465,7 +509,10 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) 
           <>
             <div className="flex items-center gap-3">
               <div className="flex h-1.5 grow rounded-[3px] bg-line">
-                <div className="rounded-[3px] bg-accent" style={{ width: j.stage === 'research' ? `${pct}%` : '100%' }} />
+                <div
+                  className="rounded-[3px] bg-accent"
+                  style={{ width: j.stage === 'research' ? `${pct}%` : '100%' }}
+                />
               </div>
               <span className="tabular whitespace-nowrap text-sm text-ink-2">
                 {j.stage_label}
