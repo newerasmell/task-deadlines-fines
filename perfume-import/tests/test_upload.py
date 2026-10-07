@@ -147,3 +147,28 @@ def test_a_picture_is_replaced_by_upload_and_composed_for_every_store(batch):
     assert all(s["approved_at"] is None for s in stores.values())  # a new picture needs a new approval
     bad = client.post(f"/api/products/{product['id']}/image", data={"url": "http://127.0.0.1/x.png"})
     assert bad.status_code == 422 and "публичен" in bad.json()["detail"]
+
+
+def test_prices_from_one_euro_price_and_wrong_currency_is_not_published(batch, shops, monkeypatch):
+    import threading
+
+    fakes, client = shops
+    monkeypatch.setattr(upload, "store_client", client)
+    monkeypatch.setattr("pipeline.shopify.missing_settings", lambda store: None)
+    second = batch["products"][1]
+    plan = review.price_plan(second["id"], 74, 119)
+    assert plan["date"] == "2026-10-06" and plan["stores"]["premierparfums"]["price"] == "74"
+    review.set_prices(
+        second["id"],
+        {k: {"price": v["price"], "compare_at": v["compare_at"]} for k, v in plan["stores"].items()},
+        "Мария",
+    )
+    review.accept_all(second["id"], "Мария")
+    # a wrong currency: the Croatian store gets a price 50 times too low
+    review.set_prices(second["id"], {"parfemija": {"price": "1.5", "compare_at": ""}}, "Мария")
+    review.accept_all(second["id"], "Мария")
+    result = review.publish(second["id"], None, "draft", "Мария")
+    assert "parfemija" in result["skipped"] and "валутата" in result["skipped"]["parfemija"]
+    assert result["stores"] == ["premierparfums"]
+    for t in [t for t in threading.enumerate() if t.name == f"upload-{batch['id']}"]:
+        t.join(timeout=60)

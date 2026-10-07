@@ -62,3 +62,17 @@ def logged_in():
     app.dependency_overrides[require_admin] = user
     yield
     app.dependency_overrides.clear()
+
+
+ECB_XML = """<Cube><Cube time='2026-10-06'>
+<Cube currency='USD' rate='1.1269'/><Cube currency='CZK' rate='24.405'/><Cube currency='HUF' rate='364.95'/>
+<Cube currency='PLN' rate='4.365'/><Cube currency='CAD' rate='1.6058'/></Cube></Cube>"""
+
+
+@pytest.fixture(autouse=True)
+def fixed_rates(monkeypatch):
+    """Exchange rates never come from the network in tests."""
+    from pipeline import fx
+
+    monkeypatch.setattr(fx, "_fetch", lambda: ECB_XML)
+    monkeypatch.setattr(fx, "_cache", {"at": 0.0, "date": None, "rates": {}})

@@ -39,3 +39,12 @@ a profile share their language's translation. Its length is validated against th
 Stores can be added to a researched batch (Product → „Добави магазини“): saved research and the stored
 original picture are reused, only the texts are paid (≈ $0.01 per text), and facts a person decided (EAN,
 vendor, gender…) are carried over to the new stores.
+
+
+## 19. Prices outside the euro
+
+A price is always in the store's currency. To avoid typing a euro amount into a CZK/HUF/PLN/USD/CAD store, the
+product screen takes one price in euros and fills every store by the ECB daily reference rate, rounded the way
+the store writes its prices (whole tens for CZK, hundreds for HUF, else the store's usual cents). Every price in
+another currency shows its euro equivalent. Publishing skips a store whose price in euros is more than 3× away
+from the product's other stores ("провери валутата").

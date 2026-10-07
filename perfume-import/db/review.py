@@ -518,6 +518,85 @@ def approve(product_id: int, actor: str | None) -> dict:
         return _product_json(session, product_id)
 
 
+def _money(value) -> float | None:
+    try:
+        number = float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def price_plan(product_id: int, price_eur: float, compare_eur: float | None) -> dict:
+    """Prices for every store of the product from one price in euros: ECB rate, the store's rounding.
+    Nothing is saved; the app shows them to check and then saves (set_prices)."""
+    from db.stores import accepted_profiles
+    from pipeline import fx
+
+    date, table = fx.rates()
+    if not table:
+        raise ReviewError("Курсовете на ЕЦБ не се заредиха; въведи цените ръчно или опитай след малко.")
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        group = load_group(session.get(Batch, product.batch_id).group_key)
+        keys = list(_product_rows(session, product_id))
+    profiles = accepted_profiles(keys)
+    out = {}
+    for key in keys:
+        store = group.stores.get(key)
+        if store is None:
+            continue
+        items = (profiles.get(key) or {}).get("items", {})
+        cents = (items.get("price_rounding") or {}).get("value")
+        try:
+            price = fx.convert(price_eur, store.currency, table, cents)
+            compare = fx.convert(compare_eur, store.currency, table, cents) if compare_eur else ""
+        except fx.FxError as exc:
+            out[key] = {"currency": store.currency, "error": str(exc)}
+            continue
+        out[key] = {"currency": store.currency, "rate": table[store.currency], "price": price, "compare_at": compare}
+    return {"date": date, "stores": out}
+
+
+def set_prices(product_id: int, prices: dict[str, dict], actor: str | None) -> dict:
+    """Price and compare-at price for several stores at once (validated together, like an edit)."""
+    with Session(_engine()) as session, session.begin():
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        batch = session.get(Batch, product.batch_id)
+        rows = _product_rows(session, product_id)
+        for store, values in prices.items():
+            if store not in rows:
+                continue
+            for key in ("price", "compare_at"):
+                if key in values and key in rows[store] and str(rows[store][key].value or "") != str(values[key] or ""):
+                    _set_value(batch, store, rows[store], key, str(values[key] or ""), "edit", actor)
+        _withdraw_approval(session, product_id)
+        session.add(
+            Event(actor=actor, kind="prices_set", batch_id=batch.id, payload={"product": product_id, "prices": prices})
+        )
+        session.flush()
+        return _product_json(session, product_id)
+
+
+def _wrong_currency(group, rows: dict[str, dict[str, FieldRow]]) -> dict[str, str]:
+    """Stores whose price in euros is far from the product's other stores (fx.suspicious)."""
+    from pipeline import fx
+
+    _, table = fx.rates()
+    if not table:
+        return {}
+    in_eur = {}
+    for store, fields in rows.items():
+        cfg = group.stores.get(store)
+        amount = _money(fields["price"].value) if "price" in fields else None
+        if cfg and amount and (eur := fx.to_eur(amount, cfg.currency, table)):
+            in_eur[store] = eur
+    return fx.suspicious(in_eur)
+
+
 def publish(product_id: int, stores: list[str] | None, status: str, actor: str | None) -> dict:
     """Approve and upload one product to the given stores (all of its stores when None). Each store goes on its
     own: a store with no blocked field and no open suggestion is approved and sent, the others are reported."""
@@ -537,6 +616,7 @@ def publish(product_id: int, stores: list[str] | None, status: str, actor: str |
         from pipeline.shopify import missing_settings
 
         group = load_group(batch.group_key)
+        wrong = _wrong_currency(group, rows)
         for sp in sps:
             if stores and sp.store_key not in stores:
                 continue
@@ -548,6 +628,8 @@ def publish(product_id: int, stores: list[str] | None, status: str, actor: str |
                 skipped[sp.store_key] = "още има " + " и ".join(parts)
             elif problem:
                 skipped[sp.store_key] = problem
+            elif sp.store_key in wrong:
+                skipped[sp.store_key] = wrong[sp.store_key]
             else:
                 if sp.approved_at is None:
                     sp.approved_by, sp.approved_at = actor, now()

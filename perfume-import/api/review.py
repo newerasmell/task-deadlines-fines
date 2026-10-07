@@ -73,6 +73,35 @@ def accept_all(product_id: int, body: StoreScope, x_actor: str | None = Header(d
     return _call(review.accept_all, product_id, actor_name(x_actor), body.store)
 
 
+class PricePlan(BaseModel):
+    price_eur: float
+    compare_eur: float | None = None
+
+
+@router.post("/products/{product_id}/prices/plan")
+def price_plan(product_id: int, body: PricePlan):
+    """Every store's price from one price in euros (ECB rate, the store's rounding); nothing is saved."""
+    return _call(review.price_plan, product_id, body.price_eur, body.compare_eur)
+
+
+class Prices(BaseModel):
+    stores: dict[str, dict[str, str]]
+
+
+@router.put("/products/{product_id}/prices")
+def set_prices(product_id: int, body: Prices, x_actor: str | None = Header(default=None)):
+    return _call(review.set_prices, product_id, body.stores, actor_name(x_actor))
+
+
+@router.get("/fx")
+def fx_rates():
+    """ECB reference rates (1 EUR = x) for the app's "≈ €" hints."""
+    from pipeline import fx
+
+    date, table = fx.rates()
+    return {"date": date, "rates": table}
+
+
 class Publish(BaseModel):
     stores: list[str] | None = None  # None: every store of the product that is ready
     status: str = "draft"

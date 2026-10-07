@@ -269,6 +269,11 @@ export type Job = {
 
 export type AccessInfo = { kind: 'client' | 'token'; updated_by: string | null; updated_at: string | null }
 
+export type PricePlan = {
+  date: string | null
+  stores: Record<string, { currency: string; rate?: number; price?: string; compare_at?: string; error?: string }>
+}
+
 export type StoreOptions = {
   batch_id: number
   products: number
@@ -368,6 +373,11 @@ export const api = {
     else form.append('url', source.url ?? '')
     return upload<Product>(`/api/products/${productId}/image`, form)
   },
+  fx: () => request<{ date: string | null; rates: Record<string, number> }>('/api/fx'),
+  pricePlan: (productId: number, price_eur: number, compare_eur: number | null) =>
+    post<PricePlan>(`/api/products/${productId}/prices/plan`, { price_eur, compare_eur }),
+  setPrices: (productId: number, stores: Record<string, { price: string; compare_at: string }>) =>
+    put<Product>(`/api/products/${productId}/prices`, { stores }),
   publish: (productId: number, stores: string[] | null, status: 'draft' | 'active') =>
     post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, { stores, status }),
   stores: () => request<StoreRow[]>('/api/stores'),

@@ -8,7 +8,7 @@ import { BAR, TAG_TEXT, TINT } from '../lib/status'
 import { Button } from '../components/ui/button'
 import { Dialog } from '../components/ui/dialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type Batch, type FieldRecord, type Product, type StoreInfo } from '../lib/api'
+import { api, type Batch, type FieldRecord, type PricePlan, type Product, type StoreInfo } from '../lib/api'
 import { cn } from '../lib/cn'
 import {
   allFields,
@@ -77,7 +77,10 @@ export function ProductScreen() {
 function ProductList({ batch, current }: { batch: Batch; current: number }) {
   const stores = batch.stores.map(storeShort).join(' и ')
   return (
-    <nav aria-label="Продукти" className="flex w-[240px] shrink-0 flex-col border-r border-line bg-surface xl:w-[300px]">
+    <nav
+      aria-label="Продукти"
+      className="flex w-[240px] shrink-0 flex-col border-r border-line bg-surface xl:w-[300px]"
+    >
       <div className="flex flex-col gap-1 border-b border-line px-5 pb-3.5 pt-[18px]">
         <Link to="/" className="text-sm text-ink-2 no-underline hover:text-ink">
           Партиди
@@ -129,7 +132,9 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
   const suggested = fields.filter((f) => f.status === 'suggested').length
   const blocked = fields.filter((f) => f.status === 'blocked').length
   const approvedInBatch = batch.products.filter((p) => Object.values(p.stores).every((s) => s.approved_at)).length
-  const pendingInBatch = batch.products.flatMap(allFields).filter((f) => f.status === 'suggested' || f.status === 'blocked').length
+  const pendingInBatch = batch.products
+    .flatMap(allFields)
+    .filter((f) => f.status === 'suggested' || f.status === 'blocked').length
   const first = Object.values(product.stores)[0]?.fields ?? {}
   const approved = Object.values(product.stores).every((s) => s.approved_at)
   const approvedBy = Object.values(product.stores)[0]?.approved_by
@@ -141,7 +146,9 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-0 grow basis-full flex-col gap-1 2xl:basis-0">
           <div className="text-sm text-ink-2">
-            {[display(first.vendor?.value), display(first.sku?.value), tester ? 'тестер' : ''].filter(Boolean).join(' · ')}
+            {[display(first.vendor?.value), display(first.sku?.value), tester ? 'тестер' : '']
+              .filter(Boolean)
+              .join(' · ')}
           </div>
           <h1 className="m-0 line-clamp-2 text-[24px] font-semibold leading-tight">{product.title}</h1>
         </div>
@@ -160,7 +167,9 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
           disabled={!suggested || acceptAll.isPending}
           onClick={() => acceptAll.mutate({ productId: product.id })}
         >
-          {suggested ? `Приеми ${suggested === 1 ? 'предложението' : `всички ${suggested} предложения`}` : 'Няма предложения'}
+          {suggested
+            ? `Приеми ${suggested === 1 ? 'предложението' : `всички ${suggested} предложения`}`
+            : 'Няма предложения'}
         </Button>
         <Button
           variant="primary"
@@ -178,7 +187,9 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
           {approved ? 'Одобрен' : 'Одобри продукта'}
         </Button>
       </div>
-      {approved && approvedBy && <div className="text-xs text-ok">Одобрен от {approvedBy}. Всяка промяна по продукта сваля одобрението.</div>}
+      {approved && approvedBy && (
+        <div className="text-xs text-ok">Одобрен от {approvedBy}. Всяка промяна по продукта сваля одобрението.</div>
+      )}
       {error && <div className="text-sm text-blocked-text">{error.message}</div>}
     </header>
   )
@@ -262,14 +273,20 @@ function FieldsTable({
     )
     const main = [...REVIEW_FIELDS, ...pending.filter((k) => !REVIEW_FIELDS.includes(k) && k !== 'image')]
     const rest = [...IDENTITY_FIELDS, ...[...present].sort()].filter((k) => !main.includes(k) && k !== 'image')
-    return { main: main.filter((k) => present.has(k)), rest: [...new Set(rest)].filter((k) => present.has(k)) }
+    return {
+      main: main.filter((k) => present.has(k)),
+      rest: [...new Set(rest)].filter((k) => present.has(k)),
+    }
   }, [product])
   const shown = all ? [...keys.main, ...keys.rest] : keys.main
   const cols = `150px repeat(${stores.length}, minmax(0, 1fr))`
 
   return (
     <section className="flex min-w-0 shrink-0 grow flex-col overflow-hidden rounded-lg border border-line">
-      <div className="grid border-b border-line bg-surface text-xs font-semibold text-ink-3" style={{ gridTemplateColumns: cols }}>
+      <div
+        className="grid border-b border-line bg-surface text-xs font-semibold text-ink-3"
+        style={{ gridTemplateColumns: cols }}
+      >
         <div className="px-3.5 py-2.5">Поле</div>
         {stores.map((s, i) => (
           <div key={s.key} className="border-l border-line px-3.5 py-2.5">
@@ -286,7 +303,11 @@ function FieldsTable({
         ))}
       </div>
       {shown.map((key) => (
-        <div key={key} className="grid border-b border-line-2 text-sm last:border-b-0" style={{ gridTemplateColumns: cols }}>
+        <div
+          key={key}
+          className="grid border-b border-line-2 text-sm last:border-b-0"
+          style={{ gridTemplateColumns: cols }}
+        >
           <div className="px-3.5 py-[11px] text-ink-2">{fieldLabel(key)}</div>
           {stores.map((s) => {
             const f = product.stores[s.key]?.fields[key]
@@ -306,7 +327,9 @@ function FieldsTable({
           onClick={() => setAll(!all)}
           className="border-0 border-t border-line-2 bg-canvas px-3.5 py-2.5 text-left text-sm text-accent hover:bg-surface"
         >
-          {all ? 'Скрий останалите полета' : `Покажи останалите ${keys.rest.length} полета (заглавие, SKU, фиксирани колони)`}
+          {all
+            ? 'Скрий останалите полета'
+            : `Покажи останалите ${keys.rest.length} полета (заглавие, SKU, фиксирани колони)`}
         </button>
       )}
     </section>
@@ -321,7 +344,15 @@ function StoreHeading({ store }: { store: StoreInfo }) {
   )
 }
 
-function StorePicker({ stores, value, onChange }: { stores: StoreInfo[]; value: string; onChange: (k: string) => void }) {
+function StorePicker({
+  stores,
+  value,
+  onChange,
+}: {
+  stores: StoreInfo[]
+  value: string
+  onChange: (k: string) => void
+}) {
   return (
     <select
       value={value}
@@ -359,8 +390,16 @@ function Cell({ field, selected, onClick }: { field?: FieldRecord; selected: boo
           {field.status === 'blocked' || field.status === 'warning' ? `: ${field.message ?? ''}` : ''}
         </span>
       )}
-      {field.status === 'ok' && field.decided_by && <span className="text-[11px] font-semibold text-ok">решено от {field.decided_by}</span>}
-      <span className={cn('max-w-full leading-normal', text && 'line-clamp-3', ['price', 'compare_at'].includes(field.key) && 'tabular')}>
+      {field.status === 'ok' && field.decided_by && (
+        <span className="text-[11px] font-semibold text-ok">решено от {field.decided_by}</span>
+      )}
+      <span
+        className={cn(
+          'max-w-full leading-normal',
+          text && 'line-clamp-3',
+          ['price', 'compare_at'].includes(field.key) && 'tabular',
+        )}
+      >
         {value || <span className="text-ink-2">празно</span>}
       </span>
       {en && <span className="line-clamp-2 max-w-full text-xs leading-normal text-ink-2">EN · {en}</span>}
@@ -383,6 +422,12 @@ function PricesSection({ batch, product }: { batch: Batch; product: Product }) {
     wasRunning.current = running
   }, [running, client, batch.id])
 
+  const fx = useQuery({
+    queryKey: ['fx'],
+    queryFn: api.fx,
+    staleTime: 3600_000,
+  })
+  const [plan, setPlan] = useState<PricePlan | null>(null)
   const ready = batch.stores.filter((s) => product.stores[s.key] && publishable(s, product.stores[s.key].fields))
   const publish = async (stores: string[]) => {
     setBusy(true)
@@ -410,20 +455,38 @@ function PricesSection({ batch, product }: { batch: Batch; product: Product }) {
         {batch.kind === 'new' && (
           <>
             <label className="flex items-center gap-1.5 text-sm">
-              <input type="radio" name={`status-${product.id}`} checked={status === 'draft'} onChange={() => setStatus('draft')} />
+              <input
+                type="radio"
+                name={`status-${product.id}`}
+                checked={status === 'draft'}
+                onChange={() => setStatus('draft')}
+              />
               като чернова
             </label>
             <label className="flex items-center gap-1.5 text-sm" title="Магазин без цена се качва като чернова">
-              <input type="radio" name={`status-${product.id}`} checked={status === 'active'} onChange={() => setStatus('active')} />
+              <input
+                type="radio"
+                name={`status-${product.id}`}
+                checked={status === 'active'}
+                onChange={() => setStatus('active')}
+              />
               активен
             </label>
-            <Button size="sm" variant="primary" disabled={!ready.length || running || busy} onClick={() => void publish(ready.map((s) => s.key))}>
-              {running ? `Качва се… ${upload.data?.done ?? 0}/${upload.data?.total ?? 0}` : `Публикувай във всички готови (${ready.length})`}
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={!ready.length || running || busy}
+              onClick={() => void publish(ready.map((s) => s.key))}
+            >
+              {running
+                ? `Качва се… ${upload.data?.done ?? 0}/${upload.data?.total ?? 0}`
+                : `Публикувай във всички готови (${ready.length})`}
             </Button>
           </>
         )}
         <AddStores batch={batch} />
       </div>
+      <EuroPrices productId={product.id} batchId={batch.id} plan={plan} onPlan={setPlan} />
       {note && <div className="text-sm leading-normal text-ink-3">{note}</div>}
       <div className="flex flex-col rounded-lg border border-line" role="table">
         <div
@@ -438,7 +501,19 @@ function PricesSection({ batch, product }: { batch: Batch; product: Product }) {
           <span role="columnheader" />
         </div>
         {batch.stores.map((s) =>
-          product.stores[s.key] ? <PriceRow canPublish={batch.kind === 'new'} busy={running || busy} onPublish={() => void publish([s.key])} key={`${product.id}-${s.key}-${display(product.stores[s.key].fields.price?.value)}-${display(product.stores[s.key].fields.compare_at?.value)}`} batch={batch} product={product} store={s} /> : null,
+          product.stores[s.key] ? (
+            <PriceRow
+              rates={fx.data?.rates}
+              planned={plan?.stores[s.key]}
+              canPublish={batch.kind === 'new'}
+              busy={running || busy}
+              onPublish={() => void publish([s.key])}
+              key={`${product.id}-${s.key}-${display(product.stores[s.key].fields.price?.value)}-${display(product.stores[s.key].fields.compare_at?.value)}-${plan?.date ?? ''}-${plan?.stores[s.key]?.price ?? ''}`}
+              batch={batch}
+              product={product}
+              store={s}
+            />
+          ) : null,
         )}
       </div>
     </section>
@@ -452,10 +527,14 @@ function PriceRow({
   canPublish,
   busy,
   onPublish,
+  rates,
+  planned,
 }: {
   batch: Batch
   product: Product
   store: StoreInfo
+  rates?: Record<string, number>
+  planned?: PricePlan['stores'][string]
   canPublish: boolean
   busy: boolean
   onPublish: () => void
@@ -464,8 +543,19 @@ function PriceRow({
   const fields = sp.fields
   const price = fields.price
   const compare = fields.compare_at
-  const initial = { price: money(price?.value), compare: money(compare?.value) }
-  const [draft, setDraft] = useState(initial)
+  const initial = {
+    price: money(price?.value),
+    compare: money(compare?.value),
+  }
+  const [draft, setDraft] = useState(
+    planned?.price ? { price: planned.price, compare: planned.compare_at ?? '' } : initial,
+  )
+  const currency = store.currency ?? 'EUR'
+  const inEur = (v: string) => {
+    const n = Number(v.replace(',', '.'))
+    const rate = rates?.[currency]
+    return currency !== 'EUR' && rate && n > 0 ? `≈ €${(n / rate).toFixed(2)}` : null
+  }
   const decide = useDecide(batch.id)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -482,9 +572,17 @@ function PriceRow({
     setError(null)
     try {
       if (price && draft.price !== initial.price)
-        await decide.mutateAsync({ fieldId: price.id, action: 'edit', value: draft.price.replace(',', '.') })
+        await decide.mutateAsync({
+          fieldId: price.id,
+          action: 'edit',
+          value: draft.price.replace(',', '.'),
+        })
       if (compare && draft.compare !== initial.compare)
-        await decide.mutateAsync({ fieldId: compare.id, action: 'edit', value: draft.compare.replace(',', '.') })
+        await decide.mutateAsync({
+          fieldId: compare.id,
+          action: 'edit',
+          value: draft.compare.replace(',', '.'),
+        })
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -502,7 +600,11 @@ function PriceRow({
         void save()
       }}
     >
-      <span role="cell" className="flex min-w-0 items-center gap-2" title={ready ? 'Може да се публикува' : (why ?? undefined)}>
+      <span
+        role="cell"
+        className="flex min-w-0 items-center gap-2"
+        title={ready ? 'Може да се публикува' : (why ?? undefined)}
+      >
         <span
           aria-hidden
           className={cn('size-2.5 shrink-0 rounded-full', ready ? 'bg-ok' : store.template ? 'bg-warning' : 'bg-line')}
@@ -512,24 +614,30 @@ function PriceRow({
           {store.currency ? ` · ${store.currency}` : ''}
         </span>
       </span>
-      <input
-        role="cell"
-        aria-label={`Цена ${store.label}`}
-        inputMode="decimal"
-        placeholder="без цена"
-        value={draft.price}
-        onChange={(e) => setDraft({ ...draft, price: e.target.value })}
-        className={input}
-      />
-      <input
-        role="cell"
-        aria-label={`Зачеркната цена ${store.label}`}
-        inputMode="decimal"
-        placeholder="—"
-        value={draft.compare}
-        onChange={(e) => setDraft({ ...draft, compare: e.target.value })}
-        className={input}
-      />
+      <span role="cell" className="flex flex-col gap-0.5">
+        <input
+          aria-label={`Цена ${store.label} (${currency})`}
+          inputMode="decimal"
+          placeholder="без цена"
+          value={draft.price}
+          onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+          className={input}
+        />
+        <span className="tabular text-[11px] text-ink-2">
+          {[currency, inEur(draft.price)].filter(Boolean).join(' · ')}
+        </span>
+      </span>
+      <span role="cell" className="flex flex-col gap-0.5">
+        <input
+          aria-label={`Зачеркната цена ${store.label} (${currency})`}
+          inputMode="decimal"
+          placeholder="—"
+          value={draft.compare}
+          onChange={(e) => setDraft({ ...draft, compare: e.target.value })}
+          className={input}
+        />
+        <span className="tabular text-[11px] text-ink-2">{inEur(draft.compare) ?? ' '}</span>
+      </span>
       <span role="cell" className="min-w-0 text-xs leading-snug">
         {error ? (
           <span className="text-blocked-text">{error}</span>
@@ -589,7 +697,11 @@ function AddStores({ batch }: { batch: Batch }) {
   const [picked, setPicked] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
-  const options = useQuery({ queryKey: ['store-options', batch.id], queryFn: () => api.storeOptions(batch.id), enabled: open })
+  const options = useQuery({
+    queryKey: ['store-options', batch.id],
+    queryFn: () => api.storeOptions(batch.id),
+    enabled: open,
+  })
   if (batch.kind !== 'new') return null
   const cost = options.data ? options.data.cost_per_text * (1 + picked.length) : 0
 
@@ -640,11 +752,16 @@ function AddStores({ batch }: { batch: Batch }) {
                     type="checkbox"
                     className="mt-1"
                     checked={picked.includes(s.key)}
-                    onChange={(e) => setPicked(e.target.checked ? [...picked, s.key] : picked.filter((k) => k !== s.key))}
+                    onChange={(e) =>
+                      setPicked(e.target.checked ? [...picked, s.key] : picked.filter((k) => k !== s.key))
+                    }
                   />
                   <span
                     aria-hidden
-                    className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', ready ? 'bg-ok' : s.template ? 'bg-warning' : 'bg-line')}
+                    className={cn(
+                      'mt-1.5 size-2.5 shrink-0 rounded-full',
+                      ready ? 'bg-ok' : s.template ? 'bg-warning' : 'bg-line',
+                    )}
                   />
                   <span className="flex flex-col">
                     {s.label} · {languageName(s.language)}
@@ -678,4 +795,102 @@ function pendingText(fields: Record<string, FieldRecord>): string | null {
   const suggested = all.filter((f) => f.status === 'suggested').length
   const parts = [blocked && `${blocked} спрени`, suggested && `${suggested} предложения`].filter(Boolean)
   return parts.length ? parts.join(', ') : null
+}
+
+/** One price in euros → every store's price (ECB rate, the store's rounding), shown in the rows to check;
+ * „Запази всички“ saves them at once. */
+function EuroPrices({
+  productId,
+  batchId,
+  plan,
+  onPlan,
+}: {
+  productId: number
+  batchId: number
+  plan: PricePlan | null
+  onPlan: (p: PricePlan | null) => void
+}) {
+  const client = useQueryClient()
+  const [price, setPrice] = useState('')
+  const [compare, setCompare] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const number = (v: string) => Number(v.replace(',', '.'))
+
+  const calculate = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      onPlan(await api.pricePlan(productId, number(price), compare ? number(compare) : null))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const saveAll = async () => {
+    if (!plan) return
+    setBusy(true)
+    setError(null)
+    try {
+      const stores = Object.fromEntries(
+        Object.entries(plan.stores)
+          .filter(([, v]) => v.price)
+          .map(([k, v]) => [k, { price: v.price ?? '', compare_at: v.compare_at ?? '' }]),
+      )
+      const updated = await api.setPrices(productId, stores)
+      client.setQueryData<Batch>(['batch', batchId], (old) =>
+        old
+          ? {
+              ...old,
+              products: old.products.map((p) => (p.id === updated.id ? updated : p)),
+            }
+          : old,
+      )
+      onPlan(null)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const input = 'tabular h-8 w-[100px] rounded-md border border-line bg-canvas px-2 text-sm'
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm">
+      <span className="font-medium">Цена в EUR</span>
+      <input
+        inputMode="decimal"
+        placeholder="74"
+        value={price}
+        onChange={(e) => setPrice(e.target.value)}
+        className={input}
+      />
+      <span className="text-ink-2">зачеркната</span>
+      <input
+        inputMode="decimal"
+        placeholder="119"
+        value={compare}
+        onChange={(e) => setCompare(e.target.value)}
+        className={input}
+      />
+      <Button size="sm" disabled={!(number(price) > 0) || busy} onClick={() => void calculate()}>
+        Изчисли за всички магазини
+      </Button>
+      {plan && (
+        <>
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => void saveAll()}>
+            Запази всички
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => onPlan(null)}>
+            Откажи
+          </Button>
+          <span className="basis-full text-xs text-ink-2">
+            По курса на ЕЦБ от {plan.date ?? '—'}, закръглено както магазинът пише цените си. Провери редовете и запази.
+          </span>
+        </>
+      )}
+      {error && <span className="basis-full text-xs text-blocked-text">{error}</span>}
+    </div>
+  )
 }
