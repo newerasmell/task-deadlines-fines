@@ -130,19 +130,20 @@ def push(product_id: int, actor: str | None, shop=None) -> dict:
 
 
 def pending(batch_id: int) -> list[int]:
-    """Products of an audit with fixes not yet written live (or that failed)."""
+    """Products of an audit with fixes not yet written live (or that failed). One query for the whole catalog."""
     with Session(_engine()) as session:
-        out = []
-        for product in session.execute(
-            select(Product).where(Product.batch_id == batch_id).order_by(Product.id)
-        ).scalars():
-            sp = session.execute(select(StoreProduct).where(StoreProduct.product_id == product.id)).scalars().first()
-            if sp is None or sp.upload_status == "uploaded":
-                continue
-            rows = session.execute(select(FieldRow).where(FieldRow.store_product_id == sp.id)).scalars().all()
-            if _changes(list(rows)):
-                out.append(product.id)
-        return out
+        rows = session.execute(
+            select(FieldRow, StoreProduct.product_id, StoreProduct.upload_status)
+            .join(StoreProduct, StoreProduct.id == FieldRow.store_product_id)
+            .join(Product, Product.id == StoreProduct.product_id)
+            .where(Product.batch_id == batch_id, FieldRow.previous.is_not(None), FieldRow.key.in_(list(LABELS)))
+            .order_by(StoreProduct.product_id)
+        ).all()
+    out: dict[int, bool] = {}
+    for row, product_id, status in rows:
+        if status != "uploaded" and _changes([row]):
+            out[product_id] = True
+    return list(out)
 
 
 def start_batch(batch_id: int, actor: str | None, shop=None) -> dict:

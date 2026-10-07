@@ -278,7 +278,12 @@ function LiveAll({ batchId }: { batchId: number }) {
     refetchInterval: (q) => (q.state.data?.running ? 2000 : false),
   })
   const s = state.data
-  if (!s) return null
+  if (!s)
+    return (
+      <Button disabled title={state.isError ? (state.error as Error).message : undefined}>
+        {state.isError ? 'Обнови в магазина: грешка' : 'Обнови в магазина: проверявам…'}
+      </Button>
+    )
   const start = async () => {
     setConfirm(false)
     setError(null)
