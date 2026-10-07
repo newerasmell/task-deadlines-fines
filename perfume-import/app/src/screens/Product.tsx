@@ -267,6 +267,8 @@ function FieldsTable({
   const [all, setAll] = useState(false)
   const [pair, setPair] = useState<string[]>(() => batch.stores.slice(0, 2).map((s) => s.key))
   const stores = pair.map((k) => batch.stores.find((s) => s.key === k)!).filter(Boolean)
+  // Picking the store the other column shows swaps the two: a store never fills both columns.
+  const pick = (i: number, key: string) => setPair(pair.map((p, j) => (j === i ? key : p === key ? pair[i] : p)))
 
   const keys = useMemo(() => {
     const present = new Set(Object.values(product.stores).flatMap((s) => Object.keys(s.fields)))
@@ -291,13 +293,9 @@ function FieldsTable({
       >
         <div className="px-3.5 py-2.5">Поле</div>
         {stores.map((s, i) => (
-          <div key={s.key} className="border-l border-line px-3.5 py-2.5">
+          <div key={i} className="border-l border-line px-3.5 py-2.5">
             {batch.stores.length > 2 ? (
-              <StorePicker
-                stores={batch.stores}
-                value={s.key}
-                onChange={(k) => setPair(pair.map((p, j) => (j === i ? k : p)))}
-              />
+              <StorePicker stores={batch.stores} value={s.key} onChange={(k) => pick(i, k)} />
             ) : (
               <StoreHeading store={s} />
             )}
@@ -311,11 +309,11 @@ function FieldsTable({
           style={{ gridTemplateColumns: cols }}
         >
           <div className="px-3.5 py-[11px] text-ink-2">{fieldLabel(key)}</div>
-          {stores.map((s) => {
+          {stores.map((s, i) => {
             const f = product.stores[s.key]?.fields[key]
             return (
               <Cell
-                key={s.key}
+                key={i}
                 field={f}
                 selected={open?.store === s.key && open?.key === key}
                 onClick={() => f && onOpen({ store: s.key, key })}
