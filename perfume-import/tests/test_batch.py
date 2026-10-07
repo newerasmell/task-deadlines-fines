@@ -183,16 +183,15 @@ def test_texts_go_through_two_message_batches(rows, monkeypatch):
     assert all(0.055 < o["cost_usd"] <= 0.066 for o in s["over_budget"])
 
 
-def test_steps_that_would_pass_the_ceiling_are_skipped(rows, monkeypatch):
+def test_texts_run_even_past_the_ceiling(rows, monkeypatch):
+    """A live product lost its descriptions to the ceiling ($0.11 spent + $0.045 of texts > $0.15): texts are
+    the cheapest step and always run; the ceiling only stops the optional image lookup."""
     monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
     client = FakeClient(responder=responder)
     result = run_batch(client, rows, GROUP, STORES, "test", batch_texts=False, max_cost=0.0001)
-    s = result.summary()
-    assert {k for skip in s["skipped"] for k in skip["steps"]} == {"texts"}
     p = result.products[0]
-    assert set(p.usage) == {"research"}  # nothing paid after the research
-    body = p.stores["premierparfums"]["body_html"]
-    assert body.status == "blocked" and "тавана $0.00" in body.message
+    assert "description_en" in p.usage and "texts" not in p.skipped
+    assert p.stores["premierparfums"]["body_html"].value
 
 
 def test_mismatch_keeps_the_found_name_in_the_text_facts():

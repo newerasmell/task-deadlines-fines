@@ -98,3 +98,24 @@ def test_pasted_notes_are_synced_to_every_store_in_its_language(product):
     gr, hr = after["stores"]["premierparfums"]["fields"]["top_note"], after["stores"]["parfemija"]["fields"]["top_note"]
     assert gr["value"] == "μαύρο τσάι, περγαμόντο" and gr["value_en"] == "black tea, bergamot"
     assert hr["value"] == "crni čaj, bergamot" and hr["status"] == "ok" and hr["decided_by"] == "Мария"
+
+
+def test_a_missing_description_is_written_from_the_current_facts(product):
+    """A live product lost its descriptions to the cost ceiling: „Попълни липсващото“ writes them."""
+    from db.models import FieldRow, StoreProduct
+
+    with Session(engine()) as session, session.begin():
+        for sp in session.query(StoreProduct).filter(StoreProduct.product_id == product["id"]):
+            for row in session.query(FieldRow).filter(
+                FieldRow.store_product_id == sp.id, FieldRow.key.in_(["body_html", "seo_description"])
+            ):
+                row.value, row.status = "", "blocked"
+    assert "body_html" in fill.missing(product["id"])["keys"]
+    client = FakeClient(responder=responder)
+    summary, cost = fill.run(product["id"], ["body_html"], None, "Мария", client)
+    assert not [c for c in client.calls if c.get("tools")]  # no research: the facts are already there
+    assert summary["body_html"] == "написано за 2 магазина"
+    after = review.get_product(product["id"])["stores"]
+    for store in STORES:
+        body = after[store]["fields"]["body_html"]
+        assert body["value"].startswith("<p>") and body["status"] in ("suggested", "warning")

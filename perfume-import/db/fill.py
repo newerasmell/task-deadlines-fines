@@ -27,7 +27,9 @@ LABELS = {
     "base_note": "базови нотки",
     "ingredients": "съставки",
     "ean": "EAN",
+    "body_html": "описание",
 }
+TEXT_KEYS = ("body_html", "seo_description")
 
 
 def _engine():
@@ -54,7 +56,7 @@ def missing(product_id: int) -> dict:
             raise KeyError(f"Няма продукт {product_id}.")
         rows = _rows(session, product_id)
     keys = []
-    for key in FILLABLE:
+    for key in [*FILLABLE, "body_html"]:
         for fields in rows.values():
             row = fields.get(key)
             if row is not None and (_empty(row.value) or row.status == "blocked"):
@@ -128,9 +130,11 @@ def run(product_id: int, keys: list[str], url: str | None, actor: str | None, cl
         ) or product.input.get("name", "")
         ml = product.input.get("ml")
 
+    texts = "body_html" in keys
+    keys = [k for k in keys if k in FILLABLE]
     research_keys = list(dict.fromkeys(FILLABLE[k] for k in keys))
-    found, result = find_missing(client, title, ml, research_keys, group, url)
-    cost = result.usage.cost
+    found, result = find_missing(client, title, ml, research_keys, group, url) if keys else ({}, None)
+    cost = result.usage.cost if result else 0.0
     source = url or "търсене"
 
     languages = {group.store(s).language for s in rows if s in group.stores}
@@ -179,7 +183,8 @@ def run(product_id: int, keys: list[str], url: str | None, actor: str | None, cl
             fact = found[FILLABLE[key]]
             if not _empty(fact.value):
                 raw[FILLABLE[key]] = {"value": fact.value, "sources": fact.sources}
-        raw["_sources_seen"] = sorted(set(raw.get("_sources_seen", [])) | {s["url"] for s in result.sources})
+        if result:
+            raw["_sources_seen"] = sorted(set(raw.get("_sources_seen", [])) | {s["url"] for s in result.sources})
         product.research = raw
         _withdraw_approval(session, product_id)
         session.add(
@@ -190,7 +195,86 @@ def run(product_id: int, keys: list[str], url: str | None, actor: str | None, cl
                 payload={"name": product.input.get("name"), "fill": keys, "source": source, "cost_usd": round(cost, 4)},
             )
         )
+    if texts:
+        summary["body_html"], text_cost = write_texts(product_id, client)
+        cost += text_cost
     return summary, round(cost, 4)
+
+
+def _facts(fields: dict[str, FieldRow]) -> dict:
+    """The facts a description is written from, as they are now in the store (decisions included)."""
+    facts = {}
+    for key, fact in (("vendor", "brand"), ("name", "name"), ("concentration", "concentration")):
+        if key in fields and not _empty(fields[key].value) and fields[key].status != "blocked":
+            facts[fact] = fields[key].value
+    for key in ("gender", "fragrance_family"):
+        if key in fields and not _empty(fields[key].value):
+            facts[key] = fields[key].value
+    for key in NOTES:
+        english = fields[key].value_en if key in fields else None
+        if english:
+            facts[key] = [t.strip() for t in str(english).split(",") if t.strip()]
+    return facts
+
+
+def write_texts(product_id: int, client) -> tuple[str, float]:
+    """English master + every store's text (its own style, or its language's translation) from the current
+    facts; written as suggestions into the stores whose description is empty or blocked."""
+    from db.stores import accepted_profiles
+    from pipeline.generate import generate_texts, store_style, style_key, text_fields
+    from pipeline.validate import Context, validate_product
+
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        group = load_group(session.get(Batch, product.batch_id).group_key)
+        rows = _rows(session, product_id)
+        targets = [
+            s
+            for s, f in rows.items()
+            if s in group.stores
+            and (_empty((f.get("body_html") or FieldRow()).value) or f["body_html"].status == "blocked")
+        ]
+        facts = _facts(next(iter(rows.values())))
+        tester = bool(product.input.get("tester"))
+    if not targets:
+        return "вече има описания", 0.0
+    if not facts.get("name"):
+        return "липсва име на аромата: първо реши името", 0.0
+    profiles = accepted_profiles(targets)
+    styles = [st for s in targets if (st := store_style(group.store(s), profiles.get(s), group))]
+    styled = {st.key for st in styles}
+    languages = [group.store(s).language for s in targets if s not in styled]
+    [(master, by_target)] = generate_texts(client, [(facts, tester)], group, languages, batch=False, styles=styles)
+    cost = master.usage.cost + sum(t.usage.cost for t in by_target.values())
+
+    with Session(_engine()) as session, session.begin():
+        rows = _rows(session, product_id)
+        for store in targets:
+            style = next((st for st in styles if st.key == store), None)
+            text = by_target.get(style_key(style)) if style else by_target.get(group.store(store).language)
+            if text is None:
+                continue
+            made = text_fields(text, master, group)
+            fields = {k: _field(r) for k, r in rows[store].items()}
+            fields.update({k: made[k] for k in TEXT_KEYS})
+            validate_product(fields, Context(group, group.store(store), (style.lo, style.hi) if style else None))
+            for key in TEXT_KEYS:
+                if key in rows[store]:
+                    _write_field(rows[store][key], fields[key])
+    return f"написано за {len(targets)} магазина", cost
+
+
+def _field(row: FieldRow):
+    from db.review import to_field
+
+    return to_field(row)
+
+
+def _write_field(row: FieldRow, f) -> None:
+    row.previous = row.value
+    row.value, row.value_en, row.origin, row.status = f.value, f.value_en, f.origin, f.status
+    row.message, row.issues, row.alternatives = f.message, f.issues, f.alternatives
+    row.decided_by = row.decided_at = None
 
 
 def sync_notes(field_id: int, text: str, actor: str | None, client=None) -> dict:

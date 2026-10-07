@@ -374,7 +374,9 @@ def run_batch(
         report("images", 0, len(products))
         list(pool.map(lambda p: compose_step(p, group, stores), products))
 
-    ready = [p for p in products if not p.research.error and p.affords("texts", n_texts * p.tier.text_cost)]
+    # Texts always run: they are the cheapest step and a product without a description is of no use. The
+    # ceiling (research_step keeps their cost in reserve) only ever stops the optional image lookup.
+    ready = [p for p in products if not p.research.error]
     report("texts", 0, len(ready))
     texts = generate_texts(
         client,
