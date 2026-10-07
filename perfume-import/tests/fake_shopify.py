@@ -21,6 +21,8 @@ class FakeShopify:
         self.publications = publications if publications is not None else ["Online Store", "Google & YouTube"]
         self.publish_denied = publish_denied  # the app has no read_publications / write_publications
         self.published: dict[str, list[str]] = {}  # product id -> publication ids
+        self.updates: list[dict] = []  # productUpdate inputs (live audit fixes)
+        self.variant_updates: list[list[dict]] = []
         self.definitions = definitions or {}  # (namespace, key) -> type, enforced like Shopify does
         self.products = {p["id"]: p for p in (products or [])}  # id -> {id, handle, title, sku, ...}
         self.calls: list[dict] = []
@@ -54,7 +56,16 @@ class FakeShopify:
             return self.ok({"productVariants": {"nodes": nodes}})
         if "productByIdentifier" in query:
             found = next((p for p in self.products.values() if p["handle"] == variables["h"]), None)
-            return self.ok({"productByIdentifier": found and {k: found[k] for k in ("id", "handle", "title")}})
+            node = found and {k: found[k] for k in ("id", "handle", "title")}
+            if node and "variants(" in query:
+                node["variants"] = {"nodes": [{"id": found["id"] + "/v", "sku": found["sku"]}]}
+            return self.ok({"productByIdentifier": node})
+        if "productUpdate" in query:
+            self.updates.append(variables["product"])
+            return self.ok({"productUpdate": {"product": {"id": variables["product"]["id"]}, "userErrors": []}})
+        if "productVariantsBulkUpdate" in query:
+            self.variant_updates.append(variables["variants"])
+            return self.ok({"productVariantsBulkUpdate": {"userErrors": []}})
         if "product(id:" in query:
             found = self.products.get(variables["id"])
             return self.ok({"product": found and {"id": found["id"]}})

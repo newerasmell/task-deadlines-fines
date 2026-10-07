@@ -480,3 +480,92 @@ def _publish_everywhere(shop: Shopify, product_id: str) -> str:
 def store_client(group: Group, store_key: str, http: httpx.Client | None = None) -> Shopify:
     shop, token = credentials(group.store(store_key), http)
     return Shopify(shop, token, http=http)
+
+
+# ---- live update of an existing product (catalog audit fixes) ------------------------------------------
+
+# Audit field keys that live in metafields (custom namespace), and their metafield keys.
+LIVE_METAFIELDS = {
+    **CUSTOM_METAFIELDS,
+    "product_milliliters": "product_milliliters",
+    "product_type": "product_type",
+}
+
+
+def live_product(shop: Shopify, handle: str) -> dict | None:
+    """{id, handle, title, variant: {id, sku}} of an existing product, or None."""
+    data = shop.graphql(
+        """query($h: String!) { productByIdentifier(identifier: {handle: $h}) {
+             id handle title variants(first: 2) { nodes { id sku } } } }""",
+        {"h": handle},
+    )
+    found = data["productByIdentifier"]
+    if not found:
+        return None
+    variants = found["variants"]["nodes"]
+    return {**{k: found[k] for k in ("id", "handle", "title")}, "variant": variants[0] if variants else None}
+
+
+def update_live(shop: Shopify, product: dict, changes: dict[str, Any]) -> list[str]:
+    """Write only these fields of an existing product (field key -> new value). Returns notes; raises
+    ShopifyError when Shopify refuses. Fields it cannot write here are reported, not guessed."""
+    notes: list[str] = []
+    update: dict[str, Any] = {"id": product["id"]}
+    seo: dict[str, str] = {}
+    metafields = []
+    types = shop.metafield_types()
+    variant: dict[str, Any] = {}
+    for key, value in changes.items():
+        text = _text(value)
+        if key == "title":
+            update["title"] = text
+        elif key == "body_html":
+            update["descriptionHtml"] = text
+        elif key == "vendor":
+            update["vendor"] = text
+        elif key == "seo_title":
+            seo["title"] = text
+        elif key == "seo_description":
+            seo["description"] = text
+        elif key == "handle":
+            update["handle"] = text
+        elif key == "price" and text:
+            variant["price"] = text
+        elif key == "compare_at":
+            variant["compareAtPrice"] = text or None
+        elif key == "sku" and text:
+            variant["inventoryItem"] = {"sku": text}
+        elif key in LIVE_METAFIELDS:
+            if not text:
+                notes.append(f"{key}: празна стойност не се записва в Shopify (остава старата).")
+                continue
+            mf = metafield("custom", LIVE_METAFIELDS[key], text, types)
+            if mf:
+                metafields.append(mf)
+            else:
+                notes.append(f"{key}: типът на полето в Shopify не приема тази стойност.")
+        else:
+            notes.append(f"{key}: не се обновява оттук.")
+    if seo:
+        update["seo"] = seo
+    if metafields:
+        update["metafields"] = metafields
+    if len(update) > 1:
+        data = shop.graphql(
+            """mutation($product: ProductUpdateInput!) { productUpdate(product: $product) {
+                 product { id } userErrors { field message } } }""",
+            {"product": update},
+        )["productUpdate"]
+        if data["userErrors"]:
+            raise ShopifyError("Shopify не прие промяната: " + "; ".join(e["message"] for e in data["userErrors"]))
+    if variant:
+        if not product.get("variant"):
+            raise ShopifyError("Продуктът няма вариант в Shopify; цената и SKU не се обновяват.")
+        data = shop.graphql(
+            """mutation($id: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                 productVariantsBulkUpdate(productId: $id, variants: $variants) { userErrors { field message } } }""",
+            {"id": product["id"], "variants": [{"id": product["variant"]["id"], **variant}]},
+        )["productVariantsBulkUpdate"]
+        if data["userErrors"]:
+            raise ShopifyError("Shopify не прие цената/SKU: " + "; ".join(e["message"] for e in data["userErrors"]))
+    return notes

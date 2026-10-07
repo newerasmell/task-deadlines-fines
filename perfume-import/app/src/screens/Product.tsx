@@ -55,6 +55,7 @@ export function ProductScreen() {
           <div className="flex min-h-0 min-w-0 grow flex-col gap-6 overflow-y-auto px-7 py-6 xl:flex-row xl:items-start xl:gap-7">
             {!open && <ImageSection product={product} onOpen={(store) => setOpen({ store, key: 'image' })} />}
             <div className="flex min-w-0 grow flex-col gap-6">
+              {batch.data.kind === 'audit' && <LiveChangesSection batchId={batch.data.id} productId={product.id} />}
               <PricesSection batch={batch.data} product={product} />
               <FieldsTable batch={batch.data} product={product} open={open} onOpen={setOpen} />
             </div>
@@ -1019,5 +1020,73 @@ function FillMissing({ batch, product }: { batch: Batch; product: Product }) {
         {error && <span className="text-sm text-blocked-text">{error}</span>}
       </Dialog>
     </>
+  )
+}
+
+/** Catalog audit: the fixes of this product („беше → става“) and „Обнови в магазина“, which writes only those
+ * fields into the existing Shopify product. */
+function LiveChangesSection({ batchId, productId }: { batchId: number; productId: number }) {
+  const client = useQueryClient()
+  const live = useQuery({ queryKey: ['live', productId, batchId], queryFn: () => api.liveChanges(productId) })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  if (live.isPending) return <Loading what="поправките" />
+  if (live.isError) return <Failure error={live.error} />
+  const d = live.data
+  const push = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      client.setQueryData(['live', productId, batchId], await api.pushLive(productId))
+      void client.invalidateQueries({ queryKey: ['batch', batchId] })
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <section className="flex flex-col gap-2 rounded-lg border border-line p-4" aria-label="Промени за качване">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="m-0 grow text-base font-semibold">Промени за качване в магазина</h2>
+        <Button variant="primary" size="sm" disabled={!d.changes.length || busy} onClick={() => void push()}>
+          {busy ? 'Обновявам…' : d.live_status === 'uploaded' ? 'Обнови отново' : 'Обнови в магазина (на живо)'}
+        </Button>
+      </div>
+      {!d.changes.length ? (
+        <span className="text-sm text-ink-2">Няма поправки в този продукт.</span>
+      ) : (
+        <div className="flex flex-col text-sm">
+          {d.changes.map((c) => (
+            <div
+              key={c.key}
+              className="grid grid-cols-[140px_minmax(0,1fr)] gap-3 border-b border-line-2 py-1.5 last:border-b-0"
+            >
+              <span className="text-ink-2">{c.label}</span>
+              <span className="min-w-0 break-words">
+                <span className="text-ink-3 line-through">{stripHtml(display(c.before)) || 'празно'}</span>
+                {' → '}
+                <span className="font-medium">{stripHtml(display(c.after)) || 'празно'}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {d.blocked.length > 0 && (
+        <span className="text-xs text-ink-2">
+          Спрени полета ({d.blocked.map(fieldLabel).join(', ')}) не се качват, докато не ги поправиш.
+        </span>
+      )}
+      {d.live_message && (
+        <span className={cn('text-xs', d.live_status === 'uploaded' ? 'text-ok' : 'text-blocked-text')}>
+          {d.live_message}
+        </span>
+      )}
+      {error && <span className="text-xs text-blocked-text">{error}</span>}
+      <span className="text-xs leading-normal text-ink-2">
+        Обновява се съществуващият продукт в Shopify (намерен по handle, проверен по SKU), само показаните полета.
+        Снимки, наличности и канали не се пипат.
+      </span>
+    </section>
   )
 }

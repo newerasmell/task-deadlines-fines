@@ -207,3 +207,44 @@ async def replace_image(
         raise HTTPException(422, str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(404, str(exc.args[0])) from exc
+
+
+def _live(fn, *args):
+    from db import live
+
+    try:
+        return fn(*args)
+    except live.LiveError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(404, str(exc.args[0])) from exc
+
+
+@router.get("/products/{product_id}/live")
+def live_changes(product_id: int):
+    """An audited product's fixes, "before → after", and its last live update."""
+    from db import live
+
+    return _live(live.changes, product_id)
+
+
+@router.post("/products/{product_id}/live")
+def push_live(product_id: int, x_actor: str | None = Header(default=None)):
+    """Write the product's fixes into the store now (only the changed fields)."""
+    from db import live
+
+    return _live(live.push, product_id, actor_name(x_actor))
+
+
+@router.get("/batches/{batch_id}/live")
+def live_batch_state(batch_id: int):
+    from db import live
+
+    return _live(live.batch_state, batch_id)
+
+
+@router.post("/batches/{batch_id}/live", status_code=202)
+def live_batch_start(batch_id: int, x_actor: str | None = Header(default=None)):
+    from db import live
+
+    return _live(live.start_batch, batch_id, actor_name(x_actor))

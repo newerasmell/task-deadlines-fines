@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
@@ -5,7 +6,8 @@ import { FieldPanel } from '../components/FieldPanel'
 import { Empty, Failure, Loading } from '../components/States'
 import { StatusMark } from '../components/StatusMark'
 import { Button } from '../components/ui/button'
-import type { AuditItem, AuditIssue } from '../lib/api'
+import { Dialog } from '../components/ui/dialog'
+import { api, type AuditItem, type AuditIssue } from '../lib/api'
 import { cn } from '../lib/cn'
 import { display, fieldLabel, groupLabel, plural, stripHtml } from '../lib/labels'
 import { useAudit, useAuditItems, useProduct, useStores } from '../lib/queries'
@@ -56,6 +58,7 @@ export function AuditScreen() {
         <Button asChild>
           <Link to={`/batches/${batchId}/grid`}>Отвори в таблица</Link>
         </Button>
+        <LiveAll batchId={batchId} />
         <Button variant="primary" asChild>
           <a href={`/api/batches/${batchId}/fix.csv`} download aria-disabled={!s.fix_products}>
             <Download size={16} /> CSV с поправките ({plural(s.fix_products, 'продукт', 'продукта')})
@@ -70,7 +73,12 @@ export function AuditScreen() {
             open ? 'w-[360px]' : 'w-[520px] xl:w-[620px]',
           )}
         >
-          <div className={cn('grid border-b border-line bg-surface text-xs font-medium text-ink-2', open ? 'grid-cols-[minmax(0,1fr)_64px]' : 'grid-cols-[minmax(0,1fr)_70px_190px]')}>
+          <div
+            className={cn(
+              'grid border-b border-line bg-surface text-xs font-medium text-ink-2',
+              open ? 'grid-cols-[minmax(0,1fr)_64px]' : 'grid-cols-[minmax(0,1fr)_70px_190px]',
+            )}
+          >
             <div className="px-5 py-2.5">Проблем</div>
             <div className="px-3 py-2.5 text-right">Брой</div>
             {!open && <div className="px-5 py-2.5">Какво прави системата</div>}
@@ -104,7 +112,12 @@ export function AuditScreen() {
                 <Loading what="продуктите" />
               ) : (
                 <>
-                  <ItemsTable rule={issue.rule} items={items.data.items} onFix={(it) => setOpen({ productId: it.product_id, key: it.key })} />
+                  <ItemsTable
+                    batchId={batchId}
+                    rule={issue.rule}
+                    items={items.data.items}
+                    onFix={(it) => setOpen({ productId: it.product_id, key: it.key })}
+                  />
                   <div className="flex items-center gap-3 text-xs text-ink-2">
                     Показани са {items.data.items.length} от {items.data.total}.
                     {items.data.items.length < items.data.total && (
@@ -119,35 +132,46 @@ export function AuditScreen() {
           )}
         </section>
 
-        {open && (product ? (
-          <FieldPanel
-            key={`${open.productId}-${open.key}`}
-            batch={{
-              id: batchId,
-              kind: 'audit',
-              name: s.name,
-              group: s.group,
-              created_at: s.created_at,
-              author: null,
-              stores: store ? [{ ...store }] : [],
-              products: [product],
-            }}
-            product={product}
-            store={s.store ?? Object.keys(product.stores)[0]}
-            fieldKey={open.key}
-            onClose={() => setOpen(null)}
-          />
-        ) : (
-          <aside className="w-[400px] shrink-0 border-l border-line">
-            {opened.isError ? <Failure error={opened.error} /> : <Loading what="продукта" />}
-          </aside>
-        ))}
+        {open &&
+          (product ? (
+            <FieldPanel
+              key={`${open.productId}-${open.key}`}
+              batch={{
+                id: batchId,
+                kind: 'audit',
+                name: s.name,
+                group: s.group,
+                created_at: s.created_at,
+                author: null,
+                stores: store ? [{ ...store }] : [],
+                products: [product],
+              }}
+              product={product}
+              store={s.store ?? Object.keys(product.stores)[0]}
+              fieldKey={open.key}
+              onClose={() => setOpen(null)}
+            />
+          ) : (
+            <aside className="w-[400px] shrink-0 border-l border-line">
+              {opened.isError ? <Failure error={opened.error} /> : <Loading what="продукта" />}
+            </aside>
+          ))}
       </div>
     </div>
   )
 }
 
-function IssueRow({ i, active, compact, onClick }: { i: AuditIssue; active: boolean; compact: boolean; onClick: () => void }) {
+function IssueRow({
+  i,
+  active,
+  compact,
+  onClick,
+}: {
+  i: AuditIssue
+  active: boolean
+  compact: boolean
+  onClick: () => void
+}) {
   return (
     <button
       onClick={onClick}
@@ -168,9 +192,21 @@ function IssueRow({ i, active, compact, onClick }: { i: AuditIssue; active: bool
   )
 }
 
-function ItemsTable({ rule, items, onFix }: { rule: string; items: AuditItem[]; onFix: (i: AuditItem) => void }) {
+function ItemsTable({
+  batchId,
+  rule,
+  items,
+  onFix,
+}: {
+  batchId: number
+  rule: string
+  items: AuditItem[]
+  onFix: (i: AuditItem) => void
+}) {
   const prices = PRICE_RULES.has(rule)
-  const cols = prices ? 'grid-cols-[minmax(0,1fr)_100px_120px_120px]' : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_110px]'
+  const cols = prices
+    ? 'grid-cols-[minmax(0,1fr)_100px_120px_190px]'
+    : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_190px]'
   const text = (v: unknown) => stripHtml(v).slice(0, 140)
   return (
     <div className="shrink-0 overflow-hidden rounded-lg border border-line">
@@ -217,13 +253,64 @@ function ItemsTable({ rule, items, onFix }: { rule: string; items: AuditItem[]; 
               </div>
             </>
           )}
-          <div className="px-3.5 py-1.5">
+          <div className="flex gap-1.5 px-3.5 py-1.5">
             <Button size="sm" onClick={() => onFix(it)}>
               {it.decided_by ? 'Промени' : it.status === 'fixed' ? 'Провери' : 'Поправи'}
+            </Button>
+            <Button size="sm" variant="ghost" asChild title="Целият продукт и „Обнови в магазина“">
+              <Link to={`/batches/${batchId}/products/${it.product_id}`}>Продукт</Link>
             </Button>
           </div>
         </div>
       ))}
     </div>
+  )
+}
+
+/** All fixes of the audit written live into the store (only the changed fields of each product). */
+function LiveAll({ batchId }: { batchId: number }) {
+  const client = useQueryClient()
+  const [confirm, setConfirm] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const state = useQuery({
+    queryKey: ['live-batch', batchId],
+    queryFn: () => api.liveBatch(batchId),
+    refetchInterval: (q) => (q.state.data?.running ? 2000 : false),
+  })
+  const s = state.data
+  if (!s) return null
+  const start = async () => {
+    setConfirm(false)
+    setError(null)
+    try {
+      client.setQueryData(['live-batch', batchId], { ...(await api.startLiveBatch(batchId)), pending: s.pending })
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+  return (
+    <>
+      <Button disabled={s.running || !s.pending} onClick={() => setConfirm(true)} title={error ?? undefined}>
+        {s.running
+          ? `Обновявам в магазина… ${s.done ?? 0}/${s.total ?? 0}`
+          : s.total != null && !s.pending
+            ? `Обновени в магазина: ${s.uploaded ?? 0}${s.failed ? `, грешки: ${s.failed}` : ''}`
+            : `Обнови в магазина (${s.pending})`}
+      </Button>
+      <Dialog
+        open={confirm}
+        onOpenChange={setConfirm}
+        title="Обнови поправките на живо?"
+        description={`${s.pending} продукта в магазина ще получат поправките си веднага (само поправените полета; снимки, наличности и канали не се пипат). Спрени полета не се качват.`}
+        footer={
+          <>
+            <Button onClick={() => setConfirm(false)}>Откажи</Button>
+            <Button variant="primary" onClick={() => void start()}>
+              Обнови {s.pending} продукта
+            </Button>
+          </>
+        }
+      />
+    </>
   )
 }

@@ -272,6 +272,25 @@ export type Job = {
 
 export type AccessInfo = { kind: 'client' | 'token'; updated_by: string | null; updated_at: string | null }
 
+export type LiveChanges = {
+  product_id: number
+  store: string
+  changes: { key: string; label: string; before: unknown; after: unknown; status: Status }[]
+  blocked: string[]
+  live_status: 'uploaded' | 'failed' | null
+  live_message: string | null
+}
+
+export type LiveBatch = {
+  running: boolean
+  total?: number
+  done?: number
+  uploaded?: number
+  failed?: number
+  error?: string | null
+  pending: number
+}
+
 export type PricePlan = {
   date: string | null
   stores: Record<string, { currency: string; rate?: number; price?: string; compare_at?: string; error?: string }>
@@ -386,6 +405,10 @@ export const api = {
   fill: (productId: number, url: string | null) =>
     post<{ job_id: string }>(`/api/products/${productId}/fill`, { url }),
   syncNotes: (fieldId: number, text: string) => post<Product>(`/api/fields/${fieldId}/sync-notes`, { text }),
+  liveChanges: (productId: number) => request<LiveChanges>(`/api/products/${productId}/live`),
+  pushLive: (productId: number) => post<LiveChanges>(`/api/products/${productId}/live`, {}),
+  liveBatch: (batchId: number) => request<LiveBatch>(`/api/batches/${batchId}/live`),
+  startLiveBatch: (batchId: number) => post<LiveBatch>(`/api/batches/${batchId}/live`, {}),
   publish: (productId: number, stores: string[] | null, status: 'draft' | 'active') =>
     post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, { stores, status }),
   stores: () => request<StoreRow[]>('/api/stores'),

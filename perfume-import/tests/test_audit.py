@@ -89,3 +89,48 @@ def test_fix_csv_has_only_changes_with_full_values(batch):
     assert third["Option1 Value"] == "Default Title"
     for r in out:
         assert all(r[c] != "" for c in ("Handle", "Title", "Variant Compare At Price") if c in r), r
+
+
+def test_fixes_are_written_live_only_the_changed_fields(batch):
+    """Audit → „Обнови в магазина“: the existing product (found by handle, checked by SKU) gets only the
+    changed fields; a handle with another SKU is refused."""
+    from db import live
+    from pipeline.shopify import Shopify
+    from tests.fake_shopify import FakeShopify
+
+    batch_id, rows = batch
+    product_id = next(
+        p["id"]
+        for p in review.get_batch(batch_id)["products"]
+        if p["stores"]["premierparfums"]["fields"]["gender"]["status"] == "fixed"
+    )
+    plan = live.changes(product_id)
+    assert [c["key"] for c in plan["changes"]] == ["gender"] and plan["changes"][0]["before"] == "Womens perfume"
+    row = rows[0]
+    fake = FakeShopify(
+        [{"id": "gid://shopify/Product/7", "handle": row["Handle"], "title": row["Title"], "sku": row["Variant SKU"]}]
+    )
+    shop = Shopify("premier.myshopify.com", "tok", http=fake.client(), sleep=lambda s: None)
+    after = live.push(product_id, "Мария", shop)
+    assert after["live_status"] == "uploaded", after
+    assert fake.updates == [
+        {
+            "id": "gid://shopify/Product/7",
+            "metafields": [
+                {"namespace": "custom", "key": "gender", "type": "single_line_text_field", "value": "Women's Perfume"}
+            ],
+        }
+    ]
+    assert fake.variant_updates == []  # price untouched
+    assert product_id not in live.pending(batch_id)
+
+    other = FakeShopify([{"id": "gid://shopify/Product/8", "handle": row["Handle"], "title": "x", "sku": "SK000"}])
+    with Session(engine()) as s, s.begin():
+        from db.models import StoreProduct
+
+        s.query(StoreProduct).filter(StoreProduct.product_id == product_id).update({"upload_status": None})
+    failed = live.push(
+        product_id, "Мария", Shopify("p.myshopify.com", "tok", http=other.client(), sleep=lambda s: None)
+    )
+    assert failed["live_status"] == "failed" and "не е същият продукт" in failed["live_message"]
+    assert other.updates == []
