@@ -10,7 +10,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from db import newbatch
-from db.models import Batch, Event, FieldRow, Product
+from db.models import Batch, Event, FieldRow, Product, StoreProduct
 from pipeline.ai import api_key
 from pipeline.config import load_group
 from pipeline.fill import FILLABLE, find_missing, translate_terms
@@ -191,3 +191,64 @@ def run(product_id: int, keys: list[str], url: str | None, actor: str | None, cl
             )
         )
     return summary, round(cost, 4)
+
+
+def sync_notes(field_id: int, text: str, actor: str | None, client=None) -> dict:
+    """A person's notes for one level (pasted in any form) -> English names -> every store in its language.
+    The person's input: set as decided, not as a suggestion. Returns the product."""
+    from db.review import _product_json, _withdraw_approval, now
+    from pipeline.ai import default_client
+    from pipeline.fill import normalize_notes
+
+    if not text.strip():
+        raise newbatch.NewBatchError("Въведи нотките.")
+    client = client or default_client()
+    with Session(_engine()) as session:
+        row = session.get(FieldRow, field_id)
+        if row is None or row.key not in NOTES:
+            raise KeyError("Няма такова поле с нотки.")
+        product_id = session.get(StoreProduct, row.store_product_id).product_id
+        product = session.get(Product, product_id)
+        group = load_group(session.get(Batch, product.batch_id).group_key)
+        key = row.key
+        stores = list(_rows(session, product_id))
+
+    notes, usage = normalize_notes(client, text)
+    if not notes:
+        raise newbatch.NewBatchError("Не разпознах нотки в текста.")
+    cost = usage.cost
+    by_language = {}
+    for language in {group.store(s).language for s in stores if s in group.stores}:
+        by_language[language], used = translate_terms(client, notes, language)
+        cost += used.cost
+
+    with Session(_engine()) as session, session.begin():
+        rows = _rows(session, product_id)
+        when = now()
+        for store, fields in rows.items():
+            target = fields.get(key)
+            if target is None:
+                continue
+            language = group.store(store).language if store in group.stores else "en"
+            target.previous = target.value
+            target.value = ", ".join(by_language.get(language, {}).get(n, n) for n in notes)
+            target.value_en = ", ".join(notes)
+            target.origin, target.status = "input", "ok"
+            target.message = f"Въведено от {actor or 'екипа'} и преведено за всеки магазин."
+            target.issues = []
+            target.decided_by, target.decided_at = actor, when
+        product = session.get(Product, product_id)
+        raw = dict(product.research or {})
+        raw[key] = {"value": notes, "sources": [{"url": "", "says": f"въведено от {actor}", "supports": True}]}
+        product.research = raw
+        _withdraw_approval(session, product_id)
+        session.add(
+            Event(
+                actor=actor,
+                kind="notes_synced",
+                batch_id=product.batch_id,
+                payload={"product": product_id, "key": key, "notes": notes, "cost_usd": round(cost, 4)},
+            )
+        )
+        session.flush()
+        return _product_json(session, product_id)

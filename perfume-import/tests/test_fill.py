@@ -76,3 +76,25 @@ def test_missing_notes_are_filled_from_a_linked_page(product):
     assert gr["top_note"]["value"] == ""  # the page has no top notes: left empty, not invented
     assert state["result"]["top_note"] == "не е намерено"
     assert gr["vendor"]["value"] == product["stores"]["premierparfums"]["fields"]["vendor"]["value"]  # untouched
+
+
+def test_pasted_notes_are_synced_to_every_store_in_its_language(product):
+    """Copy-pasted „Black Tea (rich, green, and slightly bitter opening)“ -> black tea, in Greek and Croatian."""
+
+    def ai(kwargs):
+        system = kwargs["system"]
+        if "Extract the perfume notes" in system:
+            return message({"notes": ["Black Tea", "bergamot"]})
+        if "Greek" in system:
+            return message(
+                {"notes": [{"en": "black tea", "local": "μαύρο τσάι"}, {"en": "bergamot", "local": "περγαμόντο"}]}
+            )
+        return message({"notes": [{"en": "black tea", "local": "crni čaj"}, {"en": "bergamot", "local": "bergamot"}]})
+
+    top = product["stores"]["premierparfums"]["fields"]["top_note"]
+    after = fill.sync_notes(
+        top["id"], "Black Tea (rich, green, and slightly bitter opening), Bergamot", "Мария", FakeClient(responder=ai)
+    )
+    gr, hr = after["stores"]["premierparfums"]["fields"]["top_note"], after["stores"]["parfemija"]["fields"]["top_note"]
+    assert gr["value"] == "μαύρο τσάι, περγαμόντο" and gr["value_en"] == "black tea, bergamot"
+    assert hr["value"] == "crni čaj, bergamot" and hr["status"] == "ok" and hr["decided_by"] == "Мария"

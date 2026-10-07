@@ -110,3 +110,29 @@ def translate_terms(client, terms: list[str], language: str) -> tuple[dict[str, 
         return {**out, **{t: t for t in unknown}}, Usage()
     found = {n["en"].lower(): n["local"].lower() for n in result.data["notes"]}
     return {**out, **{t: found.get(t.lower(), t) for t in unknown}}, result.usage
+
+
+def normalize_notes(client, text: str) -> tuple[list[str], Usage]:
+    """Notes as a person pasted them (any language, with descriptions in brackets, comma or line separated) ->
+    English canonical note names, lowercase, in order."""
+    result = ask(
+        client,
+        system=(
+            "Extract the perfume notes from the text as English canonical note names, lowercase (e.g. "
+            '"black tea", "pink pepper"). Drop descriptions, percentages and words that are not notes; translate '
+            "notes written in another language; keep their order; no duplicates."
+        ),
+        prompt=text,
+        schema={
+            "type": "object",
+            "properties": {"notes": {"type": "array", "items": {"type": "string"}}},
+            "required": ["notes"],
+            "additionalProperties": False,
+        },
+        effort="low",
+        model=SONNET,
+        thinking=NO_THINKING,
+        max_tokens=2000,
+    )
+    notes = list(dict.fromkeys(n.strip().lower() for n in result.data["notes"] if n.strip()))
+    return notes, result.usage

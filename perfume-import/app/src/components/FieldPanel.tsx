@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { Batch, FieldRecord, Product, Status } from '../lib/api'
 import { cn } from '../lib/cn'
 import { display, fieldLabel, host, LOCALIZED, storeShort, stripHtml } from '../lib/labels'
-import { useDecide, useReplaceImage, useVocab } from '../lib/queries'
+import { useDecide, useReplaceImage, useSyncNotes, useVocab } from '../lib/queries'
 import { TAG_TEXT, TINT } from '../lib/status'
 import { Button } from './ui/button'
 
@@ -50,6 +50,8 @@ export function FieldPanel({
 }) {
   const field = product.stores[store]?.fields[fieldKey]
   const decide = useDecide(batch.id)
+  const syncNotes = useSyncNotes(batch.id)
+  const isNotes = ['top_note', 'middle_note', 'base_note'].includes(fieldKey)
   const vocab = useVocab(batch.group)
   // The parent remounts the panel (key) for another cell, so this state always belongs to one field.
   const [editing, setEditing] = useState(startEditing && fieldKey !== 'image')
@@ -145,9 +147,25 @@ export function FieldPanel({
                   className="h-9 w-full rounded-md border border-line bg-canvas px-2.5 text-base text-ink"
                 />
               )}
+              {isNotes && (
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={!draft.trim() || syncNotes.isPending}
+                  title="Нотките в какъвто и да е вид (и с описания): AI ги свежда до имена, превежда ги и ги записва във всички магазини"
+                  onClick={() =>
+                    field && syncNotes.mutate({ fieldId: field.id, text: draft }, { onSuccess: () => setEditing(false) })
+                  }
+                >
+                  {syncNotes.isPending ? 'Превеждам за всички магазини…' : 'Синхронизирай във всички магазини (превод)'}
+                </Button>
+              )}
+              {isNotes && syncNotes.isError && (
+                <span className="text-xs text-blocked-text">{(syncNotes.error as Error).message}</span>
+              )}
               <div className="flex gap-2">
-                <Button type="submit" variant="primary" disabled={decide.isPending}>
-                  Запази и провери
+                <Button type="submit" variant={isNotes ? 'secondary' : 'primary'} disabled={decide.isPending}>
+                  {isNotes ? 'Запази само тук' : 'Запази и провери'}
                 </Button>
                 <Button type="button" onClick={() => setEditing(false)}>
                   Откажи

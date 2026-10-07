@@ -385,6 +385,7 @@ export const api = {
     request<{ product_id: number; keys: string[]; labels: string[] }>(`/api/products/${productId}/missing`),
   fill: (productId: number, url: string | null) =>
     post<{ job_id: string }>(`/api/products/${productId}/fill`, { url }),
+  syncNotes: (fieldId: number, text: string) => post<Product>(`/api/fields/${fieldId}/sync-notes`, { text }),
   publish: (productId: number, stores: string[] | null, status: 'draft' | 'active') =>
     post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, { stores, status }),
   stores: () => request<StoreRow[]>('/api/stores'),

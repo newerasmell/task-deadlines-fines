@@ -175,3 +175,15 @@ def fill_missing(product_id: int, body: Fill, x_actor: str | None = Header(defau
     from db import fill
 
     return {"job_id": _call(fill.start, product_id, (body.url or "").strip() or None, actor_name(x_actor))}
+
+
+class Notes(BaseModel):
+    text: str
+
+
+@router.post("/fields/{field_id}/sync-notes")
+def sync_notes(field_id: int, body: Notes, x_actor: str | None = Header(default=None)):
+    """Notes typed or pasted by a person -> English names -> every store of the product in its language."""
+    from db import fill
+
+    return _call(fill.sync_notes, field_id, body.text, actor_name(x_actor))

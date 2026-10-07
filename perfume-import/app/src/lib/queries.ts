@@ -47,6 +47,9 @@ export const useReplaceImage = (batchId: number) =>
     api.replaceImage(productId, source),
   )
 
+export const useSyncNotes = (batchId: number) =>
+  useProductMutation<{ fieldId: number; text: string }>(batchId, ({ fieldId, text }) => api.syncNotes(fieldId, text))
+
 export const useApprove = (batchId: number) =>
   useProductMutation<number>(batchId, (productId) => api.approve(productId))
 
