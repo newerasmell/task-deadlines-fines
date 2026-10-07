@@ -550,7 +550,7 @@ function PriceRow({
   const [draft, setDraft] = useState(
     planned?.price ? { price: planned.price, compare: planned.compare_at ?? '' } : initial,
   )
-  const currency = store.currency ?? 'EUR'
+  const currency = store.currency ?? '?'
   const inEur = (v: string) => {
     const n = Number(v.replace(',', '.'))
     const rate = rates?.[currency]

@@ -88,6 +88,7 @@ def product_state(statuses: list[str]) -> str:
 
 
 def list_batches() -> list[dict]:
+    groups: dict = {}
     with Session(_engine()) as session:
         batches = session.execute(select(Batch).order_by(Batch.id.desc())).scalars().all()
         rows = session.execute(
@@ -129,7 +130,10 @@ def list_batches() -> list[dict]:
                 "created_at": b.created_at.isoformat(),
                 "author": b.author,
                 "publish_status": b.publish_status,
-                "stores": [_store_json(stores.get(k), k) for k in store_keys.get(b.id, [])],
+                "stores": [
+                    {**_store_json(stores.get(k), k), **_config_json(b.group_key, k, groups)}
+                    for k in store_keys.get(b.id, [])
+                ],
                 "products": len(products),
                 "ready": states.get("ready", 0),
                 "review": states.get("review", 0),
@@ -139,6 +143,24 @@ def list_batches() -> list[dict]:
             }
         )
     return out
+
+
+def _config_json(group_key: str | None, key: str, groups: dict | None = None) -> dict:
+    """Label, country, language and currency of a store from its group config (wins over the store row).
+    groups: a cache for one listing (a group is read once)."""
+    from pipeline.config import load_group
+
+    groups = {} if groups is None else groups
+    if group_key and group_key not in groups:
+        try:
+            groups[group_key] = load_group(group_key)
+        except FileNotFoundError:
+            groups[group_key] = None
+    group = groups.get(group_key) if group_key else None
+    store = group.stores.get(key) if group else None
+    if store is None:
+        return {}
+    return {"label": store.label, "country": store.country, "language": store.language, "currency": store.currency}
 
 
 def _store_json(store: Store | None, key: str) -> dict:
@@ -168,6 +190,18 @@ def _readiness(group_key: str | None, keys: list[str], with_template: set[str]) 
         out[key] = {
             "template": key in with_template,
             "access": missing_settings(store) if store else "Магазинът не е в група.",
+            # The group config (stores.yaml + what was set in the app) is the truth for these; a store row made
+            # by a catalog upload may have none of them.
+            **(
+                {
+                    "label": store.label,
+                    "country": store.country,
+                    "language": store.language,
+                    "currency": store.currency,
+                }
+                if store
+                else {}
+            ),
         }
     return out
 

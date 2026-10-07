@@ -144,3 +144,23 @@ def test_each_store_says_whether_it_can_be_published(batch):
     for store in batch["stores"]:
         assert set(store) >= {"template", "access"}
         assert store["access"]  # the seed's stores have no domain: what stops the upload is said
+
+
+def test_store_currency_and_name_come_from_the_group_config(batch):
+    """A store row made by a catalog upload can lack its currency and name; the product screen must still show
+    the store's own currency (a live CZK store showed EUR and prices were typed in euros)."""
+    from db.models import Store
+
+    with Session(engine()) as session, session.begin():
+        row = session.get(Store, "parfemija")
+        saved = (row.label, row.currency, row.country)
+        row.label, row.currency, row.country = "parfemija", None, None
+    try:
+        stores = {s["key"]: s for s in review.get_batch(batch["id"])["stores"]}
+        assert stores["parfemija"]["currency"] == "EUR" and stores["parfemija"]["label"] == "Parfemija (1-HR)"
+        listed = next(b for b in review.list_batches() if b["id"] == batch["id"])
+        assert {s["key"]: s["country"] for s in listed["stores"]}["parfemija"] == "HR"
+    finally:
+        with Session(engine()) as session, session.begin():
+            row = session.get(Store, "parfemija")
+            row.label, row.currency, row.country = saved
