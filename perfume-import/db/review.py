@@ -252,6 +252,11 @@ def get_batch(batch_id: int) -> dict:
             ).scalars()
         )
         readiness = _readiness(batch.group_key, store_order, with_template)
+        from db.stores import accepted_profiles
+
+        for key, profile in accepted_profiles(store_order).items():
+            # how the store writes its prices (cents like "99"): the app converts euros the same way (lib/money)
+            readiness[key]["price_cents"] = ((profile.get("items") or {}).get("price_rounding") or {}).get("value")
         return {
             "id": batch.id,
             "kind": batch.kind,

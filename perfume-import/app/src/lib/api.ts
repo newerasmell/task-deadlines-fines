@@ -63,6 +63,7 @@ export type StoreInfo = {
   currency: string | null
   template?: boolean // an accepted store profile: products are built by its pattern
   access?: string | null // what stops an upload to this store (domain or Shopify access); null = can publish
+  price_cents?: string | null // the store's usual price ending ("99", "00"), from its profile
 }
 
 export type BatchSummary = {

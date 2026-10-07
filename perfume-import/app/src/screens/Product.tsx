@@ -10,6 +10,7 @@ import { Dialog } from '../components/ui/dialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type Batch, type FieldRecord, type PricePlan, type Product, type StoreInfo } from '../lib/api'
 import { cn } from '../lib/cn'
+import { fromEur, toEur } from '../lib/money'
 import {
   allFields,
   display,
@@ -508,7 +509,7 @@ function PricesSection({ batch, product }: { batch: Batch; product: Product }) {
               canPublish={batch.kind === 'new'}
               busy={running || busy}
               onPublish={() => void publish([s.key])}
-              key={`${product.id}-${s.key}-${display(product.stores[s.key].fields.price?.value)}-${display(product.stores[s.key].fields.compare_at?.value)}-${plan?.date ?? ''}-${plan?.stores[s.key]?.price ?? ''}`}
+              key={`${product.id}-${s.key}-${display(product.stores[s.key].fields.price?.value)}-${display(product.stores[s.key].fields.compare_at?.value)}-${plan?.date ?? ''}-${plan?.stores[s.key]?.price ?? ''}-${fx.data ? 'fx' : ''}`}
               batch={batch}
               product={product}
               store={s}
@@ -543,23 +544,34 @@ function PriceRow({
   const fields = sp.fields
   const price = fields.price
   const compare = fields.compare_at
-  const initial = {
-    price: money(price?.value),
-    compare: money(compare?.value),
-  }
-  const [draft, setDraft] = useState(
-    planned?.price ? { price: planned.price, compare: planned.compare_at ?? '' } : initial,
-  )
   const currency = store.currency ?? '?'
-  const inEur = (v: string) => {
-    const n = Number(v.replace(',', '.'))
-    const rate = rates?.[currency]
-    return currency !== 'EUR' && rate && n > 0 ? `≈ €${(n / rate).toFixed(2)}` : null
-  }
+  const initial = { price: money(price?.value), compare: money(compare?.value) }
+  const foreign = currency !== 'EUR' && !!rates?.[currency]
+  // Outside the euro the row takes euros and saves the store's own amount (shown under the field); „в Kč“ switches
+  // to typing the local amount. A price from the euro calculator above is shown as it is, in the local currency.
+  const [eurMode, setEurMode] = useState(foreign && !planned?.price)
+  const startLocal = planned?.price ? { price: planned.price, compare: planned.compare_at ?? '' } : initial
+  const [draft, setDraft] = useState(
+    eurMode
+      ? { price: toEur(startLocal.price, currency, rates), compare: toEur(startLocal.compare, currency, rates) }
+      : startLocal,
+  )
+  const local = eurMode
+    ? {
+        price: fromEur(draft.price, currency, rates, store.price_cents),
+        compare: fromEur(draft.compare, currency, rates, store.price_cents),
+      }
+    : draft
   const decide = useDecide(batch.id)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const changed = draft.price !== initial.price || draft.compare !== initial.compare
+  const changed =
+    local.price !== null &&
+    local.compare !== null &&
+    (eurMode
+      ? toEur(local.price, currency, rates) !== toEur(initial.price, currency, rates) ||
+        toEur(local.compare, currency, rates) !== toEur(initial.compare, currency, rates)
+      : local.price !== initial.price || local.compare !== initial.compare)
   const ready = store.template && !store.access
   const pending = pendingText(fields)
   const why = !store.template
@@ -567,22 +579,22 @@ function PriceRow({
     : (shortReason(store.access) ?? (pending ? `${pending}: реши ги в таблицата долу` : null))
   const issue = [price, compare].find((f) => f && f.status !== 'ok' && f.message)
 
+  const switchMode = () => {
+    if (eurMode) setDraft({ price: local.price ?? '', compare: local.compare ?? '' })
+    else setDraft({ price: toEur(draft.price, currency, rates), compare: toEur(draft.compare, currency, rates) })
+    setEurMode(!eurMode)
+  }
+
   const save = async () => {
+    if (local.price === null || local.compare === null) return
     setSaving(true)
     setError(null)
     try {
-      if (price && draft.price !== initial.price)
-        await decide.mutateAsync({
-          fieldId: price.id,
-          action: 'edit',
-          value: draft.price.replace(',', '.'),
-        })
-      if (compare && draft.compare !== initial.compare)
-        await decide.mutateAsync({
-          fieldId: compare.id,
-          action: 'edit',
-          value: draft.compare.replace(',', '.'),
-        })
+      const next = { price: local.price.replace(',', '.'), compare: local.compare.replace(',', '.') }
+      if (price && next.price !== initial.price)
+        await decide.mutateAsync({ fieldId: price.id, action: 'edit', value: next.price })
+      if (compare && next.compare !== initial.compare)
+        await decide.mutateAsync({ fieldId: compare.id, action: 'edit', value: next.compare })
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -590,6 +602,13 @@ function PriceRow({
     }
   }
 
+  const hint = (entered: string, saved: string | null) => {
+    if (!entered.trim()) return ' '
+    if (saved === null) return 'невалидна сума'
+    if (eurMode) return `€ → ${saved} ${currency}`
+    const eur = toEur(saved, currency, rates)
+    return currency !== 'EUR' && eur ? `${currency} · ≈ €${eur}` : currency
+  }
   const input = 'tabular h-8 w-full rounded-md border border-line bg-canvas px-2 text-sm'
   return (
     <form
@@ -602,41 +621,54 @@ function PriceRow({
     >
       <span
         role="cell"
-        className="flex min-w-0 items-center gap-2"
+        className="flex min-w-0 flex-col gap-0.5"
         title={ready ? 'Може да се публикува' : (why ?? undefined)}
       >
-        <span
-          aria-hidden
-          className={cn('size-2.5 shrink-0 rounded-full', ready ? 'bg-ok' : store.template ? 'bg-warning' : 'bg-line')}
-        />
-        <span className="truncate">
-          {store.label} · {storeShort(store)}
-          {store.currency ? ` · ${store.currency}` : ''}
+        <span className="flex min-w-0 items-center gap-2">
+          <span
+            aria-hidden
+            className={cn(
+              'size-2.5 shrink-0 rounded-full',
+              ready ? 'bg-ok' : store.template ? 'bg-warning' : 'bg-line',
+            )}
+          />
+          <span className="truncate">
+            {store.label} · {storeShort(store)} · {currency}
+          </span>
         </span>
+        {foreign && (
+          <button
+            type="button"
+            onClick={switchMode}
+            className="ml-[18px] self-start border-0 bg-transparent p-0 text-[11px] text-accent hover:underline"
+          >
+            {eurMode ? `въведи в ${currency}` : 'въведи в EUR'}
+          </button>
+        )}
       </span>
       <span role="cell" className="flex flex-col gap-0.5">
         <input
-          aria-label={`Цена ${store.label} (${currency})`}
+          aria-label={`Цена ${store.label} (${eurMode ? 'EUR' : currency})`}
           inputMode="decimal"
-          placeholder="без цена"
+          placeholder={eurMode ? 'цена в €' : 'без цена'}
           value={draft.price}
           onChange={(e) => setDraft({ ...draft, price: e.target.value })}
           className={input}
         />
-        <span className="tabular text-[11px] text-ink-2">
-          {[currency, inEur(draft.price)].filter(Boolean).join(' · ')}
+        <span className={cn('tabular text-[11px]', eurMode ? 'text-ink-3' : 'text-ink-2')}>
+          {draft.price.trim() ? hint(draft.price, local.price) : eurMode ? '€' : currency}
         </span>
       </span>
       <span role="cell" className="flex flex-col gap-0.5">
         <input
-          aria-label={`Зачеркната цена ${store.label} (${currency})`}
+          aria-label={`Зачеркната цена ${store.label} (${eurMode ? 'EUR' : currency})`}
           inputMode="decimal"
           placeholder="—"
           value={draft.compare}
           onChange={(e) => setDraft({ ...draft, compare: e.target.value })}
           className={input}
         />
-        <span className="tabular text-[11px] text-ink-2">{inEur(draft.compare) ?? ' '}</span>
+        <span className="tabular text-[11px] text-ink-2">{hint(draft.compare, local.compare)}</span>
       </span>
       <span role="cell" className="min-w-0 text-xs leading-snug">
         {error ? (
