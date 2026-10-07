@@ -160,13 +160,21 @@ def _language(fields: dict[str, Field], ctx: Context) -> None:
         f = fields.get(key)
         if not f or not f.value or len(f.value) < 3:
             continue
-        found = lang.detect(f.value, min_chars=12)
         wrong_script = is_latin(f.value) != expect_latin
+        # Three short note names are too little to tell a language: "jantar, kumarin, vetiver" is Croatian but reads
+        # as English. With an English reference (new products), notes that differ from it were translated; only an
+        # untranslated copy of the English is flagged. Catalog audits (no reference) keep the detector.
+        if f.value_en:
+            untranslated = store_lang != "en" and f.value.strip().lower() == str(f.value_en).strip().lower()
+            found = "en" if untranslated and lang.detect(f.value, min_chars=12) == "en" else None
+        else:
+            found = lang.detect(f.value, min_chars=12)
         if (found == "en" and store_lang != "en") or wrong_script:
             what = "на английски" if found == "en" else ("на латиница" if is_latin(f.value) else "на друга азбука")
             f.flag(
                 "warning",
-                f"Нотите „{f.value[:40]}“ са {what}, а магазинът е на „{store_lang}“. Преведи ги по глосара.",
+                f"Нотките „{f.value[:40]}“ изглеждат {what}, а магазинът е на „{store_lang}“. Ако е така: Промени →"
+                " „Синхронизирай във всички магазини (превод)“. Ако са правилни: „Остави както е“.",
                 "language_notes",
             )
 

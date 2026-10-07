@@ -181,3 +181,17 @@ def test_audit_on_real_export_finds_known_defects(store):
     assert all(p.fields["gender"].value == "Unisex Perfume" for p in fixed_unsiex)
     for row in report.findings():
         assert row["message"], row
+
+
+def test_translated_notes_are_not_mistaken_for_english():
+    """Live: Croatian „jantar, kumarin, vetiver“ was flagged as English. With the English reference next to it,
+    only an untranslated copy is flagged."""
+    hr = Context(load_group("group-1"), load_group("group-1").store("parfemija"))
+    p = product(base_note="jantar, kumarin, vetiver")
+    p["base_note"].value_en = "amber, coumarin, vetiver"
+    validate_product(p, hr)
+    assert "language_notes" not in [i["rule"] for i in p["base_note"].issues]
+    q = product(base_note="amber, tonka bean, vanilla")
+    q["base_note"].value_en = "amber, tonka bean, vanilla"
+    validate_product(q, hr)
+    assert q["base_note"].rule == "language_notes"
