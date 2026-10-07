@@ -164,3 +164,24 @@ def test_store_currency_and_name_come_from_the_group_config(batch):
         with Session(engine()) as session, session.begin():
             row = session.get(Store, "parfemija")
             row.label, row.currency, row.country = saved
+
+
+def test_a_decided_ean_reaches_stores_whose_ean_and_sku_are_empty(batch):
+    """Live: TvojaParfum had no EAN and an empty SKU (None, not ""), so the EAN decided in another store never
+    reached it. A shared decision now fills every store where the field is empty or blocked."""
+    from db.models import FieldRow, StoreProduct
+
+    product = batch["products"][0]
+    with Session(engine()) as session, session.begin():
+        for sp in session.query(StoreProduct).filter(StoreProduct.product_id == product["id"]):
+            for row in session.query(FieldRow).filter(
+                FieldRow.store_product_id == sp.id, FieldRow.key.in_(["ean", "sku"])
+            ):
+                row.status = "blocked"
+                row.value = None if sp.store_key == "parfemija" else ("" if row.key == "ean" else "SK")
+    ean = fields(review.get_product(product["id"]), "premierparfums")["ean"]
+    after = review.decide(ean["id"], "edit", ACTOR, "3614270581670")
+    for store in STORES:
+        f = fields(after, store)
+        assert f["ean"]["value"] == "3614270581670", store
+        assert f["sku"]["value"] == "SK3614270581670", store

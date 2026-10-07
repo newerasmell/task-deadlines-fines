@@ -356,6 +356,8 @@ def decide(field_id: int, action: str, actor: str | None, value=None) -> dict:
                 raise ReviewError("Празна стойност. Въведи стойност или избери от алтернативите.")
             for store_key, _ in targets:
                 _set_value(batch, store_key, siblings[store_key], row.key, value, action, actor)
+            if row.key in ("ean", "sku"):
+                _sync_ean(batch, siblings, sp.store_key, actor)
 
         _withdraw_approval(session, product.id)
         session.add(
@@ -376,16 +378,35 @@ def vocab_values(group_key: str, key: str) -> list[str]:
     return list(load_group(group_key).vocab.get(key, {}))
 
 
+def _blank(row: FieldRow) -> bool:
+    return row.value in (None, "", [], "None") or row.status == "blocked"
+
+
 def decision_targets(siblings: dict, store_key: str, row: FieldRow) -> list[tuple[str, FieldRow]]:
-    """A shared fact with the same value in every store is one decision; anything else is this store only."""
+    """A shared fact is one decision for every store that has the same value or none (empty or blocked); a store
+    with a different value of its own keeps it. The SKU is per store (its formula): it follows the EAN instead
+    (_sync_ean)."""
     if row.key not in SHARED:
         return [(store_key, row)]
     out = []
     for key, rows in siblings.items():
         other = rows.get(row.key)
-        if other is not None and (other.id == row.id or other.value == row.value):
+        if other is None:
+            continue
+        if other.id == row.id or other.value == row.value or (row.key != "sku" and _blank(other)):
             out.append((key, other))
     return out
+
+
+def _sync_ean(batch: Batch, siblings: dict, store_key: str, actor: str | None) -> None:
+    """After a person sets the EAN or SKU in one store: every store without an EAN gets it (and its SKU)."""
+    ean = (siblings.get(store_key) or {}).get("ean")
+    if ean is None or _blank(ean):
+        return
+    for key, rows in siblings.items():
+        other = rows.get("ean")
+        if key != store_key and other is not None and _blank(other):
+            _set_value(batch, key, rows, "ean", ean.value, "edit", actor)
 
 
 def _accept(row: FieldRow, actor: str | None) -> None:
