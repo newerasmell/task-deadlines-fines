@@ -424,6 +424,15 @@ export const api = {
   crossSync: (batchId: number) => request<CrossSyncOptions>(`/api/batches/${batchId}/crosssync`),
   startCrossSync: (batchId: number, kinds: string[]) =>
     post<{ job_id: string }>(`/api/batches/${batchId}/crosssync`, { kinds }),
+  crossSyncProduct: (productId: number) =>
+    request<{ product_id: number; items: { kind: string; label: string; from: string; value: unknown }[] }>(
+      `/api/products/${productId}/crosssync`,
+    ),
+  takeFromStores: (productId: number, kinds: string[]) =>
+    post<{ result: Record<string, string>; cost_usd: number; product: Product }>(
+      `/api/products/${productId}/crosssync`,
+      { kinds },
+    ),
   publish: (productId: number, stores: string[] | null, status: 'draft' | 'active') =>
     post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, { stores, status }),
   stores: () => request<StoreRow[]>('/api/stores'),

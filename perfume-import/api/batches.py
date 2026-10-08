@@ -206,3 +206,19 @@ def crosssync_start(batch_id: int, body: CrossSync, x_actor: str | None = Header
     from db import crosssync
 
     return {"job_id": _call(crosssync.start, batch_id, body.kinds, actor_name(x_actor))}
+
+
+@router.get("/products/{product_id}/crosssync")
+def crosssync_product(product_id: int):
+    """What one audited product can take from the same product in the other stores' audits."""
+    from db import crosssync
+
+    return _call(crosssync.for_product, product_id)
+
+
+@router.post("/products/{product_id}/crosssync")
+def crosssync_product_apply(product_id: int, body: CrossSync, x_actor: str | None = Header(default=None)):
+    """Take these kinds for this product now (picture composed, texts translated)."""
+    from db import crosssync
+
+    return _call(crosssync.run_product, product_id, body.kinds, actor_name(x_actor))

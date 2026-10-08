@@ -55,6 +55,7 @@ export function ProductScreen() {
           <div className="flex min-h-0 min-w-0 grow flex-col gap-6 overflow-y-auto px-7 py-6 xl:flex-row xl:items-start xl:gap-7">
             {!open && <ImageSection product={product} onOpen={(store) => setOpen({ store, key: 'image' })} />}
             <div className="flex min-w-0 grow flex-col gap-6">
+              {batch.data.kind === 'audit' && <FromOtherStores batchId={batch.data.id} productId={product.id} />}
               {batch.data.kind === 'audit' && <LiveChangesSection batchId={batch.data.id} productId={product.id} />}
               <PricesSection batch={batch.data} product={product} />
               <FieldsTable batch={batch.data} product={product} open={open} onOpen={setOpen} />
@@ -1086,6 +1087,74 @@ function LiveChangesSection({ batchId, productId }: { batchId: number; productId
       <span className="text-xs leading-normal text-ink-2">
         Обновява се съществуващият продукт в Shopify (намерен по handle, проверен по SKU), само показаните полета.
         Снимки, наличности и канали не се пипат.
+      </span>
+    </section>
+  )
+}
+
+/** Catalog audit: what this product can take from the same product (EAN) in the other stores, one by one. */
+function FromOtherStores({ batchId, productId }: { batchId: number; productId: number }) {
+  const client = useQueryClient()
+  const offer = useQuery({ queryKey: ['crosssync-product', productId], queryFn: () => api.crossSyncProduct(productId) })
+  const [busy, setBusy] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const items = offer.data?.items ?? []
+  if (offer.isPending || !items.length) return null
+
+  const take = async (kinds: string[], key: string) => {
+    setBusy(key)
+    setNote(null)
+    try {
+      const r = await api.takeFromStores(productId, kinds)
+      client.setQueryData<Batch>(['batch', batchId], (old) =>
+        old ? { ...old, products: old.products.map((p) => (p.id === r.product.id ? r.product : p)) } : old,
+      )
+      setNote(
+        Object.entries(r.result)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(' · ') + (r.cost_usd ? ` · $${r.cost_usd.toFixed(3)}` : ''),
+      )
+      void client.invalidateQueries({ queryKey: ['crosssync-product', productId] })
+      void client.invalidateQueries({ queryKey: ['live', productId] })
+    } catch (e) {
+      setNote((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <section className="flex flex-col gap-2 rounded-lg border border-line p-4" aria-label="От другите магазини">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="m-0 grow text-base font-semibold">От другите магазини</h2>
+        <Button size="sm" disabled={!!busy} onClick={() => void take([...new Set(items.map((i) => i.kind))], 'all')}>
+          {busy === 'all' ? 'Взимам…' : 'Вземи всичко'}
+        </Button>
+      </div>
+      <div className="flex flex-col text-sm">
+        {items.map((it) => (
+          <div
+            key={`${it.kind}-${it.from}`}
+            className="grid grid-cols-[120px_minmax(0,1fr)_90px] items-center gap-3 border-b border-line-2 py-2 last:border-b-0"
+          >
+            <span className="flex flex-col">
+              {it.label}
+              <span className="text-xs text-ink-2">от {it.from}</span>
+            </span>
+            {it.kind === 'image' ? (
+              <img src={display(it.value)} alt="" className="h-16 w-16 rounded border border-line object-contain" />
+            ) : (
+              <span className="line-clamp-2 text-ink-3">{stripHtml(display(it.value))}</span>
+            )}
+            <Button size="sm" variant="primary" disabled={!!busy} onClick={() => void take([it.kind], it.kind)}>
+              {busy === it.kind ? '…' : 'Вземи'}
+            </Button>
+          </div>
+        ))}
+      </div>
+      {note && <span className="text-xs text-ink-3">{note}</span>}
+      <span className="text-xs leading-normal text-ink-2">
+        Снимката се сглобява по фона на този магазин, описанието и нотките се превеждат. Взетото става поправка и се
+        качва с „Обнови в магазина“.
       </span>
     </section>
   )

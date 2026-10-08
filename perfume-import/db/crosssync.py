@@ -168,8 +168,47 @@ def start(batch_id: int, kinds: list[str], actor: str | None, client=None, fetch
     return job_id
 
 
-def run(batch_id: int, kinds: list[str], actor: str | None, client=None, fetch=None, job: dict | None = None):
-    """Apply the approved kinds. Returns ({kind: filled count}, cost)."""
+def for_product(product_id: int) -> dict:
+    """What this one audited product can take from the other stores: kind, store and the value itself."""
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        batch_id = product.batch_id
+    batch, plan = _plan(batch_id)
+    group = load_group(batch.group_key) if batch.group_key else None
+    items = []
+    for kind, found in plan.items():
+        for item in found:
+            if item["product_id"] == product_id:
+                store = group.stores[item["store"]].label if group and item["store"] in group.stores else item["store"]
+                items.append({"kind": kind, "label": KINDS[kind], "from": store, "value": item["value"]})
+    return {"product_id": product_id, "batch_id": batch_id, "items": items}
+
+
+def run_product(product_id: int, kinds: list[str], actor: str | None, client=None, fetch=None) -> dict:
+    """Take these kinds for one product now; returns the product's new fields (review.get_product)."""
+    from db.review import get_product
+
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        batch_id = product.batch_id
+    result, cost = run(batch_id, kinds, actor, client, fetch, product_ids=[product_id])
+    return {"result": result, "cost_usd": cost, "product": get_product(product_id)}
+
+
+def run(
+    batch_id: int,
+    kinds: list[str],
+    actor: str | None,
+    client=None,
+    fetch=None,
+    job: dict | None = None,
+    product_ids: list[int] | None = None,
+):
+    """Apply the approved kinds (to these products only, when given). Returns ({kind: filled count}, cost)."""
     from db.repo import media_url
     from pipeline import images, media
     from pipeline.ai import default_client
@@ -180,7 +219,12 @@ def run(batch_id: int, kinds: list[str], actor: str | None, client=None, fetch=N
     group = load_group(batch.group_key)
     store = group.stores.get(batch.store_key)
     language = store.language if store else "en"
-    todo = [(kind, item) for kind in kinds for item in plan.get(kind, [])]
+    todo = [
+        (kind, item)
+        for kind in kinds
+        for item in plan.get(kind, [])
+        if product_ids is None or item["product_id"] in product_ids
+    ]
     if job is not None:
         job["total"] = len(todo)
     ai = None

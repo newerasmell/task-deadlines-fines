@@ -72,3 +72,15 @@ def test_empty_picture_and_description_come_from_the_other_store(audits):
     assert state["live_status"] == "uploaded", state
     assert fake.media_added and fake.media_added[0][0]["originalSource"].startswith("https://staging.example/")
     assert fake.updates[0]["descriptionHtml"] == "<p>Prevedeni opis.</p>"
+
+
+def test_one_product_takes_only_what_is_asked(audits):
+    _, target = audits
+    product_id = review.get_batch(target)["products"][1]["id"]
+    offered = crosssync.for_product(product_id)
+    assert {i["kind"] for i in offered["items"]} >= {"image", "body_html"}
+    done = crosssync.run_product(product_id, ["image"], "Мария", fetch=lambda url: png(1200, 1200))
+    fields = done["product"]["stores"]["parfemija"]["fields"]
+    assert fields["image"]["value"].startswith("/api/media/") and fields["body_html"]["value"] in ("", None)
+    other = review.get_batch(target)["products"][0]["stores"]["parfemija"]["fields"]
+    assert other["image"]["value"] in ("", None)  # the other product is untouched
