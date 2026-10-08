@@ -84,3 +84,11 @@ def test_one_product_takes_only_what_is_asked(audits):
     assert fields["image"]["value"].startswith("/api/media/") and fields["body_html"]["value"] in ("", None)
     other = review.get_batch(target)["products"][0]["stores"]["parfemija"]["fields"]
     assert other["image"]["value"] in ("", None)  # the other product is untouched
+
+
+def test_the_products_that_took_something_are_listed(audits):
+    _, target = audits
+    crosssync.run(target, ["image"], "Мария", fetch=lambda url: png(1200, 1200))
+    listed = crosssync.taken(target)
+    assert len(listed["items"]) == 2 and listed["pending"] == 2
+    assert listed["items"][0]["kinds"] == ["Снимка"] and listed["items"][0]["image"].startswith("/api/media/")

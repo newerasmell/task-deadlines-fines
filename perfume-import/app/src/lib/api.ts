@@ -272,6 +272,19 @@ export type Job = {
 
 export type AccessInfo = { kind: 'client' | 'token'; updated_by: string | null; updated_at: string | null }
 
+export type CrossSyncTaken = {
+  batch_id: number
+  pending: number
+  items: {
+    product_id: number
+    title: string
+    kinds: string[]
+    image: unknown
+    live_status: 'uploaded' | 'failed' | null
+    live_message: string | null
+  }[]
+}
+
 export type CrossSyncOptions = {
   batch_id: number
   kinds: {
@@ -420,7 +433,9 @@ export const api = {
   liveChanges: (productId: number) => request<LiveChanges>(`/api/products/${productId}/live`),
   pushLive: (productId: number) => post<LiveChanges>(`/api/products/${productId}/live`, {}),
   liveBatch: (batchId: number) => request<LiveBatch>(`/api/batches/${batchId}/live`),
-  startLiveBatch: (batchId: number) => post<LiveBatch>(`/api/batches/${batchId}/live`, {}),
+  startLiveBatch: (batchId: number, productIds?: number[]) =>
+    post<LiveBatch>(`/api/batches/${batchId}/live`, { product_ids: productIds ?? null }),
+  crossSyncTaken: (batchId: number) => request<CrossSyncTaken>(`/api/batches/${batchId}/crosssync/taken`),
   crossSync: (batchId: number) => request<CrossSyncOptions>(`/api/batches/${batchId}/crosssync`),
   startCrossSync: (batchId: number, kinds: string[]) =>
     post<{ job_id: string }>(`/api/batches/${batchId}/crosssync`, { kinds }),

@@ -153,9 +153,9 @@ def pending(batch_id: int) -> list[int]:
     return list(out)
 
 
-def start_batch(batch_id: int, actor: str | None, shop=None) -> dict:
-    """Every product of the audit with fixes, in the background (one run per audit at a time)."""
-    todo = pending(batch_id)
+def start_batch(batch_id: int, actor: str | None, shop=None, product_ids: list[int] | None = None) -> dict:
+    """Every product of the audit with fixes (or only these), in the background (one run per audit at a time)."""
+    todo = [p for p in pending(batch_id) if product_ids is None or p in product_ids]
     with _lock:
         if _jobs.get(batch_id, {}).get("running"):
             raise LiveError("Вече се обновява този одит.")

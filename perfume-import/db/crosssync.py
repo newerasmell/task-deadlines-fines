@@ -299,7 +299,7 @@ def run(
                 row.value = value
                 row.origin, row.status = "input", "ok"
                 row.message = f"{note}. Одобрено от {actor or 'екипа'}."
-                row.issues = []
+                row.issues = [{"status": "ok", "rule": "crosssync", "message": row.message}]  # for the „Взети“ tab
                 row.decided_by = actor
                 filled[kind] += 1
         except Exception as exc:  # one product's problem never stops the others
@@ -321,3 +321,53 @@ def run(
         KINDS[k]: f"{n} попълнени" + (f", {failed[k]} неуспешни" if failed.get(k) else "") for k, n in filled.items()
     }
     return result, round(cost, 4)
+
+
+def taken(batch_id: int) -> dict:
+    """Products of this audit that took something from the other stores, with what and their live state."""
+    from sqlalchemy import or_
+
+    with Session(_engine()) as session:
+        rows = session.execute(
+            select(FieldRow, StoreProduct.product_id, StoreProduct.upload_status, StoreProduct.upload_message)
+            .join(StoreProduct, StoreProduct.id == FieldRow.store_product_id)
+            .join(Product, Product.id == StoreProduct.product_id)
+            .where(
+                Product.batch_id == batch_id,
+                or_(
+                    FieldRow.issues.contains([{"rule": "crosssync"}]),
+                    FieldRow.message.like("От % Одобрено от %"),  # filled before the marker existed
+                ),
+            )
+            .order_by(StoreProduct.product_id)
+        ).all()
+        ids = sorted({pid for _, pid, _, _ in rows})
+        titles = (
+            dict(
+                session.execute(
+                    select(StoreProduct.product_id, FieldRow.value)
+                    .join(FieldRow, FieldRow.store_product_id == StoreProduct.id)
+                    .where(StoreProduct.product_id.in_(ids), FieldRow.key == "title")
+                ).all()
+            )
+            if ids
+            else {}
+        )
+    out: dict[int, dict] = {}
+    for row, product_id, status, message in rows:
+        item = out.setdefault(
+            product_id,
+            {
+                "product_id": product_id,
+                "title": str(titles.get(product_id) or ""),
+                "kinds": [],
+                "image": None,
+                "live_status": status,
+                "live_message": message,
+            },
+        )
+        item["kinds"].append(KINDS.get(row.key, row.key))
+        if row.key == "image":
+            item["image"] = row.value
+    items = list(out.values())
+    return {"batch_id": batch_id, "items": items, "pending": sum(1 for i in items if i["live_status"] != "uploaded")}

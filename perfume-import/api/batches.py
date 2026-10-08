@@ -222,3 +222,11 @@ def crosssync_product_apply(product_id: int, body: CrossSync, x_actor: str | Non
     from db import crosssync
 
     return _call(crosssync.run_product, product_id, body.kinds, actor_name(x_actor))
+
+
+@router.get("/batches/{batch_id}/crosssync/taken")
+def crosssync_taken(batch_id: int):
+    """The products of this audit that took something from the other stores (the „Взети“ tab)."""
+    from db import crosssync
+
+    return _call(crosssync.taken, batch_id)

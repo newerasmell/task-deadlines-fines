@@ -243,8 +243,12 @@ def live_batch_state(batch_id: int):
     return _live(live.batch_state, batch_id)
 
 
+class LiveSome(BaseModel):
+    product_ids: list[int] | None = None  # None: every fixed product of the audit
+
+
 @router.post("/batches/{batch_id}/live", status_code=202)
-def live_batch_start(batch_id: int, x_actor: str | None = Header(default=None)):
+def live_batch_start(batch_id: int, body: LiveSome | None = None, x_actor: str | None = Header(default=None)):
     from db import live
 
-    return _live(live.start_batch, batch_id, actor_name(x_actor))
+    return _live(live.start_batch, batch_id, actor_name(x_actor), None, body.product_ids if body else None)

@@ -7,7 +7,7 @@ import { Empty, Failure, Loading } from '../components/States'
 import { StatusMark } from '../components/StatusMark'
 import { Button } from '../components/ui/button'
 import { Dialog } from '../components/ui/dialog'
-import { api, type AuditItem, type AuditIssue } from '../lib/api'
+import { api, type AuditItem, type AuditIssue, type CrossSyncTaken } from '../lib/api'
 import { cn } from '../lib/cn'
 import { display, fieldLabel, groupLabel, plural, stripHtml } from '../lib/labels'
 import { useAudit, useAuditItems, useProduct, useStores } from '../lib/queries'
@@ -21,6 +21,7 @@ const EXPLAIN: Record<string, string> = {
   warning: 'Не спира нищо. Реши дали да го поправиш; поправеното влиза в CSV-то.',
   suggested: 'Предложение за преглед: приеми го или го промени.',
 }
+const TAKEN = '__taken' // the „Взети от другите магазини“ tab, not a rule
 const PRICE_RULES = new Set(['compare_at_not_above', 'compare_at_ratio', 'price_missing'])
 
 export function AuditScreen() {
@@ -31,7 +32,8 @@ export function AuditScreen() {
   const [limit, setLimit] = useState(50)
   const [open, setOpen] = useState<{ productId: number; key: string } | null>(null)
   const current = rule ?? summary.data?.issues[0]?.rule ?? null
-  const items = useAuditItems(batchId, current, limit)
+  const items = useAuditItems(batchId, current === TAKEN ? null : current, limit)
+  const taken = useQuery({ queryKey: ['crosssync-taken', batchId], queryFn: () => api.crossSyncTaken(batchId) })
   const opened = useProduct(open?.productId ?? null) // only this product, not the whole catalog
 
   if (summary.isPending) return <Loading what="одита" />
@@ -84,6 +86,24 @@ export function AuditScreen() {
             <div className="px-3 py-2.5 text-right">Брой</div>
             {!open && <div className="px-5 py-2.5">Какво прави системата</div>}
           </div>
+          {!!taken.data?.items.length && (
+            <button
+              onClick={() => {
+                setRule(TAKEN)
+                setOpen(null)
+              }}
+              className={cn(
+                'flex items-center gap-2 border-0 border-b border-line-2 bg-canvas px-5 py-3 text-left text-sm hover:bg-surface',
+                current === TAKEN && 'bg-suggested-tint',
+              )}
+            >
+              <span className="grow font-medium">Взети от другите магазини</span>
+              <span className="tabular text-ink-2">
+                {taken.data.items.length}
+                {taken.data.pending ? ` · ${taken.data.pending} за качване` : ' · качени'}
+              </span>
+            </button>
+          )}
           {s.issues.map((i) => (
             <IssueRow
               key={i.rule}
@@ -101,7 +121,8 @@ export function AuditScreen() {
         </section>
 
         <section className="flex min-w-0 grow flex-col gap-4 overflow-y-auto px-7 py-6">
-          {issue && (
+          {current === TAKEN && taken.data && <TakenList batchId={batchId} data={taken.data} />}
+          {current !== TAKEN && issue && (
             <>
               <div className="flex flex-col gap-1">
                 <h2 className="m-0 text-lg font-semibold">{issue.label}</h2>
@@ -435,6 +456,112 @@ function CrossSync({ batchId }: { batchId: number }) {
         )}
         {error && <span className="text-sm text-blocked-text">{error}</span>}
       </Dialog>
+    </>
+  )
+}
+
+/** The products that took something from the other stores: what, a preview, live state; update one or all. */
+function TakenList({ batchId, data }: { batchId: number; data: CrossSyncTaken }) {
+  const client = useQueryClient()
+  const [busy, setBusy] = useState<number | 'all' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const refresh = () => {
+    void client.invalidateQueries({ queryKey: ['crosssync-taken', batchId] })
+    void client.invalidateQueries({ queryKey: ['live-batch', batchId] })
+  }
+  const pushOne = async (productId: number) => {
+    setBusy(productId)
+    setError(null)
+    try {
+      await api.pushLive(productId)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(null)
+      refresh()
+    }
+  }
+  const pending = data.items.filter((i) => i.live_status !== 'uploaded').map((i) => i.product_id)
+  const pushAll = async () => {
+    setBusy('all')
+    setError(null)
+    try {
+      await api.startLiveBatch(batchId, pending)
+      const wait = async () => {
+        const state = await api.liveBatch(batchId)
+        if (state.running) setTimeout(() => void wait(), 2000)
+        else {
+          setBusy(null)
+          refresh()
+        }
+      }
+      void wait()
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(null)
+    }
+  }
+  return (
+    <>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex grow flex-col gap-1">
+          <h2 className="m-0 text-lg font-semibold">Взети от другите магазини</h2>
+          <span className="text-sm text-ink-2">
+            {data.items.length} продукта получиха нещо от каталозите на другите магазини. Провери и ги обнови в
+            магазина.
+          </span>
+        </div>
+        <Button variant="primary" disabled={!pending.length || busy !== null} onClick={() => void pushAll()}>
+          {busy === 'all' ? 'Обновявам…' : `Обнови всички тези в магазина (${pending.length})`}
+        </Button>
+      </div>
+      {error && <span className="text-sm text-blocked-text">{error}</span>}
+      <div className="flex flex-col rounded-lg border border-line" role="table" aria-label="Взети от другите магазини">
+        {data.items.map((it) => (
+          <div
+            key={it.product_id}
+            role="row"
+            className="grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)_190px] items-center gap-3 border-b border-line-2 px-3.5 py-2 text-sm last:border-b-0"
+          >
+            {it.image ? (
+              <img src={String(it.image)} alt="" className="h-12 w-12 rounded border border-line object-contain" />
+            ) : (
+              <span />
+            )}
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-medium" title={it.title}>
+                {it.title}
+              </span>
+              <span className="text-xs text-ink-2">{it.kinds.join(', ')}</span>
+            </span>
+            <span
+              className={cn(
+                'min-w-0 truncate text-xs',
+                it.live_status === 'uploaded'
+                  ? 'text-ok'
+                  : it.live_status === 'failed'
+                    ? 'text-blocked-text'
+                    : 'text-ink-2',
+              )}
+              title={it.live_message ?? undefined}
+            >
+              {it.live_status === 'uploaded'
+                ? 'качено в магазина'
+                : it.live_status === 'failed'
+                  ? it.live_message
+                  : 'за качване'}
+            </span>
+            <span className="flex justify-end gap-1.5">
+              <Button size="sm" variant="ghost" asChild>
+                <Link to={`/batches/${batchId}/products/${it.product_id}`}>Продукт</Link>
+              </Button>
+              <Button size="sm" disabled={busy !== null} onClick={() => void pushOne(it.product_id)}>
+                {busy === it.product_id ? '…' : it.live_status === 'uploaded' ? 'Отново' : 'Обнови'}
+              </Button>
+            </span>
+          </div>
+        ))}
+      </div>
     </>
   )
 }
