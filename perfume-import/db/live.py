@@ -30,6 +30,7 @@ LABELS = {
     "ingredients": "Съставки",
     "product_milliliters": "Обем",
     "product_type": "Тип",
+    "image": "Снимка",
 }
 _jobs: dict[int, dict] = {}
 _lock = threading.Lock()
@@ -110,7 +111,13 @@ def push(product_id: int, actor: str | None, shop=None) -> dict:
                 raise ShopifyError(
                     f"В магазина този handle е с SKU {live_sku}, а не {sku.previous}: не е същият продукт."
                 )
-            notes = update_live(client, found, {r.key: r.value for r in todo})
+            values = {r.key: r.value for r in todo}
+            if "image" in values:  # the stored finished picture's bytes, staged to Shopify
+                from db.review import to_field
+                from db.upload import _image
+
+                values["image"] = _image({"image": to_field(rows["image"])})
+            notes = update_live(client, found, values)
         except ShopifyError as exc:
             sp.upload_status, sp.upload_message = "failed", str(exc)
         else:

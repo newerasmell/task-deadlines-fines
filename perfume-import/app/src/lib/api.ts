@@ -262,7 +262,7 @@ export type Job = {
   batch_id: number | null
   cost_usd: number | null
   fast?: boolean
-  kind?: 'extend' | 'fill' // adding stores (db/extend.py) or filling a product's missing facts (db/fill.py)
+  kind?: 'extend' | 'fill' | 'crosssync' // adding stores (db/extend.py) or filling a product's missing facts (db/fill.py)
   product_id?: number
   result?: Record<string, string> | null
   target_batch_id?: number
@@ -271,6 +271,18 @@ export type Job = {
 }
 
 export type AccessInfo = { kind: 'client' | 'token'; updated_by: string | null; updated_at: string | null }
+
+export type CrossSyncOptions = {
+  batch_id: number
+  kinds: {
+    kind: string
+    label: string
+    products: number
+    from: string[]
+    cost_usd: number
+    examples: { title: string; from: string; value: string }[]
+  }[]
+}
 
 export type LiveChanges = {
   product_id: number
@@ -409,6 +421,9 @@ export const api = {
   pushLive: (productId: number) => post<LiveChanges>(`/api/products/${productId}/live`, {}),
   liveBatch: (batchId: number) => request<LiveBatch>(`/api/batches/${batchId}/live`),
   startLiveBatch: (batchId: number) => post<LiveBatch>(`/api/batches/${batchId}/live`, {}),
+  crossSync: (batchId: number) => request<CrossSyncOptions>(`/api/batches/${batchId}/crosssync`),
+  startCrossSync: (batchId: number, kinds: string[]) =>
+    post<{ job_id: string }>(`/api/batches/${batchId}/crosssync`, { kinds }),
   publish: (productId: number, stores: string[] | null, status: 'draft' | 'active') =>
     post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, { stores, status }),
   stores: () => request<StoreRow[]>('/api/stores'),

@@ -136,3 +136,28 @@ def normalize_notes(client, text: str) -> tuple[list[str], Usage]:
     )
     notes = list(dict.fromkeys(n.strip().lower() for n in result.data["notes"] if n.strip()))
     return notes, result.usage
+
+
+def translate_html(client, html: str, language: str) -> tuple[str, Usage]:
+    """A product description from another store, translated into this store's language; HTML tags, brand and
+    fragrance names kept."""
+    name = LANGUAGE_NAMES.get(language, language)
+    result = ask(
+        client,
+        system=(
+            f"Translate this perfume shop product description into {name}. Keep the HTML tags exactly, keep brand "
+            "and fragrance names as written, keep every fact and add none. Return only the translated HTML."
+        ),
+        prompt=html,
+        schema={
+            "type": "object",
+            "properties": {"html": {"type": "string"}},
+            "required": ["html"],
+            "additionalProperties": False,
+        },
+        effort="low",
+        model=SONNET,
+        thinking=NO_THINKING,
+        max_tokens=6000,
+    )
+    return result.data["html"], result.usage

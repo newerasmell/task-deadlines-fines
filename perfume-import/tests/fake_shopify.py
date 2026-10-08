@@ -23,6 +23,7 @@ class FakeShopify:
         self.published: dict[str, list[str]] = {}  # product id -> publication ids
         self.updates: list[dict] = []  # productUpdate inputs (live audit fixes)
         self.variant_updates: list[list[dict]] = []
+        self.media_added: list[list[dict]] = []
         self.definitions = definitions or {}  # (namespace, key) -> type, enforced like Shopify does
         self.products = {p["id"]: p for p in (products or [])}  # id -> {id, handle, title, sku, ...}
         self.calls: list[dict] = []
@@ -62,6 +63,8 @@ class FakeShopify:
             return self.ok({"productByIdentifier": node})
         if "productUpdate" in query:
             self.updates.append(variables["product"])
+            if variables.get("media"):
+                self.media_added.append(variables["media"])
             return self.ok({"productUpdate": {"product": {"id": variables["product"]["id"]}, "userErrors": []}})
         if "productVariantsBulkUpdate" in query:
             self.variant_updates.append(variables["variants"])

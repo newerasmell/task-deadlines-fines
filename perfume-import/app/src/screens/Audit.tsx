@@ -58,6 +58,7 @@ export function AuditScreen() {
         <Button asChild>
           <Link to={`/batches/${batchId}/grid`}>Отвори в таблица</Link>
         </Button>
+        <CrossSync batchId={batchId} />
         <LiveAll batchId={batchId} />
         <Button variant="primary" asChild>
           <a href={`/api/batches/${batchId}/fix.csv`} download aria-disabled={!s.fix_products}>
@@ -316,6 +317,124 @@ function LiveAll({ batchId }: { batchId: number }) {
           </>
         }
       />
+    </>
+  )
+}
+
+/** Empty pictures, descriptions, notes… filled from the same products (EAN) in the other stores' catalogs, per
+ * kind the person approves; pictures composed for this store, texts translated. */
+function CrossSync({ batchId }: { batchId: number }) {
+  const client = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const options = useQuery({ queryKey: ['crosssync', batchId], queryFn: () => api.crossSync(batchId), enabled: open })
+  const job = useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => api.job(jobId!),
+    enabled: !!jobId,
+    refetchInterval: (q) => (q.state.data && !q.state.data.running ? false : 2000),
+  })
+  const j = job.data
+  const done = j && !j.running
+  const kinds = options.data?.kinds ?? []
+  const cost = kinds.filter((k) => picked.includes(k.kind)).reduce((sum, k) => sum + k.cost_usd, 0)
+
+  const start = async () => {
+    setError(null)
+    try {
+      setJobId((await api.startCrossSync(batchId, picked)).job_id)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+  const close = (o: boolean) => {
+    setOpen(o)
+    if (!o && done) {
+      setJobId(null)
+      setPicked([])
+      void client.invalidateQueries()
+    }
+  }
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Попълни от другите магазини</Button>
+      <Dialog
+        open={open}
+        onOpenChange={close}
+        title="Попълни от другите магазини"
+        description="Същите продукти (по EAN) в каталозите на другите магазини имат това, което тук липсва. Избери какво одобряваш: снимките се сглобяват по фона на този магазин, описанията и нотките се превеждат. После „Обнови в магазина“ го качва."
+        footer={
+          j ? (
+            <Button onClick={() => close(false)}>{j.running ? 'Скрий (продължава)' : 'Затвори'}</Button>
+          ) : (
+            <>
+              <Button onClick={() => close(false)}>Откажи</Button>
+              <Button variant="primary" disabled={!picked.length} onClick={() => void start()}>
+                Попълни{cost ? ` (≈ $${cost.toFixed(2)})` : ''}
+              </Button>
+            </>
+          )
+        }
+      >
+        {j ? (
+          j.running ? (
+            <span className="text-sm text-ink-2">
+              {j.stage_label}… {j.done} от {j.total}
+            </span>
+          ) : j.error ? (
+            <span className="text-sm text-blocked-text">{j.error}</span>
+          ) : (
+            <div className="flex flex-col gap-1 text-sm">
+              <span className="text-ok">
+                Готово{j.cost_usd ? ` · $${j.cost_usd.toFixed(2)}` : ''}. Провери продуктите и „Обнови в магазина“.
+              </span>
+              {Object.entries(j.result ?? {}).map(([k, v]) => (
+                <span key={k}>
+                  {k}: {v}
+                </span>
+              ))}
+            </div>
+          )
+        ) : options.isPending ? (
+          <Loading what="каталозите" />
+        ) : options.isError ? (
+          <Failure error={options.error} />
+        ) : !kinds.length ? (
+          <span className="text-sm text-ink-2">
+            Няма какво да се вземе: или нищо не липсва, или другите магазини още нямат одит с тези продукти.
+          </span>
+        ) : (
+          <div className="flex max-h-[360px] flex-col gap-3 overflow-y-auto">
+            {kinds.map((k) => (
+              <label key={k.kind} className="flex items-start gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={picked.includes(k.kind)}
+                  onChange={(e) =>
+                    setPicked(e.target.checked ? [...picked, k.kind] : picked.filter((x) => x !== k.kind))
+                  }
+                />
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="font-medium">
+                    {k.label}: {plural(k.products, 'продукт', 'продукта')}
+                    {k.cost_usd ? ` · ≈ $${k.cost_usd.toFixed(2)}` : ''}
+                  </span>
+                  <span className="text-xs text-ink-2">от {k.from.join(', ')}</span>
+                  {k.examples.slice(0, 3).map((e, i) => (
+                    <span key={i} className="truncate text-xs text-ink-3" title={e.value}>
+                      {e.title} ← {e.from}: {k.kind === 'image' ? 'снимка' : stripHtml(e.value)}
+                    </span>
+                  ))}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+        {error && <span className="text-sm text-blocked-text">{error}</span>}
+      </Dialog>
     </>
   )
 }

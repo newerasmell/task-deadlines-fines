@@ -515,7 +515,13 @@ def update_live(shop: Shopify, product: dict, changes: dict[str, Any]) -> list[s
     metafields = []
     types = shop.metafield_types()
     variant: dict[str, Any] = {}
+    media: list[dict] = []
     for key, value in changes.items():
+        if key == "image":  # a picture the product did not have: added, never replacing what it has
+            source = shop.stage_image(*value) if isinstance(value, tuple) else _text(value)
+            if source:
+                media.append({"originalSource": source, "mediaContentType": "IMAGE", "alt": product.get("title", "")})
+            continue
         text = _text(value)
         if key == "title":
             update["title"] = text
@@ -550,11 +556,11 @@ def update_live(shop: Shopify, product: dict, changes: dict[str, Any]) -> list[s
         update["seo"] = seo
     if metafields:
         update["metafields"] = metafields
-    if len(update) > 1:
+    if len(update) > 1 or media:
         data = shop.graphql(
-            """mutation($product: ProductUpdateInput!) { productUpdate(product: $product) {
-                 product { id } userErrors { field message } } }""",
-            {"product": update},
+            """mutation($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
+                 productUpdate(product: $product, media: $media) { product { id } userErrors { field message } } }""",
+            {"product": update, "media": media or None},
         )["productUpdate"]
         if data["userErrors"]:
             raise ShopifyError("Shopify не прие промяната: " + "; ".join(e["message"] for e in data["userErrors"]))

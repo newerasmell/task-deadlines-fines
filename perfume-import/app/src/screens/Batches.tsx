@@ -93,9 +93,11 @@ function JobBanner() {
             <span className="font-medium">
               {j.kind === 'extend'
                 ? 'Добавят се магазини към партида'
-                : j.kind === 'fill'
-                  ? 'Попълва се липсващото в продукт'
-                  : 'Проучва се нова партида'}{' '}
+                : j.kind === 'crosssync'
+                  ? 'Попълва се от другите магазини'
+                  : j.kind === 'fill'
+                    ? 'Попълва се липсващото в продукт'
+                    : 'Проучва се нова партида'}{' '}
               · {j.stage_label}
               {j.stage === 'research' ? ` · ${j.done} от ${j.total}` : '…'}
             </span>

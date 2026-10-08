@@ -495,9 +495,11 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) 
         <h1 className="m-0 text-[22px] font-semibold">
           {j?.kind === 'extend'
             ? 'Добавят се магазини (без ново проучване)'
-            : j?.kind === 'fill'
-              ? 'Попълва се липсващото в продукт'
-              : 'Проучването върви'}
+            : j?.kind === 'crosssync'
+              ? 'Попълва се от другите магазини'
+              : j?.kind === 'fill'
+                ? 'Попълва се липсващото в продукт'
+                : 'Проучването върви'}
         </h1>
         {job.isError ? (
           <Failure error={job.error} />

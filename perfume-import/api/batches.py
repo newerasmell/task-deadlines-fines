@@ -187,3 +187,22 @@ def sync_notes(field_id: int, body: Notes, x_actor: str | None = Header(default=
     from db import fill
 
     return _call(fill.sync_notes, field_id, body.text, actor_name(x_actor))
+
+
+@router.get("/batches/{batch_id}/crosssync")
+def crosssync_options(batch_id: int):
+    """What this audit's empty fields can take from the same products (EAN) in the other stores' audits."""
+    from db import crosssync
+
+    return _call(crosssync.options, batch_id)
+
+
+class CrossSync(BaseModel):
+    kinds: list[str]
+
+
+@router.post("/batches/{batch_id}/crosssync", status_code=202)
+def crosssync_start(batch_id: int, body: CrossSync, x_actor: str | None = Header(default=None)):
+    from db import crosssync
+
+    return {"job_id": _call(crosssync.start, batch_id, body.kinds, actor_name(x_actor))}
