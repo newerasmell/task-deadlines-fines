@@ -421,6 +421,9 @@ export const en: Record<string, string> = {
   "Ежегодно": "Yearly",
   "На тримесечие": "Quarterly",
   "Ежемесечно": "Monthly",
+  "срок": "deadline",
+  "срока": "deadlines",
+  "Всичко изпълнено": "All done",
 
   // Deadline-change warning on task edit
   "Задължително е да опишеш причина за промяната на срока.": "You must describe the reason for changing the deadline.",

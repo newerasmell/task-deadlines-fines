@@ -16,6 +16,41 @@ function urgencyClass(days: number): string {
   return "badge";
 }
 
+interface CompanyGroup {
+  company: string;
+  jurisdictions: string[];
+  items: CompanyDeadline[];
+}
+
+// Groups the (already tab-filtered) list by company so the page reads as
+// "one collapsible block per company" instead of every company's rows
+// interleaved — same collapse/expand pattern as the Fines page's
+// per-employee grouping. Sorted most-urgent-first: the soonest active due
+// date (overdue sorts first, since its days-remaining is negative), with
+// companies that have nothing active parked at the end.
+function groupByCompany(items: CompanyDeadline[]): CompanyGroup[] {
+  const order: string[] = [];
+  const byCompany = new Map<string, CompanyGroup>();
+  for (const it of items) {
+    let g = byCompany.get(it.company);
+    if (!g) {
+      g = { company: it.company, jurisdictions: [], items: [] };
+      byCompany.set(it.company, g);
+      order.push(it.company);
+    }
+    if (!g.jurisdictions.includes(it.jurisdiction)) g.jurisdictions.push(it.jurisdiction);
+    g.items.push(it);
+  }
+  return order
+    .map((c) => byCompany.get(c)!)
+    .sort((a, b) => soonestActiveDays(a) - soonestActiveDays(b));
+}
+
+function soonestActiveDays(group: CompanyGroup): number {
+  const activeDays = group.items.filter((it) => it.status === "ACTIVE").map((it) => daysUntil(it.dueDate));
+  return activeDays.length > 0 ? Math.min(...activeDays) : Infinity;
+}
+
 export function CompanyDeadlines() {
   const { t, lang } = useI18n();
   const locale = lang === "en" ? "en-GB" : "bg-BG";
@@ -24,6 +59,16 @@ export function CompanyDeadlines() {
   const [editing, setEditing] = useState<CompanyDeadline | null>(null);
   const [tab, setTab] = useState<"active" | "all">("active");
   const [loading, setLoading] = useState(true);
+  const [toggledGroups, setToggledGroups] = useState<Set<string>>(new Set());
+
+  function toggleGroup(company: string) {
+    setToggledGroups((cur) => {
+      const next = new Set(cur);
+      if (next.has(company)) next.delete(company);
+      else next.add(company);
+      return next;
+    });
+  }
 
   async function refresh() {
     setItems(await api<CompanyDeadline[]>("/company-deadlines"));
@@ -47,6 +92,8 @@ export function CompanyDeadlines() {
   if (loading) return <p>{t("Зареждане…")}</p>;
 
   const visible = items.filter((it) => (tab === "active" ? it.status === "ACTIVE" : true));
+  const groups = groupByCompany(visible);
+  const colCount = 8;
 
   return (
     <div>
@@ -89,7 +136,6 @@ export function CompanyDeadlines() {
         <table className="table">
           <thead>
             <tr>
-              <th>{t("Компания")}</th>
               <th>{t("Юрисдикция")}</th>
               <th>{t("Заглавие")}</th>
               <th>{t("Краен срок")}</th>
@@ -101,85 +147,117 @@ export function CompanyDeadlines() {
             </tr>
           </thead>
           <tbody>
-            {visible.map((it) => {
-              const days = daysUntil(it.dueDate);
-              const isEditing = editing?.id === it.id;
+            {groups.map((group) => {
+              const soonest = soonestActiveDays(group);
+              const hasUrgent = soonest <= 30;
+              const defaultExpanded = hasUrgent;
+              const expanded = toggledGroups.has(group.company) ? !defaultExpanded : defaultExpanded;
+              const activeCount = group.items.filter((it) => it.status === "ACTIVE").length;
               return (
-                <Fragment key={it.id}>
-                  <tr>
-                    <td data-label={t("Компания")}>
-                      <strong>{it.company}</strong>
-                    </td>
-                    <td data-label={t("Юрисдикция")}>{it.jurisdiction}</td>
-                    <td data-label={t("Заглавие")}>
-                      {it.title}
-                      {it.description && <div className="muted small">{it.description}</div>}
-                    </td>
-                    <td data-label={t("Краен срок")}>{new Date(it.dueDate).toLocaleString(locale)}</td>
-                    <td data-label={t("Остават")}>
-                      {it.status === "ACTIVE" ? (
-                        <span className={urgencyClass(days)}>
-                          {days < 0 ? t("просрочено с {days} дни", { days: Math.abs(days) }) : t("{days} дни", { days })}
+                <Fragment key={group.company}>
+                  <tr className="fine-group-header">
+                    <td colSpan={colCount} onClick={() => toggleGroup(group.company)}>
+                      <span className="fine-group-toggle">{expanded ? "▾" : "▸"}</span>
+                      <strong>{group.company}</strong>{" "}
+                      <span className="muted small">{group.jurisdictions.join(", ")}</span>{" "}
+                      <span className="muted small">
+                        ({group.items.length} {group.items.length === 1 ? t("срок") : t("срока")})
+                      </span>{" "}
+                      {activeCount === 0 ? (
+                        <span className="badge badge-success">{t("Всичко изпълнено")}</span>
+                      ) : Number.isFinite(soonest) ? (
+                        <span className={urgencyClass(soonest)}>
+                          {soonest < 0
+                            ? t("просрочено с {days} дни", { days: Math.abs(soonest) })
+                            : t("{days} дни", { days: soonest })}
                         </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td data-label={t("Повторение")}>
-                      {it.recurrence === "NONE" ? (
-                        <span className="muted">{t(COMPANY_DEADLINE_RECURRENCE_LABELS[it.recurrence])}</span>
-                      ) : (
-                        <span className="badge badge-info">↻ {t(COMPANY_DEADLINE_RECURRENCE_LABELS[it.recurrence])}</span>
-                      )}
-                    </td>
-                    <td data-label={t("Сума")}>{it.amount ? `${it.amount.toFixed(2)} ${it.currency ?? "EUR"}` : "—"}</td>
-                    <td data-label={t("Статус")}>
-                      <span className={it.status === "ACTIVE" ? "badge" : it.status === "DONE" ? "badge badge-success" : "badge"}>
-                        {t(COMPANY_DEADLINE_STATUS_LABELS[it.status])}
-                      </span>
-                    </td>
-                    <td className="row-actions">
-                      <div className="row-actions-group">
-                        {it.status === "ACTIVE" && (
-                          <button className="small-btn" onClick={() => markDone(it)}>
-                            {t("Изпълнен")}
-                          </button>
-                        )}
-                        <button
-                          className="small-btn"
-                          onClick={() => {
-                            setEditing(isEditing ? null : it);
-                            setShowForm(false);
-                          }}
-                        >
-                          {isEditing ? t("Затвори") : t("Редактирай")}
-                        </button>
-                        <button className="small-btn" onClick={() => deleteItem(it)}>
-                          {t("Изтрий")}
-                        </button>
-                      </div>
+                      ) : null}
                     </td>
                   </tr>
-                  {isEditing && (
-                    <tr>
-                      <td colSpan={9}>
-                        <CompanyDeadlineForm
-                          item={it}
-                          onSaved={() => {
-                            setEditing(null);
-                            refresh();
-                          }}
-                          onCancel={() => setEditing(null)}
-                        />
-                      </td>
-                    </tr>
-                  )}
+                  {expanded &&
+                    group.items.map((it) => {
+                      const days = daysUntil(it.dueDate);
+                      const isEditing = editing?.id === it.id;
+                      return (
+                        <Fragment key={it.id}>
+                          <tr>
+                            <td data-label={t("Юрисдикция")}>{it.jurisdiction}</td>
+                            <td data-label={t("Заглавие")}>
+                              {it.title}
+                              {it.description && <div className="muted small">{it.description}</div>}
+                            </td>
+                            <td data-label={t("Краен срок")}>{new Date(it.dueDate).toLocaleString(locale)}</td>
+                            <td data-label={t("Остават")}>
+                              {it.status === "ACTIVE" ? (
+                                <span className={urgencyClass(days)}>
+                                  {days < 0
+                                    ? t("просрочено с {days} дни", { days: Math.abs(days) })
+                                    : t("{days} дни", { days })}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td data-label={t("Повторение")}>
+                              {it.recurrence === "NONE" ? (
+                                <span className="muted">{t(COMPANY_DEADLINE_RECURRENCE_LABELS[it.recurrence])}</span>
+                              ) : (
+                                <span className="badge badge-info">
+                                  ↻ {t(COMPANY_DEADLINE_RECURRENCE_LABELS[it.recurrence])}
+                                </span>
+                              )}
+                            </td>
+                            <td data-label={t("Сума")}>{it.amount ? `${it.amount.toFixed(2)} ${it.currency ?? "EUR"}` : "—"}</td>
+                            <td data-label={t("Статус")}>
+                              <span className={it.status === "ACTIVE" ? "badge" : it.status === "DONE" ? "badge badge-success" : "badge"}>
+                                {t(COMPANY_DEADLINE_STATUS_LABELS[it.status])}
+                              </span>
+                            </td>
+                            <td className="row-actions">
+                              <div className="row-actions-group">
+                                {it.status === "ACTIVE" && (
+                                  <button className="small-btn" onClick={() => markDone(it)}>
+                                    {t("Изпълнен")}
+                                  </button>
+                                )}
+                                <button
+                                  className="small-btn"
+                                  onClick={() => {
+                                    setEditing(isEditing ? null : it);
+                                    setShowForm(false);
+                                  }}
+                                >
+                                  {isEditing ? t("Затвори") : t("Редактирай")}
+                                </button>
+                                <button className="small-btn" onClick={() => deleteItem(it)}>
+                                  {t("Изтрий")}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isEditing && (
+                            <tr>
+                              <td colSpan={colCount}>
+                                <CompanyDeadlineForm
+                                  item={it}
+                                  onSaved={() => {
+                                    setEditing(null);
+                                    refresh();
+                                  }}
+                                  onCancel={() => setEditing(null)}
+                                />
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                 </Fragment>
               );
             })}
-            {visible.length === 0 && (
+            {groups.length === 0 && (
               <tr>
-                <td colSpan={9} className="muted">
+                <td colSpan={colCount} className="muted">
                   {tab === "active" ? t("Няма активни срокове.") : t("Няма срокове.")}
                 </td>
               </tr>
