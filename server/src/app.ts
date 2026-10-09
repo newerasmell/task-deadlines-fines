@@ -3,6 +3,7 @@ import express, { NextFunction, Request, Response } from "express";
 import { env } from "./lib/env";
 import { auditLogRouter } from "./routes/auditLog";
 import { authRouter } from "./routes/auth";
+import { companyDeadlinesRouter } from "./routes/companyDeadlines";
 import { fineRulesRouter } from "./routes/fineRules";
 import { finesRouter } from "./routes/fines";
 import { googleCalendarRouter } from "./routes/googleCalendar";
@@ -34,6 +35,7 @@ export function createApp() {
   app.use("/api/leaves", leavesRouter);
   app.use("/api/reschedule-requests", rescheduleRequestsRouter);
   app.use("/api/subscriptions", subscriptionsRouter);
+  app.use("/api/company-deadlines", companyDeadlinesRouter);
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/audit-log", auditLogRouter);
   app.use("/api/voice", voiceRouter);

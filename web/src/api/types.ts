@@ -186,6 +186,38 @@ export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
   CANCELLED: "Отменен",
 };
 
+export type CompanyDeadlineStatus = "ACTIVE" | "DONE" | "CANCELLED";
+export type CompanyDeadlineRecurrence = "NONE" | "YEARLY" | "QUARTERLY" | "MONTHLY";
+
+export interface CompanyDeadline {
+  id: string;
+  company: string;
+  jurisdiction: string;
+  title: string;
+  description: string | null;
+  dueDate: string;
+  amount: number | null;
+  currency: string | null;
+  status: CompanyDeadlineStatus;
+  recurrence: CompanyDeadlineRecurrence;
+  createdById: string;
+  createdBy: { id: string; name: string; email: string };
+  createdAt: string;
+}
+
+export const COMPANY_DEADLINE_STATUS_LABELS: Record<CompanyDeadlineStatus, string> = {
+  ACTIVE: "Активен",
+  DONE: "Изпълнен",
+  CANCELLED: "Отменен",
+};
+
+export const COMPANY_DEADLINE_RECURRENCE_LABELS: Record<CompanyDeadlineRecurrence, string> = {
+  NONE: "Еднократен",
+  YEARLY: "Ежегодно",
+  QUARTERLY: "На тримесечие",
+  MONTHLY: "Ежемесечно",
+};
+
 export interface Fine {
   id: string;
   taskId: string | null;

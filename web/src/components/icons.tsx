@@ -112,6 +112,17 @@ export function IconBell({ size = 18 }: IconProps) {
   );
 }
 
+export function IconBuilding({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <rect x="4" y="3" width="11" height="18" rx="1" />
+      <path d="M8 7h3M8 11h3M8 15h3" />
+      <path d="M15 10h5v11h-5" />
+      <path d="M17.5 13.5v.01M17.5 17v.01" />
+    </svg>
+  );
+}
+
 export function IconMic({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

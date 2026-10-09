@@ -6,6 +6,7 @@ import { Avatar } from "./Avatar";
 import {
   IconBell,
   IconBoard,
+  IconBuilding,
   IconCalendar,
   IconFines,
   IconGlobe,
@@ -92,6 +93,11 @@ export function Layout() {
           <NavLink to="/fines">
             <IconFines /> {t("Глоби")}
           </NavLink>
+          {user?.isSuperAdmin && (
+            <NavLink to="/company-deadlines">
+              <IconBuilding /> {t("Фирмени дедлайни")}
+            </NavLink>
+          )}
           {isAdmin && (
             <NavLink to="/employees">
               <IconPeople /> {t("Служители")}
