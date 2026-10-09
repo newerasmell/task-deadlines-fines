@@ -402,6 +402,26 @@ export const en: Record<string, string> = {
   "Избери краен срок.": "Pick a due date.",
   "Създай": "Create",
 
+  // Company compliance deadlines tracker
+  "Фирмени дедлайни": "Company deadlines",
+  "+ Нов срок": "+ New deadline",
+  "Следи счетоводни и юридически срокове за всички компании в групата — подаване на документи, подновяване на стейтменти и други изисквания по юрисдикции. Нотификациите отиват само до мастър акаунтите (Ultimate Admin). Напомняния: 1 месец, 15 дни и 7 дни преди падежа, всеки ден оттам насетне, и на всеки 2 часа в самия ден.":
+    "Tracks accounting and legal deadlines for every company in the group — filings, statement renewals and other jurisdiction requirements. Notifications go only to master accounts (Ultimate Admin). Reminders: 1 month, 15 days and 7 days before the due date, daily from there on, and every 2 hours on the day itself.",
+  "Компания": "Company",
+  "Юрисдикция": "Jurisdiction",
+  "Няма активни срокове.": "No active deadlines.",
+  "Няма срокове.": "No deadlines.",
+  "Изпълнен": "Done",
+  "Напр. Acme Ltd": "E.g. Acme Ltd",
+  "Напр. England, САЩ (Delaware), България": "E.g. England, USA (Delaware), Bulgaria",
+  "Напр. Confirmation Statement": "E.g. Confirmation Statement",
+  "При отбелязване като „Изпълнен“ автоматично се създава следващият цикъл с новия краен срок — историята остава видима.":
+    "Marking it “Done” automatically creates the next cycle with the new due date — the history stays visible.",
+  "Еднократен": "One-off",
+  "Ежегодно": "Yearly",
+  "На тримесечие": "Quarterly",
+  "Ежемесечно": "Monthly",
+
   // Deadline-change warning on task edit
   "Задължително е да опишеш причина за промяната на срока.": "You must describe the reason for changing the deadline.",
   "Задачи с променена дата/час ще бъдат прегледани от Ultimate Admin и ако се приеме за неоснователно, ще се наложи ръчна глоба!":

@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { env } from "../lib/env";
+import { runCompanyDeadlineScan } from "./companyDeadlineScanner";
 import { runDeadlineScan } from "./deadlineScanner";
 import { runGoogleMeetSync } from "./googleMeetSync";
 import { runScheduledNotificationDelivery } from "./scheduledNotifications";
@@ -12,6 +13,9 @@ export function startScheduler(): void {
     });
     runSubscriptionScan().catch((err) => {
       console.error("[scheduler] subscription scan failed:", err);
+    });
+    runCompanyDeadlineScan().catch((err) => {
+      console.error("[scheduler] company deadline scan failed:", err);
     });
     runScheduledNotificationDelivery().catch((err) => {
       console.error("[scheduler] scheduled notification delivery failed:", err);

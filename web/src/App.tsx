@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { I18nProvider, useT } from "./i18n/I18nContext";
 import { AuditLog } from "./pages/AuditLog";
+import { CompanyDeadlines } from "./pages/CompanyDeadlines";
 import { Dashboard } from "./pages/Dashboard";
 import { Employees } from "./pages/Employees";
 import { Fines } from "./pages/Fines";
@@ -36,6 +37,12 @@ function RequireAdmin({ children }: { children: ReactElement }) {
 function RequireSubscriptionsAccess({ children }: { children: ReactElement }) {
   const { user } = useAuth();
   if (!user?.canAccessSubscriptions && !user?.isSuperAdmin) return <Navigate to="/" replace />;
+  return children;
+}
+
+function RequireSuperAdmin({ children }: { children: ReactElement }) {
+  const { user } = useAuth();
+  if (!user?.isSuperAdmin) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -89,6 +96,14 @@ function AppRoutes() {
           }
         />
         <Route path="/fines" element={<Fines />} />
+        <Route
+          path="/company-deadlines"
+          element={
+            <RequireSuperAdmin>
+              <CompanyDeadlines />
+            </RequireSuperAdmin>
+          }
+        />
         <Route
           path="/employees"
           element={
