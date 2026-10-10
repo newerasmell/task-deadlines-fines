@@ -461,7 +461,7 @@ function VaultSetupForm({ onSubmit }: { onSubmit: (password: string) => Promise<
           "Задай master парола — тя никога не се изпраща към сървъра и не може да бъде възстановена от никого, ако я забравиш. Избери нещо отделно от паролата ти за влизане в TODF."
         )}
       </p>
-      <div className="form-row">
+      <div className="vault-gate-fields">
         <label>
           {t("Master парола")}
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
@@ -470,11 +470,11 @@ function VaultSetupForm({ onSubmit }: { onSubmit: (password: string) => Promise<
           {t("Потвърди паролата")}
           <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
         </label>
+        {error && <div className="error-text">{error}</div>}
+        <button type="submit" disabled={submitting}>
+          {submitting ? t("Инициализиране…") : t("Инициализирай vault-а")}
+        </button>
       </div>
-      {error && <div className="error-text">{error}</div>}
-      <button type="submit" disabled={submitting}>
-        {submitting ? t("Инициализиране…") : t("Инициализирай vault-а")}
-      </button>
     </form>
   );
 }
@@ -501,14 +501,19 @@ function VaultUnlockForm({
       <div className="vault-gate-icon">
         <IconLock size={26} />
       </div>
-      <label>
-        {t("Master парола")}
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
-      </label>
-      {error && <div className="error-text">{error}</div>}
-      <button type="submit" disabled={submitting}>
-        {submitting ? t("Отключване…") : t("Отключи")}
-      </button>
+      <p>
+        <strong>{t("Отключи vault-а")}</strong>
+      </p>
+      <div className="vault-gate-fields">
+        <label>
+          {t("Master парола")}
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
+        </label>
+        {error && <div className="error-text">{error}</div>}
+        <button type="submit" disabled={submitting}>
+          {submitting ? t("Отключване…") : t("Отключи")}
+        </button>
+      </div>
     </form>
   );
 }

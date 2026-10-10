@@ -1818,31 +1818,53 @@ button.task-tag-chip:hover {
 /* Setup/unlock screens: a single narrow centered card instead of the
    page's usual full-width form, closer to how a password manager's own
    lock screen reads — the content here is deliberately small and focused,
-   never competing with a wide table. */
+   never competing with a wide table. The icon/heading/blurb stay centered
+   (standard for a lock/sign-in screen); the actual fields below are their
+   own left-aligned, full-width block — mixing the two in one text-align
+   was what made the previous version read as two stitched-together
+   layouts, worst of all on the button, which stayed a narrow centered
+   pill under full-width inputs. */
 .vault-gate {
-  max-width: 420px;
-  margin: 48px auto;
+  max-width: 400px;
+  margin: 56px auto;
+  padding: 36px 32px 32px;
   text-align: center;
 }
 
 .vault-gate-icon {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 16px;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 18px;
   border-radius: 50%;
-  background: var(--info-bg);
-  color: #1d4ed8;
+  background: linear-gradient(155deg, #eef2ff, #dbe6ff);
+  color: var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.16);
 }
 
-.vault-gate .form-row {
-  flex-direction: column;
+.vault-gate h1,
+.vault-gate > p {
+  margin: 0 0 8px;
 }
 
-.vault-gate label {
+.vault-gate-fields {
   text-align: left;
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vault-gate-fields label {
+  margin-bottom: 0;
+}
+
+.vault-gate-fields button[type="submit"] {
+  width: 100%;
+  padding: 11px 16px;
+  margin-top: 2px;
 }
 
 .vault-toolbar {
