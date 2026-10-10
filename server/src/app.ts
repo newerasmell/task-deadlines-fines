@@ -14,6 +14,7 @@ import { subscriptionsRouter } from "./routes/subscriptions";
 import { taskTemplatesRouter } from "./routes/taskTemplates";
 import { tasksRouter } from "./routes/tasks";
 import { usersRouter } from "./routes/users";
+import { vaultRouter } from "./routes/vault";
 import { voiceRouter } from "./routes/voice";
 
 export function createApp() {
@@ -36,6 +37,7 @@ export function createApp() {
   app.use("/api/reschedule-requests", rescheduleRequestsRouter);
   app.use("/api/subscriptions", subscriptionsRouter);
   app.use("/api/company-deadlines", companyDeadlinesRouter);
+  app.use("/api/vault", vaultRouter);
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/audit-log", auditLogRouter);
   app.use("/api/voice", voiceRouter);

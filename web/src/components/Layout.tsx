@@ -11,6 +11,7 @@ import {
   IconFines,
   IconGlobe,
   IconInbox,
+  IconLock,
   IconLog,
   IconMe,
   IconMic,
@@ -96,6 +97,11 @@ export function Layout() {
           {user?.isSuperAdmin && (
             <NavLink to="/company-deadlines">
               <IconBuilding /> {t("Фирмени дедлайни")}
+            </NavLink>
+          )}
+          {user?.isSuperAdmin && (
+            <NavLink to="/vault">
+              <IconLock /> Vault
             </NavLink>
           )}
           {isAdmin && (

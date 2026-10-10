@@ -17,6 +17,7 @@ import { MyTasks } from "./pages/MyTasks";
 import { RecurringTasks } from "./pages/RecurringTasks";
 import { Settings } from "./pages/Settings";
 import { Tasks } from "./pages/Tasks";
+import { Vault } from "./pages/Vault";
 import { VoiceReview } from "./pages/VoiceReview";
 import { VoiceTasks } from "./pages/VoiceTasks";
 
@@ -101,6 +102,14 @@ function AppRoutes() {
           element={
             <RequireSuperAdmin>
               <CompanyDeadlines />
+            </RequireSuperAdmin>
+          }
+        />
+        <Route
+          path="/vault"
+          element={
+            <RequireSuperAdmin>
+              <Vault />
             </RequireSuperAdmin>
           }
         />

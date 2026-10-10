@@ -112,6 +112,16 @@ export function IconBell({ size = 18 }: IconProps) {
   );
 }
 
+export function IconLock({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+      <path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5" />
+      <circle cx="12" cy="15" r="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function IconBuilding({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
@@ -165,6 +175,61 @@ export function IconX({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
       <path d="M5 5l14 14M19 5 5 19" />
+    </svg>
+  );
+}
+
+export function IconEye({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </svg>
+  );
+}
+
+export function IconEyeOff({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M3.5 3.5l17 17" />
+      <path d="M10.6 5.7A10.6 10.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16.4 16.4 0 0 1-3.2 4M7.4 7.3C4.7 9 2.5 12 2.5 12s3.5 6.5 9.5 6.5a9.6 9.6 0 0 0 3-.5" />
+      <path d="M9.9 9.9a2.8 2.8 0 0 0 3.9 3.9" />
+    </svg>
+  );
+}
+
+export function IconCopy({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <rect x="8.5" y="8.5" width="12" height="12" rx="2" />
+      <path d="M15.5 8.5V5.5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3" />
+    </svg>
+  );
+}
+
+export function IconEdit({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M4 20l1-4.5L15.5 5 19 8.5 8.5 19 4 20Z" />
+      <path d="M13 7l4 4" />
+    </svg>
+  );
+}
+
+export function IconTrash({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M4.5 7h15M9.5 7V4.8c0-.7.6-1.3 1.3-1.3h2.4c.7 0 1.3.6 1.3 1.3V7M18 7l-.7 12a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+export function IconExternalLink({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M9 5H5.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V15" />
+      <path d="M13 3h8v8M21 3l-10 10" />
     </svg>
   );
 }

@@ -457,3 +457,48 @@ export interface RecordingSyncState {
   error: string | null;
   startedAt: string;
 }
+
+// --- Zero-knowledge vault ---
+// Every field here is either ciphertext, a salt, or an IV — never
+// plaintext. See web/src/lib/vaultCrypto.ts for what to do with them.
+
+export interface VaultWrap {
+  salt: string;
+  wrappedKey: string;
+  wrappedKeyIv: string;
+  iterations: number;
+}
+
+export interface VaultGrantee {
+  userId: string;
+  name: string;
+  email: string;
+  grantedByName: string | null;
+  createdAt: string;
+}
+
+export interface VaultStatus {
+  initialized: boolean;
+  myWrap: VaultWrap | null;
+  grantedTo: VaultGrantee[];
+}
+
+export interface VaultEntry {
+  id: string;
+  ciphertext: string;
+  iv: string;
+  createdBy: { id: string; name: string; email: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+// The decrypted shape of a VaultEntry's JSON payload — exists only in
+// browser memory after decryptJson(), never sent to or stored by the
+// server in this form.
+export interface VaultEntryData {
+  title: string;
+  username: string;
+  password: string;
+  url: string;
+  notes: string;
+}

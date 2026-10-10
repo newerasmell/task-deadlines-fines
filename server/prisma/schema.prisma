@@ -23,6 +23,10 @@ datasource db {
 //   VoiceDraftStatus:    DRAFT | APPROVED | REJECTED
 //   CompanyDeadlineStatus:     ACTIVE | DONE | CANCELLED
 //   CompanyDeadlineRecurrence: NONE | YEARLY | QUARTERLY | MONTHLY
+//
+// VaultKeyWrap and VaultEntry hold no app-level enums, but also hold no
+// plaintext secrets — see the comment above VaultKeyWrap for the crypto
+// shape before touching either model.
 
 model User {
   id                     String  @id @default(cuid())
@@ -119,6 +123,9 @@ model User {
   subscriptionsOwned          Subscription[]          @relation("SubscriptionOwner")
   subscriptionsCreated        Subscription[]          @relation("SubscriptionCreatedBy")
   companyDeadlinesCreated     CompanyDeadline[]       @relation("CompanyDeadlineCreatedBy")
+  vaultKeyWrap                VaultKeyWrap?
+  vaultWrapsGranted           VaultKeyWrap[]          @relation("VaultWrapGrantedBy")
+  vaultEntriesCreated         VaultEntry[]            @relation("VaultEntryCreatedBy")
   voiceTranscriptsCreated     VoiceTranscript[]       @relation("VoiceTranscriptCreatedBy")
   voiceJobsCreated            VoiceProcessingJob[]    @relation("VoiceJobCreatedBy")
   voiceDraftsResolvedAssignee VoiceTaskDraft[]        @relation("VoiceDraftResolvedAssignee")
@@ -756,5 +763,73 @@ model VoiceProcessingJob {
 model VoiceAssignmentConfig {
   id        String   @id @default("singleton")
   rulesText String?
+  updatedAt DateTime @updatedAt
+}
+
+// --- Zero-knowledge password vault ---
+//
+// The server NEVER sees plaintext vault entries, the vault key, or any
+// admin's master password — only ciphertext and the small amount of
+// public key-derivation material (salts, IVs) needed for the browser to
+// redo the math. All of it (PBKDF2 derivation, AES-GCM encrypt/decrypt,
+// key wrapping) happens client-side; see web/src/lib/vaultCrypto.ts for
+// every operation that ever touches key material in the clear.
+//
+// Shape, Bitwarden-org style: there is ONE shared symmetric "vault key"
+// (VK), generated once in a browser and never stored anywhere in the
+// clear. Every admin granted access gets their OWN row here — VK
+// "wrapped" (AES-GCM encrypted) under a key derived (PBKDF2) from THAT
+// admin's own master password and THEIR OWN random salt. So N admins can
+// each unlock with a different password, but all of them recover the
+// same VK and therefore the same entries, which are each encrypted only
+// once (with VK), not once per admin.
+//
+// Granting a new admin requires an already-unlocked admin present in the
+// same browser session (VK is in memory) while the new admin types their
+// own chosen master password into that session, so it can be wrapped for
+// them — there is no async "invite link" flow in this first version (that
+// needs each admin to also carry a personal public-key pair, a bigger
+// follow-up). Revoking an admin deletes their wrap (blocked if it's the
+// last one, which would brick the vault forever) but does not rotate VK
+// or re-encrypt existing entries — someone who already saw the data before
+// being revoked isn't retroactively un-shown it; full "hard rotate" is a
+// possible future addition, not implemented here.
+model VaultKeyWrap {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  // This admin's own PBKDF2 salt (public, not secret) and iteration count,
+  // used to re-derive their stretched master key from their master
+  // password on every unlock.
+  salt       String
+  iterations Int    @default(600000)
+
+  // AES-GCM(VK, key = PBKDF2(masterPassword, salt, iterations)) — both
+  // base64. A failed decrypt (GCM auth tag mismatch) on unlock IS the
+  // "wrong password" signal; there's no separate stored verifier.
+  wrappedKey   String
+  wrappedKeyIv String
+
+  grantedById String?
+  grantedBy   User?   @relation("VaultWrapGrantedBy", fields: [grantedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One encrypted blob per vault item (site/login/note) — title, username,
+// password, url and notes all live together inside `ciphertext`, never as
+// separate plaintext columns, so the server can't see so much as an entry's
+// title before someone unlocks it client-side with VK.
+model VaultEntry {
+  id         String @id @default(cuid())
+  ciphertext String
+  iv         String
+
+  createdById String
+  createdBy   User   @relation("VaultEntryCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
