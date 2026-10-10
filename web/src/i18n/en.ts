@@ -607,6 +607,7 @@ export const en: Record<string, string> = {
   // Zero-knowledge vault
   "Заключи": "Lock",
   "Отключи vault-а": "Unlock the vault",
+  "+ Добави достъп": "+ Grant access",
   "Криптирана база за пароли, логини и чувствителна информация — zero-knowledge: криптирането/декриптирането става в браузъра ти, сървърът никога не вижда plaintext данните нито master паролата ти. Отделна е от паролата ти за влизане в TODF.":
     "An encrypted store for passwords, logins and sensitive information — zero-knowledge: encryption/decryption happens in your browser, the server never sees the plaintext data or your master password. Separate from your TODF login password.",
   "Нямаш достъп до vault-а все още.": "You don't have access to the vault yet.",
@@ -639,9 +640,8 @@ export const en: Record<string, string> = {
   "Предоставено от": "Granted by",
   "ти": "you",
   "Отнеми достъп": "Revoke access",
-  "+ Добави достъп за друг admin": "+ Grant access to another admin",
-  "Новият admin трябва да е лично тук и сам да въведе master паролата си — тя никога не трябва да се споделя по чат/имейл, защото криптира целия vault.":
-    "The new admin needs to be here in person and type their own master password — it should never be shared over chat/email, since it encrypts the whole vault.",
+  "Служителят трябва да е лично тук и сам да въведе master паролата си — тя никога не трябва да се споделя по чат/имейл, защото криптира целия vault.":
+    "The employee needs to be here in person and type their own master password — it should never be shared over chat/email, since it encrypts the whole vault.",
   "Негова/нейна master парола": "Their master password",
   "Предостави достъп": "Grant access",
   "Избери admin.": "Pick an admin.",

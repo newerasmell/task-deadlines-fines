@@ -108,9 +108,11 @@ function AppRoutes() {
         <Route
           path="/vault"
           element={
-            <RequireSuperAdmin>
-              <Vault />
-            </RequireSuperAdmin>
+            // Vault access is granted per-person, not tied to isSuperAdmin —
+            // the page itself shows "ask X for access" when the logged-in
+            // user has no wrap yet, same as it would for any other reason
+            // they can't unlock it.
+            <Vault />
           }
         />
         <Route

@@ -99,11 +99,9 @@ export function Layout() {
               <IconBuilding /> {t("Фирмени дедлайни")}
             </NavLink>
           )}
-          {user?.isSuperAdmin && (
-            <NavLink to="/vault">
-              <IconLock /> Vault
-            </NavLink>
-          )}
+          <NavLink to="/vault">
+            <IconLock /> Vault
+          </NavLink>
           {isAdmin && (
             <NavLink to="/employees">
               <IconPeople /> {t("Служители")}

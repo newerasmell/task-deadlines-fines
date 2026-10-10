@@ -60,16 +60,19 @@ export function Vault() {
   const [showAccessPanel, setShowAccessPanel] = useState(false);
   const [search, setSearch] = useState("");
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
-  const [superAdmins, setSuperAdmins] = useState<User[]>([]);
+  // Candidates for "grant access to" — any active user, not just Ultimate
+  // Admins (vault membership and the right to manage it are separate now).
+  // Only fetched for Ultimate Admins, since only they can grant at all.
+  const [activeUsers, setActiveUsers] = useState<User[]>([]);
 
   async function refreshStatus() {
     setStatus(await api<VaultStatus>("/vault/status"));
   }
 
   useEffect(() => {
-    Promise.all([refreshStatus(), api<User[]>("/users").then((all) => setSuperAdmins(all.filter((u) => u.isSuperAdmin && u.active)))]).finally(
-      () => setLoading(false)
-    );
+    const tasks: Promise<unknown>[] = [refreshStatus()];
+    if (user?.isSuperAdmin) tasks.push(api<User[]>("/users").then((all) => setActiveUsers(all.filter((u) => u.active))));
+    Promise.all(tasks).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -207,7 +210,7 @@ export function Vault() {
   const sortedEntries = [...visibleEntries].sort((a, b) => a.data.title.localeCompare(b.data.title));
 
   const grantedUserIds = new Set(status.grantedTo.map((g) => g.userId));
-  const ungranted = superAdmins.filter((u) => !grantedUserIds.has(u.id));
+  const ungranted = activeUsers.filter((u) => !grantedUserIds.has(u.id));
 
   return (
     <div>
@@ -239,14 +242,16 @@ export function Vault() {
             {t("Помоли някой от следните да ти предостави достъп (трябва да е при теб, докато vault-ът е отключен в неговия браузър):")}
           </p>
           <div className="vault-list" style={{ textAlign: "left" }}>
-            {status.grantedTo.map((g) => (
-              <div className="vault-item" key={g.userId}>
-                <Avatar id={g.userId} name={g.name} size={32} />
-                <div className="vault-item-main">
-                  <div className="vault-item-title">{g.name}</div>
+            {status.grantedTo
+              .filter((g) => g.isSuperAdmin)
+              .map((g) => (
+                <div className="vault-item" key={g.userId}>
+                  <Avatar id={g.userId} name={g.name} size={32} />
+                  <div className="vault-item-main">
+                    <div className="vault-item-title">{g.name}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       )}
@@ -257,16 +262,21 @@ export function Vault() {
 
       {vaultKey && entries && (
         <>
-          <div className="tabs">
-            <button className={!showAccessPanel ? "active" : ""} onClick={() => setShowAccessPanel(false)}>
-              {t("Записи")}
-            </button>
-            <button className={showAccessPanel ? "active" : ""} onClick={() => setShowAccessPanel(true)}>
-              {t("Управление на достъп")} ({status.grantedTo.length})
-            </button>
-          </div>
+          {/* Managing who has access stays Ultimate-Admin-only — a granted
+              but regular user never sees this tab, so they have no way to
+              add or remove anyone's access, including their own. */}
+          {user?.isSuperAdmin && (
+            <div className="tabs">
+              <button className={!showAccessPanel ? "active" : ""} onClick={() => setShowAccessPanel(false)}>
+                {t("Записи")}
+              </button>
+              <button className={showAccessPanel ? "active" : ""} onClick={() => setShowAccessPanel(true)}>
+                {t("Управление на достъп")} ({status.grantedTo.length})
+              </button>
+            </div>
+          )}
 
-          {showAccessPanel ? (
+          {showAccessPanel && user?.isSuperAdmin ? (
             <VaultAccessPanel
               grantedTo={status.grantedTo}
               currentUserId={user!.id}
@@ -809,6 +819,7 @@ function VaultAccessPanel({
               <div className="vault-item-title">
                 {g.name}
                 {g.userId === currentUserId && <span className="muted small"> ({t("ти")})</span>}
+                {g.isSuperAdmin && <span className="badge badge-info" style={{ marginLeft: 8 }}>Admin</span>}
               </div>
               <div className="vault-item-sub muted small">
                 {t("Предоставено от")} {g.grantedByName ?? "—"} · {new Date(g.createdAt).toLocaleDateString(locale)}
@@ -825,7 +836,7 @@ function VaultAccessPanel({
 
       {candidates.length > 0 && !showGrantForm && (
         <button onClick={() => setShowGrantForm(true)} style={{ marginTop: 12 }}>
-          {t("+ Добави достъп за друг admin")}
+          {t("+ Добави достъп")}
         </button>
       )}
 
@@ -863,7 +874,7 @@ function GrantAccessForm({
     e.preventDefault();
     setError(null);
     if (!userId) {
-      setError(t("Избери admin."));
+      setError(t("Избери служител."));
       return;
     }
     if (password.length < 10) {
@@ -888,12 +899,12 @@ function GrantAccessForm({
     <form className="card form" onSubmit={handleSubmit} style={{ marginTop: 12 }}>
       <p className="muted small">
         {t(
-          "Новият admin трябва да е лично тук и сам да въведе master паролата си — тя никога не трябва да се споделя по чат/имейл, защото криптира целия vault."
+          "Служителят трябва да е лично тук и сам да въведе master паролата си — тя никога не трябва да се споделя по чат/имейл, защото криптира целия vault."
         )}
       </p>
       <div className="form-row">
         <label>
-          Admin
+          {t("Служител")}
           <select value={userId} onChange={(e) => setUserId(e.target.value)} required>
             {candidates.map((c) => (
               <option key={c.id} value={c.id}>

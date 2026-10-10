@@ -473,6 +473,7 @@ export interface VaultGrantee {
   userId: string;
   name: string;
   email: string;
+  isSuperAdmin: boolean;
   grantedByName: string | null;
   createdAt: string;
 }
