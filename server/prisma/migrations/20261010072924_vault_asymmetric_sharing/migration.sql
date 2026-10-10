@@ -6,10 +6,23 @@
   - Added the required column `wrappedPrivateKey` to the `VaultUserKey` table without a default value. This is not possible if the table is not empty.
   - Added the required column `wrappedPrivateKeyIv` to the `VaultUserKey` table without a default value. This is not possible if the table is not empty.
 
+  Any existing vault data is wiped as part of this migration (see the
+  DELETEs below) rather than carried forward: table keys wrapped under the
+  old symmetric scheme cannot be converted to the new RSA-OAEP scheme
+  without each person's original plaintext master password, which was
+  never stored anywhere, by design. Confirmed with the project owner that
+  only test data existed at the time of this migration.
 */
+PRAGMA foreign_keys=OFF;
+
+DELETE FROM "VaultEntryHistory";
+DELETE FROM "VaultEntry";
+DELETE FROM "VaultTableMember";
+DELETE FROM "VaultTable";
+DELETE FROM "VaultUserKey";
+
 -- RedefineTables
 PRAGMA defer_foreign_keys=ON;
-PRAGMA foreign_keys=OFF;
 CREATE TABLE "new_VaultTableMember" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "tableId" TEXT NOT NULL,
@@ -21,7 +34,6 @@ CREATE TABLE "new_VaultTableMember" (
     CONSTRAINT "VaultTableMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "VaultTableMember_grantedById_fkey" FOREIGN KEY ("grantedById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-INSERT INTO "new_VaultTableMember" ("createdAt", "grantedById", "id", "tableId", "userId", "wrappedKey") SELECT "createdAt", "grantedById", "id", "tableId", "userId", "wrappedKey" FROM "VaultTableMember";
 DROP TABLE "VaultTableMember";
 ALTER TABLE "new_VaultTableMember" RENAME TO "VaultTableMember";
 CREATE UNIQUE INDEX "VaultTableMember_tableId_userId_key" ON "VaultTableMember"("tableId", "userId");
@@ -36,7 +48,6 @@ CREATE TABLE "new_VaultUserKey" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "VaultUserKey_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
-INSERT INTO "new_VaultUserKey" ("createdAt", "id", "iterations", "salt", "userId") SELECT "createdAt", "id", "iterations", "salt", "userId" FROM "VaultUserKey";
 DROP TABLE "VaultUserKey";
 ALTER TABLE "new_VaultUserKey" RENAME TO "VaultUserKey";
 CREATE UNIQUE INDEX "VaultUserKey_userId_key" ON "VaultUserKey"("userId");
