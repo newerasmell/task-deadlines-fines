@@ -9,13 +9,7 @@ export type AdminAction =
   | "FINE_WAIVED"
   | "FINE_AMOUNT_EDITED"
   | "FINE_PAID_BULK"
-  | "FINE_CONSOLIDATED"
-  | "VAULT_INITIALIZED"
-  | "VAULT_ACCESS_GRANTED"
-  | "VAULT_ACCESS_REVOKED"
-  | "VAULT_ENTRY_CREATED"
-  | "VAULT_ENTRY_UPDATED"
-  | "VAULT_ENTRY_DELETED";
+  | "FINE_CONSOLIDATED";
 
 export function logAction(
   actorId: string,

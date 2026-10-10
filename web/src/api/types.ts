@@ -461,15 +461,33 @@ export interface RecordingSyncState {
 // --- Zero-knowledge vault ---
 // Every field here is either ciphertext, a salt, or an IV — never
 // plaintext. See web/src/lib/vaultCrypto.ts for what to do with them.
+// The vault is split into separate "tables" (e.g. Marketing / Management /
+// Accounting) each with its own encryption key — one person's single
+// master password unlocks every table they've been granted (see
+// VaultUserKey/VaultTable in prisma/schema.prisma), but a table's key
+// never lets you decrypt another table's entries.
 
-export interface VaultWrap {
+export interface VaultUserKeyInfo {
   salt: string;
-  wrappedKey: string;
-  wrappedKeyIv: string;
   iterations: number;
 }
 
-export interface VaultGrantee {
+export interface VaultTableWrap {
+  wrappedKey: string;
+  wrappedKeyIv: string;
+}
+
+export interface VaultTableSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  memberCount: number;
+  createdAt: string;
+  isMember: boolean;
+  myWrap: VaultTableWrap | null;
+}
+
+export interface VaultTableMemberInfo {
   userId: string;
   name: string;
   email: string;
@@ -478,19 +496,24 @@ export interface VaultGrantee {
   createdAt: string;
 }
 
-export interface VaultStatus {
-  initialized: boolean;
-  myWrap: VaultWrap | null;
-  grantedTo: VaultGrantee[];
-}
-
 export interface VaultEntry {
   id: string;
+  tableId: string;
   ciphertext: string;
   iv: string;
   createdBy: { id: string; name: string; email: string };
   createdAt: string;
   updatedAt: string;
+}
+
+export type VaultHistoryAction = "CREATED" | "UPDATED" | "DELETED";
+
+export interface VaultHistoryRow {
+  id: string;
+  action: VaultHistoryAction;
+  actorName: string;
+  createdAt: string;
+  entry: { id: string; ciphertext: string; iv: string; deleted: boolean };
 }
 
 // The decrypted shape of a VaultEntry's JSON payload — exists only in

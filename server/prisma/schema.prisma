@@ -24,9 +24,11 @@ datasource db {
 //   CompanyDeadlineStatus:     ACTIVE | DONE | CANCELLED
 //   CompanyDeadlineRecurrence: NONE | YEARLY | QUARTERLY | MONTHLY
 //
-// VaultKeyWrap and VaultEntry hold no app-level enums, but also hold no
-// plaintext secrets — see the comment above VaultKeyWrap for the crypto
-// shape before touching either model.
+//   VaultEntryHistory.action: CREATED | UPDATED | DELETED
+//
+// The Vault* models hold no other app-level enums, but also hold no
+// plaintext secrets — see the comment above VaultTable for the crypto
+// shape before touching any of them.
 
 model User {
   id                     String  @id @default(cuid())
@@ -123,9 +125,12 @@ model User {
   subscriptionsOwned          Subscription[]          @relation("SubscriptionOwner")
   subscriptionsCreated        Subscription[]          @relation("SubscriptionCreatedBy")
   companyDeadlinesCreated     CompanyDeadline[]       @relation("CompanyDeadlineCreatedBy")
-  vaultKeyWrap                VaultKeyWrap?
-  vaultWrapsGranted           VaultKeyWrap[]          @relation("VaultWrapGrantedBy")
+  vaultUserKey                VaultUserKey?
+  vaultTablesCreated          VaultTable[]            @relation("VaultTableCreatedBy")
+  vaultTableMemberships       VaultTableMember[]      @relation("VaultTableMemberUser")
+  vaultTableMembersGranted    VaultTableMember[]      @relation("VaultTableMemberGrantedBy")
   vaultEntriesCreated         VaultEntry[]            @relation("VaultEntryCreatedBy")
+  vaultEntryHistoryActions    VaultEntryHistory[]     @relation("VaultEntryHistoryActor")
   voiceTranscriptsCreated     VoiceTranscript[]       @relation("VoiceTranscriptCreatedBy")
   voiceJobsCreated            VoiceProcessingJob[]    @relation("VoiceJobCreatedBy")
   voiceDraftsResolvedAssignee VoiceTaskDraft[]        @relation("VoiceDraftResolvedAssignee")
@@ -185,7 +190,7 @@ model Subscription {
 // the next occurrence (see the PATCH route) instead of just closing it out,
 // since these obligations come back every cycle on their own.
 model CompanyDeadline {
-  id           String  @id @default(cuid())
+  id           String   @id @default(cuid())
   company      String
   jurisdiction String
   title        String
@@ -766,70 +771,122 @@ model VoiceAssignmentConfig {
   updatedAt DateTime @updatedAt
 }
 
-// --- Zero-knowledge password vault ---
+// --- Zero-knowledge password vault, split into separate tables ---
 //
-// The server NEVER sees plaintext vault entries, the vault key, or any
-// admin's master password — only ciphertext and the small amount of
+// The server NEVER sees plaintext vault entries, any table's key, or
+// anyone's master password — only ciphertext and the small amount of
 // public key-derivation material (salts, IVs) needed for the browser to
 // redo the math. All of it (PBKDF2 derivation, AES-GCM encrypt/decrypt,
 // key wrapping) happens client-side; see web/src/lib/vaultCrypto.ts for
 // every operation that ever touches key material in the clear.
 //
-// Shape, Bitwarden-org style: there is ONE shared symmetric "vault key"
-// (VK), generated once in a browser and never stored anywhere in the
-// clear. Every admin granted access gets their OWN row here — VK
-// "wrapped" (AES-GCM encrypted) under a key derived (PBKDF2) from THAT
-// admin's own master password and THEIR OWN random salt. So N admins can
-// each unlock with a different password, but all of them recover the
-// same VK and therefore the same entries, which are each encrypted only
-// once (with VK), not once per admin.
+// Each VaultTable ("Маркетинг", "Мениджмънт", ...) is a genuinely separate
+// encryption domain — it gets its own random AES-256 table key (TK),
+// generated once and never stored in the clear, so someone with access to
+// one table truly cannot decrypt another's entries even though both rows
+// live in the same database. Being an Ultimate Admin does NOT imply
+// membership in every table — an admin who created "Маркетинг" but was
+// never added to "Мениджмънт" has no more ability to decrypt the latter
+// than any other outsider; only requireSuperAdmin gates CREATING tables
+// and managing membership, not reading table contents.
 //
-// Granting a new admin requires an already-unlocked admin present in the
-// same browser session (VK is in memory) while the new admin types their
-// own chosen master password into that session, so it can be wrapped for
-// them — there is no async "invite link" flow in this first version (that
-// needs each admin to also carry a personal public-key pair, a bigger
-// follow-up). Revoking an admin deletes their wrap (blocked if it's the
-// last one, which would brick the vault forever) but does not rotate VK
-// or re-encrypt existing entries — someone who already saw the data before
-// being revoked isn't retroactively un-shown it; full "hard rotate" is a
-// possible future addition, not implemented here.
-model VaultKeyWrap {
-  id     String @id @default(cuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id])
-
-  // This admin's own PBKDF2 salt (public, not secret) and iteration count,
-  // used to re-derive their stretched master key from their master
-  // password on every unlock.
+// One personal master password per person unlocks every table they
+// belong to: VaultUserKey holds ONE PBKDF2 salt per user, set the first
+// time they're ever added to any table, and reused for every
+// VaultTableMember wrap after that (never a fresh salt per table) — so
+// the stretched key the browser derives from "my master password + my
+// salt" is the same regardless of which table it's unwrapping a TK for.
+model VaultUserKey {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id])
   salt       String
-  iterations Int    @default(600000)
+  iterations Int      @default(600000)
+  createdAt  DateTime @default(now())
+}
 
-  // AES-GCM(VK, key = PBKDF2(masterPassword, salt, iterations)) — both
-  // base64. A failed decrypt (GCM auth tag mismatch) on unlock IS the
-  // "wrong password" signal; there's no separate stored verifier.
+model VaultTable {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+
+  createdById String
+  createdBy   User     @relation("VaultTableCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  members VaultTableMember[]
+  entries VaultEntry[]
+  history VaultEntryHistory[]
+}
+
+// TK "wrapped" (AES-GCM encrypted) under THIS member's stretched key (see
+// VaultUserKey) — one row per (table, user) pair. Granting requires an
+// admin who already has this table unlocked (TK in their browser's
+// memory) present together with the new member while the new member types
+// their master password (a brand-new one, or their existing one if they
+// already belong to some other table) into that same session, so it can
+// be wrapped for them. Revoking deletes this row only — it does not
+// rotate TK or re-encrypt the table's entries, so someone who already saw
+// them before being revoked isn't retroactively un-shown them; removing
+// the LAST member of a table is blocked (it would brick that table
+// forever, since TK only ever exists wrapped).
+model VaultTableMember {
+  id      String     @id @default(cuid())
+  tableId String
+  table   VaultTable @relation(fields: [tableId], references: [id])
+  userId  String
+  user    User       @relation("VaultTableMemberUser", fields: [userId], references: [id])
+
+  // AES-GCM(TK, key = PBKDF2(masterPassword, VaultUserKey.salt, iterations)).
   wrappedKey   String
   wrappedKeyIv String
 
   grantedById String?
-  grantedBy   User?   @relation("VaultWrapGrantedBy", fields: [grantedById], references: [id])
+  grantedBy   User?    @relation("VaultTableMemberGrantedBy", fields: [grantedById], references: [id])
+  createdAt   DateTime @default(now())
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  @@unique([tableId, userId])
 }
 
 // One encrypted blob per vault item (site/login/note) — title, username,
 // password, url and notes all live together inside `ciphertext`, never as
-// separate plaintext columns, so the server can't see so much as an entry's
-// title before someone unlocks it client-side with VK.
+// separate plaintext columns, so the server can't see so much as an
+// entry's title before someone unlocks its table client-side with TK.
+// Soft-deleted (deletedAt set, never actually removed) rather than hard
+// `DELETE`d, purely so VaultEntryHistory rows for a deleted entry can
+// still be decrypted and labeled with its last known title — the active
+// entries list filters deletedAt: null.
 model VaultEntry {
-  id         String @id @default(cuid())
+  id         String     @id @default(cuid())
+  tableId    String
+  table      VaultTable @relation(fields: [tableId], references: [id])
   ciphertext String
   iv         String
+  deletedAt  DateTime?
 
   createdById String
   createdBy   User   @relation("VaultEntryCreatedBy", fields: [createdById], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  history VaultEntryHistory[]
+}
+
+// Metadata-only change log — action, who, when, which entry — NEVER entry
+// content (the server can't see that regardless). Shown INSIDE each
+// table's own page, not mixed into the app-wide Дневник (AuditLog): this
+// is per-table working history people managing that table check
+// routinely, not an admin-security trail.
+model VaultEntryHistory {
+  id      String     @id @default(cuid())
+  tableId String
+  table   VaultTable @relation(fields: [tableId], references: [id])
+  entryId String
+  entry   VaultEntry @relation(fields: [entryId], references: [id])
+
+  action    String // CREATED | UPDATED | DELETED
+  actorId   String
+  actor     User     @relation("VaultEntryHistoryActor", fields: [actorId], references: [id])
+  createdAt DateTime @default(now())
 }

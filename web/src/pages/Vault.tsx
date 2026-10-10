@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, ApiError } from "../api/client";
-import type { User, VaultEntry, VaultEntryData, VaultStatus } from "../api/types";
+import type {
+  User,
+  VaultEntry,
+  VaultEntryData,
+  VaultHistoryRow,
+  VaultTableMemberInfo,
+  VaultTableSummary,
+  VaultUserKeyInfo,
+} from "../api/types";
 import { Avatar } from "../components/Avatar";
 import { IconCopy, IconEdit, IconExternalLink, IconEye, IconEyeOff, IconLock, IconSearch, IconTrash } from "../components/icons";
 import { useAuth } from "../context/AuthContext";
@@ -40,66 +48,57 @@ function generateStrongPassword(length = 20): string {
   return Array.from(bytes, (b) => chars[b % chars.length]).join("");
 }
 
-// `vaultKey` lives only in this component's state — it is NEVER written to
-// localStorage/sessionStorage/cookies, so navigating away from this page
-// (unmounting it) or reloading the browser re-locks the vault automatically.
-// See web/src/lib/vaultCrypto.ts for what every crypto call below actually
-// does; nothing here ever sends a password or a derived key to the server.
+// `stretchedKey` lives only in this component's state — it is NEVER written
+// to localStorage/sessionStorage/cookies, so navigating away from this page
+// (unmounting it) or reloading the browser re-locks every table automatically.
+// One master password derives this ONE stretched key per person, which then
+// unwraps the separate table key (TK) of every table they belong to — so a
+// single password unlocks everything they've been granted, while each
+// table's entries stay encrypted under their own, cryptographically distinct
+// key (access to one table never implies access to another). See
+// web/src/lib/vaultCrypto.ts for what every crypto call below actually does;
+// nothing here ever sends a password or a derived/table key to the server.
 export function Vault() {
   const { user } = useAuth();
   const { t } = useI18n();
-  const [status, setStatus] = useState<VaultStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [vaultKey, setVaultKey] = useState<CryptoKey | null>(null);
-  const [entries, setEntries] = useState<DecryptedEntry[] | null>(null);
+  const [myKeyInfo, setMyKeyInfo] = useState<VaultUserKeyInfo | null>(null);
+  const [tables, setTables] = useState<VaultTableSummary[] | null>(null);
+  const [activeUsers, setActiveUsers] = useState<User[]>([]);
+  const [stretchedKey, setStretchedKey] = useState<CryptoKey | null>(null);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [showAccessPanel, setShowAccessPanel] = useState(false);
-  const [search, setSearch] = useState("");
-  const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
-  // Candidates for "grant access to" — any active user, not just Ultimate
-  // Admins (vault membership and the right to manage it are separate now).
-  // Only fetched for Ultimate Admins, since only they can grant at all.
-  const [activeUsers, setActiveUsers] = useState<User[]>([]);
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [showCreateTable, setShowCreateTable] = useState(false);
 
-  async function refreshStatus() {
-    setStatus(await api<VaultStatus>("/vault/status"));
+  async function refreshTables() {
+    setTables(await api<VaultTableSummary[]>("/vault/tables"));
   }
 
   useEffect(() => {
-    const tasks: Promise<unknown>[] = [refreshStatus()];
-    if (user?.isSuperAdmin) tasks.push(api<User[]>("/users").then((all) => setActiveUsers(all.filter((u) => u.active))));
-    Promise.all(tasks).finally(() => setLoading(false));
+    Promise.all([
+      api<VaultUserKeyInfo | null>("/vault/my-key").then(setMyKeyInfo),
+      refreshTables(),
+      api<User[]>("/users").then((all) => setActiveUsers(all.filter((u) => u.active))),
+    ]).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function loadAndDecryptEntries(key: CryptoKey) {
-    const raw = await api<VaultEntry[]>("/vault/entries");
-    const decrypted: DecryptedEntry[] = [];
-    for (const e of raw) {
-      try {
-        const data = await decryptJson<VaultEntryData>(key, e.ciphertext, e.iv);
-        decrypted.push({ id: e.id, data, createdBy: e.createdBy, createdAt: e.createdAt });
-      } catch {
-        // Would only happen for a row encrypted under a different VK than
-        // the one we just unwrapped — skip it rather than crash the page.
-      }
-    }
-    setEntries(decrypted);
-  }
-
   async function handleUnlock(password: string) {
-    if (!status?.myWrap) return;
+    if (!myKeyInfo) return;
     setUnlockError(null);
     setUnlocking(true);
     try {
-      const stretched = await deriveStretchedKey(password, status.myWrap.salt, status.myWrap.iterations);
-      const vk = await unwrapVaultKey(status.myWrap.wrappedKey, status.myWrap.wrappedKeyIv, stretched);
-      setVaultKey(vk);
-      await loadAndDecryptEntries(vk);
+      const stretched = await deriveStretchedKey(password, myKeyInfo.salt, myKeyInfo.iterations);
+      // There's no separately stored verifier — try unwrapping any one table
+      // we already belong to; a wrong password fails there with a GCM
+      // auth-tag mismatch. If we don't belong to any table yet, there's
+      // nothing to verify against, so just accept it.
+      const sample = (tables ?? []).find((tb) => tb.myWrap);
+      if (sample?.myWrap) {
+        await unwrapVaultKey(sample.myWrap.wrappedKey, sample.myWrap.wrappedKeyIv, stretched);
+      }
+      setStretchedKey(stretched);
     } catch {
       setUnlockError(t("Грешна master парола."));
     } finally {
@@ -107,385 +106,149 @@ export function Vault() {
     }
   }
 
-  function lock() {
-    setVaultKey(null);
-    setEntries(null);
-    setRevealedIds(new Set());
-    setShowAddForm(false);
-    setEditingId(null);
-    setShowAccessPanel(false);
-  }
-
-  async function handleInit(password: string) {
-    const salt = generateSaltB64();
-    const stretched = await deriveStretchedKey(password, salt, PBKDF2_ITERATIONS);
-    const vk = await generateVaultKey();
-    const { wrappedKey, wrappedKeyIv } = await wrapVaultKey(vk, stretched);
-    await api("/vault/init", {
+  async function handleCreateTable(name: string, description: string, password: string) {
+    let stretched = stretchedKey;
+    let saltPayload: { salt?: string; iterations?: number } = {};
+    if (!myKeyInfo) {
+      const salt = generateSaltB64();
+      stretched = await deriveStretchedKey(password, salt, PBKDF2_ITERATIONS);
+      saltPayload = { salt, iterations: PBKDF2_ITERATIONS };
+    }
+    if (!stretched) return;
+    const tk = await generateVaultKey();
+    const { wrappedKey, wrappedKeyIv } = await wrapVaultKey(tk, stretched);
+    const created = await api<{ id: string; name: string; description: string | null }>("/vault/tables", {
       method: "POST",
-      body: JSON.stringify({ salt, wrappedKey, wrappedKeyIv, iterations: PBKDF2_ITERATIONS }),
+      body: JSON.stringify({ name, description: description || undefined, wrappedKey, wrappedKeyIv, ...saltPayload }),
     });
-    await refreshStatus();
-    setVaultKey(vk);
-    await loadAndDecryptEntries(vk);
-  }
-
-  async function saveEntry(data: VaultEntryData, existingId?: string) {
-    if (!vaultKey) return;
-    const { ciphertext, iv } = await encryptJson(vaultKey, data);
-    if (existingId) {
-      await api(`/vault/entries/${existingId}`, { method: "PATCH", body: JSON.stringify({ ciphertext, iv }) });
-    } else {
-      await api("/vault/entries", { method: "POST", body: JSON.stringify({ ciphertext, iv }) });
-    }
-    await loadAndDecryptEntries(vaultKey);
-  }
-
-  // Imports already go one row at a time through the exact same
-  // encrypt-then-POST path as a manual save — nothing about bulk import
-  // gets a shortcut around the per-entry encryption.
-  async function importEntries(dataList: VaultEntryData[], onProgress: (done: number, total: number) => void): Promise<{ failed: number }> {
-    if (!vaultKey) return { failed: dataList.length };
-    let failed = 0;
-    for (let i = 0; i < dataList.length; i++) {
-      try {
-        const { ciphertext, iv } = await encryptJson(vaultKey, dataList[i]);
-        await api("/vault/entries", { method: "POST", body: JSON.stringify({ ciphertext, iv }) });
-      } catch {
-        failed++;
-      }
-      onProgress(i + 1, dataList.length);
-    }
-    await loadAndDecryptEntries(vaultKey);
-    return { failed };
-  }
-
-  async function deleteEntry(id: string) {
-    if (!window.confirm(t("Наистина ли да изтрия този запис?"))) return;
-    await api(`/vault/entries/${id}`, { method: "DELETE" });
-    if (vaultKey) await loadAndDecryptEntries(vaultKey);
-  }
-
-  async function grantAccess(targetUserId: string, theirPassword: string) {
-    if (!vaultKey) return;
-    const salt = generateSaltB64();
-    const stretched = await deriveStretchedKey(theirPassword, salt, PBKDF2_ITERATIONS);
-    const { wrappedKey, wrappedKeyIv } = await wrapVaultKey(vaultKey, stretched);
-    await api("/vault/grant", {
-      method: "POST",
-      body: JSON.stringify({ userId: targetUserId, salt, wrappedKey, wrappedKeyIv, iterations: PBKDF2_ITERATIONS }),
-    });
-    await refreshStatus();
-  }
-
-  async function revokeAccess(targetUserId: string) {
-    if (!window.confirm(t("Наистина ли да отнемеш достъпа на този admin до vault-а?"))) return;
-    try {
-      await api(`/vault/grant/${targetUserId}`, { method: "DELETE" });
-      await refreshStatus();
-    } catch (err) {
-      window.alert(err instanceof ApiError ? err.message : t("Грешка"));
-    }
-  }
-
-  function toggleReveal(id: string) {
-    setRevealedIds((cur) => {
-      const next = new Set(cur);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    if (!myKeyInfo && saltPayload.salt) setMyKeyInfo({ salt: saltPayload.salt, iterations: saltPayload.iterations! });
+    setStretchedKey(stretched);
+    await refreshTables();
+    setShowCreateTable(false);
+    setSelectedTableId(created.id);
   }
 
   if (loading) return <p>{t("Зареждане…")}</p>;
-  if (!status) return null;
 
-  const visibleEntries = (entries ?? []).filter((e) => {
-    if (!search.trim()) return true;
-    const q = search.trim().toLowerCase();
-    return e.data.title.toLowerCase().includes(q) || e.data.username.toLowerCase().includes(q) || e.data.url.toLowerCase().includes(q);
-  });
-  // Alphabetical by title — a stable, predictable order (not insertion
-  // order), the way a password manager's item list usually reads.
-  const sortedEntries = [...visibleEntries].sort((a, b) => a.data.title.localeCompare(b.data.title));
-
-  const grantedUserIds = new Set(status.grantedTo.map((g) => g.userId));
-  const ungranted = activeUsers.filter((u) => !grantedUserIds.has(u.id));
+  const admins = activeUsers.filter((u) => u.isSuperAdmin);
 
   return (
     <div>
       <div className="page-header">
         <h1>{t("Vault")}</h1>
-        {vaultKey && (
-          <button className="secondary" onClick={lock}>
+        {stretchedKey && !selectedTableId && (
+          <button
+            className="secondary"
+            onClick={() => {
+              setStretchedKey(null);
+              setSelectedTableId(null);
+            }}
+          >
             {t("Заключи")}
           </button>
         )}
       </div>
       <p className="muted">
         {t(
-          "Криптирана база за пароли, логини и чувствителна информация — zero-knowledge: криптирането/декриптирането става в браузъра ти, сървърът никога не вижда plaintext данните нито master паролата ти. Отделна е от паролата ти за влизане в TODF."
+          "Криптирана база за пароли, логини и чувствителна информация, разделена на отделни таблици (напр. по екип/отдел) — zero-knowledge: криптирането/декриптирането става в браузъра ти, сървърът никога не вижда plaintext данните нито master паролата ти. Една master парола отключва всички таблици, до които имаш достъп. Отделна е от паролата ти за влизане в TODF."
         )}
       </p>
 
-      {!status.initialized && <VaultSetupForm onSubmit={handleInit} />}
-
-      {status.initialized && !status.myWrap && (
+      {!myKeyInfo && !user?.isSuperAdmin && (
         <div className="vault-gate">
           <div className="vault-gate-icon">
             <IconLock size={26} />
           </div>
           <p>
-            <strong>{t("Нямаш достъп до vault-а все още.")}</strong>
+            <strong>{t("Нямаш достъп до нито една таблица.")}</strong>
           </p>
-          <p className="muted small">
-            {t("Помоли някой от следните да ти предостави достъп (трябва да е при теб, докато vault-ът е отключен в неговия браузър):")}
-          </p>
+          <p className="muted small">{t("Помоли някой Ultimate Admin да ти предостави достъп до съответната таблица:")}</p>
           <div className="vault-list" style={{ textAlign: "left" }}>
-            {status.grantedTo
-              .filter((g) => g.isSuperAdmin)
-              .map((g) => (
-                <div className="vault-item" key={g.userId}>
-                  <Avatar id={g.userId} name={g.name} size={32} />
-                  <div className="vault-item-main">
-                    <div className="vault-item-title">{g.name}</div>
-                  </div>
+            {admins.map((a) => (
+              <div className="vault-item" key={a.id}>
+                <Avatar id={a.id} name={a.name} size={32} />
+                <div className="vault-item-main">
+                  <div className="vault-item-title">{a.name}</div>
                 </div>
-              ))}
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {status.initialized && status.myWrap && !vaultKey && (
+      {!myKeyInfo && user?.isSuperAdmin && (
+        <VaultCreateTableForm needsNewPassword onSubmit={handleCreateTable} />
+      )}
+
+      {myKeyInfo && !stretchedKey && (
         <VaultUnlockForm onSubmit={handleUnlock} error={unlockError} submitting={unlocking} />
       )}
 
-      {vaultKey && entries && (
-        <>
-          {/* Managing who has access stays Ultimate-Admin-only — a granted
-              but regular user never sees this tab, so they have no way to
-              add or remove anyone's access, including their own. */}
-          {user?.isSuperAdmin && (
-            <div className="tabs">
-              <button className={!showAccessPanel ? "active" : ""} onClick={() => setShowAccessPanel(false)}>
-                {t("Записи")}
+      {stretchedKey && !selectedTableId && (
+        <div>
+          <div className="vault-toolbar">
+            <span className="spacer" />
+            {user?.isSuperAdmin && (
+              <button
+                onClick={() => setShowCreateTable((s) => !s)}
+              >
+                {showCreateTable ? t("Затвори") : t("+ Нова таблица")}
               </button>
-              <button className={showAccessPanel ? "active" : ""} onClick={() => setShowAccessPanel(true)}>
-                {t("Управление на достъп")} ({status.grantedTo.length})
-              </button>
+            )}
+          </div>
+
+          {showCreateTable && (
+            <VaultCreateTableForm onSubmit={async (name, description) => handleCreateTable(name, description, "")} />
+          )}
+
+          {(tables ?? []).length === 0 ? (
+            <p className="muted">{t("Все още няма таблици.")}</p>
+          ) : (
+            <div className="vault-list">
+              {(tables ?? []).map((tb) => (
+                <div className="vault-item" key={tb.id}>
+                  <Avatar id={tb.id} name={tb.name} size={36} />
+                  <div className="vault-item-main">
+                    <div className="vault-item-title">{tb.name}</div>
+                    <div className="vault-item-sub muted small">
+                      {tb.description ? `${tb.description} · ` : ""}
+                      {tb.memberCount === 1 ? t("1 човек с достъп") : t("{count} души с достъп", { count: tb.memberCount })}
+                    </div>
+                  </div>
+                  <div className="vault-item-actions">
+                    {tb.isMember ? (
+                      <button className="small-btn" onClick={() => setSelectedTableId(tb.id)}>
+                        {t("Отвори")}
+                      </button>
+                    ) : user?.isSuperAdmin ? (
+                      <button className="small-btn secondary" onClick={() => setSelectedTableId(tb.id)}>
+                        {t("Нямаш достъп")}
+                      </button>
+                    ) : (
+                      <span className="badge badge-info">{t("Нямаш достъп")}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
+        </div>
+      )}
 
-          {showAccessPanel && user?.isSuperAdmin ? (
-            <VaultAccessPanel
-              grantedTo={status.grantedTo}
-              currentUserId={user!.id}
-              candidates={ungranted}
-              onGrant={grantAccess}
-              onRevoke={revokeAccess}
-            />
-          ) : (
-            <>
-              <div className="vault-toolbar">
-                <div className="search-input">
-                  <IconSearch size={16} />
-                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Търсене по заглавие / потребител / URL")} />
-                </div>
-                <span className="spacer" />
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    setShowImport((s) => !s);
-                    setShowAddForm(false);
-                    setEditingId(null);
-                  }}
-                >
-                  {showImport ? t("Затвори") : t("Импортирай")}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAddForm((s) => !s);
-                    setShowImport(false);
-                    setEditingId(null);
-                  }}
-                >
-                  {showAddForm ? t("Затвори") : t("+ Нов запис")}
-                </button>
-              </div>
-
-              {showImport && (
-                <VaultImportPanel
-                  onImport={importEntries}
-                  onDone={() => setShowImport(false)}
-                  onCancel={() => setShowImport(false)}
-                />
-              )}
-
-              {showAddForm && (
-                <VaultEntryForm
-                  onSave={async (data) => {
-                    await saveEntry(data);
-                    setShowAddForm(false);
-                  }}
-                  onCancel={() => setShowAddForm(false)}
-                />
-              )}
-
-              {sortedEntries.length === 0 ? (
-                <p className="muted">{search.trim() ? t("Няма съвпадения.") : t("Vault-ът е празен.")}</p>
-              ) : (
-                <div className="vault-list">
-                  {sortedEntries.map((e) => {
-                    const isEditing = editingId === e.id;
-                    if (isEditing) {
-                      return (
-                        <VaultEntryForm
-                          key={e.id}
-                          item={e.data}
-                          onSave={async (data) => {
-                            await saveEntry(data, e.id);
-                            setEditingId(null);
-                          }}
-                          onCancel={() => setEditingId(null)}
-                        />
-                      );
-                    }
-                    const revealed = revealedIds.has(e.id);
-                    return (
-                      <div className="vault-item" key={e.id}>
-                        <Avatar id={e.id} name={e.data.title || "?"} size={36} />
-                        <div className="vault-item-main">
-                          <div className="vault-item-title">{e.data.title}</div>
-                          <div className="vault-item-sub muted small">{e.data.username || t("без потребител")}</div>
-                        </div>
-                        <div className="vault-item-password">
-                          <code>{revealed ? e.data.password || "—" : "••••••••"}</code>
-                          {e.data.password && (
-                            <>
-                              <button
-                                type="button"
-                                className="icon-btn"
-                                title={revealed ? t("Скрий") : t("Покажи")}
-                                onClick={() => toggleReveal(e.id)}
-                              >
-                                {revealed ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-                              </button>
-                              <button
-                                type="button"
-                                className="icon-btn"
-                                title={t("Копирай")}
-                                onClick={() => navigator.clipboard.writeText(e.data.password)}
-                              >
-                                <IconCopy size={16} />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                        <div className="vault-item-url">
-                          {e.data.url ? (
-                            <a href={e.data.url} target="_blank" rel="noreferrer" title={e.data.url}>
-                              {hostnameOf(e.data.url)}
-                            </a>
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </div>
-                        <div className="vault-item-actions">
-                          {e.data.url && (
-                            <a
-                              className="icon-btn"
-                              href={e.data.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              title={t("Отвори")}
-                            >
-                              <IconExternalLink size={16} />
-                            </a>
-                          )}
-                          <button
-                            type="button"
-                            className="icon-btn"
-                            title={t("Редактирай")}
-                            onClick={() => {
-                              setEditingId(e.id);
-                              setShowAddForm(false);
-                            }}
-                          >
-                            <IconEdit size={16} />
-                          </button>
-                          <button type="button" className="icon-btn danger" title={t("Изтрий")} onClick={() => deleteEntry(e.id)}>
-                            <IconTrash size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-        </>
+      {stretchedKey && selectedTableId && (
+        <VaultTableView
+          key={selectedTableId}
+          table={(tables ?? []).find((tb) => tb.id === selectedTableId)!}
+          allTables={tables ?? []}
+          stretchedKey={stretchedKey}
+          isSuperAdmin={!!user?.isSuperAdmin}
+          currentUserId={user!.id}
+          candidates={activeUsers}
+          onBack={() => setSelectedTableId(null)}
+          onTablesChanged={refreshTables}
+        />
       )}
     </div>
-  );
-}
-
-function VaultSetupForm({ onSubmit }: { onSubmit: (password: string) => Promise<void> }) {
-  const { t } = useI18n();
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (password.length < 10) {
-      setError(t("Master паролата трябва да е поне 10 символа."));
-      return;
-    }
-    if (password !== confirm) {
-      setError(t("Паролите не съвпадат."));
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await onSubmit(password);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("Грешка"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form className="card form vault-gate" onSubmit={handleSubmit}>
-      <div className="vault-gate-icon">
-        <IconLock size={26} />
-      </div>
-      <p>
-        <strong>{t("Vault-ът още не е инициализиран.")}</strong>
-      </p>
-      <p className="muted small">
-        {t(
-          "Задай master парола — тя никога не се изпраща към сървъра и не може да бъде възстановена от никого, ако я забравиш. Избери нещо отделно от паролата ти за влизане в TODF."
-        )}
-      </p>
-      <div className="vault-gate-fields">
-        <label>
-          {t("Master парола")}
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
-        </label>
-        <label>
-          {t("Потвърди паролата")}
-          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-        </label>
-        {error && <div className="error-text">{error}</div>}
-        <button type="submit" disabled={submitting}>
-          {submitting ? t("Инициализиране…") : t("Инициализирай vault-а")}
-        </button>
-      </div>
-    </form>
   );
 }
 
@@ -525,6 +288,548 @@ function VaultUnlockForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function VaultCreateTableForm({
+  needsNewPassword,
+  onSubmit,
+}: {
+  needsNewPassword?: boolean;
+  onSubmit: (name: string, description: string, password: string) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!name.trim()) {
+      setError(t("Името на таблицата е задължително."));
+      return;
+    }
+    if (needsNewPassword) {
+      if (password.length < 10) {
+        setError(t("Master паролата трябва да е поне 10 символа."));
+        return;
+      }
+      if (password !== confirm) {
+        setError(t("Паролите не съвпадат."));
+        return;
+      }
+    }
+    setSubmitting(true);
+    try {
+      await onSubmit(name.trim(), description.trim(), password);
+      setName("");
+      setDescription("");
+      setPassword("");
+      setConfirm("");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("Грешка"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className={`card form${needsNewPassword ? " vault-gate" : ""}`} onSubmit={handleSubmit}>
+      {needsNewPassword && (
+        <>
+          <div className="vault-gate-icon">
+            <IconLock size={26} />
+          </div>
+          <p>
+            <strong>{t("Все още няма таблици.")}</strong>
+          </p>
+          <p className="muted small">
+            {t(
+              "Създай първата таблица и задай своя master парола — тя никога не се изпраща към сървъра и не може да бъде възстановена от никого, ако я забравиш. Избери нещо отделно от паролата ти за влизане в TODF. Същата парола ще отключва и всяка следваща таблица, до която имаш достъп."
+            )}
+          </p>
+        </>
+      )}
+      <div className={needsNewPassword ? "vault-gate-fields" : ""}>
+        <div className="form-row">
+          <label>
+            {t("Име на таблицата")}
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Напр. Маркетинг")} required autoFocus />
+          </label>
+          <label>
+            {t("Описание (по избор)")}
+            <input value={description} onChange={(e) => setDescription(e.target.value)} />
+          </label>
+        </div>
+        {needsNewPassword && (
+          <>
+            <label>
+              {t("Master парола")}
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </label>
+            <label>
+              {t("Потвърди паролата")}
+              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+            </label>
+          </>
+        )}
+        {error && <div className="error-text">{error}</div>}
+        <button type="submit" disabled={submitting}>
+          {submitting ? t("Записване…") : t("Създай таблица")}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+const HISTORY_ACTION_LABELS: Record<VaultHistoryRow["action"], string> = {
+  CREATED: "Създаден",
+  UPDATED: "Редактиран",
+  DELETED: "Изтрит",
+};
+
+interface DecryptedHistoryRow {
+  id: string;
+  action: VaultHistoryRow["action"];
+  actorName: string;
+  createdAt: string;
+  title: string;
+}
+
+function VaultTableView({
+  table,
+  allTables,
+  stretchedKey,
+  isSuperAdmin,
+  currentUserId,
+  candidates,
+  onBack,
+  onTablesChanged,
+}: {
+  table: VaultTableSummary;
+  allTables: VaultTableSummary[];
+  stretchedKey: CryptoKey;
+  isSuperAdmin: boolean;
+  currentUserId: string;
+  candidates: User[];
+  onBack: () => void;
+  onTablesChanged: () => Promise<void>;
+}) {
+  const { t, lang } = useI18n();
+  const locale = lang === "en" ? "en-GB" : "bg-BG";
+  const [tableKey, setTableKey] = useState<CryptoKey | null>(null);
+  const [entries, setEntries] = useState<DecryptedEntry[] | null>(null);
+  const [tab, setTab] = useState<"entries" | "access" | "history">(table.isMember ? "entries" : "access");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
+  const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [members, setMembers] = useState<VaultTableMemberInfo[] | null>(null);
+  const [history, setHistory] = useState<DecryptedHistoryRow[] | null>(null);
+
+  async function loadAndDecryptEntries(key: CryptoKey) {
+    const raw = await api<VaultEntry[]>(`/vault/tables/${table.id}/entries`);
+    const decrypted: DecryptedEntry[] = [];
+    for (const e of raw) {
+      try {
+        const data = await decryptJson<VaultEntryData>(key, e.ciphertext, e.iv);
+        decrypted.push({ id: e.id, data, createdBy: e.createdBy, createdAt: e.createdAt });
+      } catch {
+        // Would only happen for a row encrypted under a different TK — skip
+        // rather than crash the page.
+      }
+    }
+    setEntries(decrypted);
+  }
+
+  useEffect(() => {
+    if (!table.isMember || !table.myWrap) return;
+    unwrapVaultKey(table.myWrap.wrappedKey, table.myWrap.wrappedKeyIv, stretchedKey).then((tk) => {
+      setTableKey(tk);
+      loadAndDecryptEntries(tk);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table.id]);
+
+  async function refreshMembers() {
+    setMembers(await api<VaultTableMemberInfo[]>(`/vault/tables/${table.id}/members`));
+  }
+
+  useEffect(() => {
+    if (tab === "access" && isSuperAdmin) refreshMembers();
+    if (tab === "history" && tableKey) loadHistory(tableKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, tableKey]);
+
+  async function loadHistory(key: CryptoKey) {
+    const raw = await api<VaultHistoryRow[]>(`/vault/tables/${table.id}/history`);
+    const decorated: DecryptedHistoryRow[] = [];
+    for (const row of raw) {
+      let title = t("(неразчитаем запис)");
+      try {
+        const data = await decryptJson<VaultEntryData>(key, row.entry.ciphertext, row.entry.iv);
+        title = data.title || title;
+      } catch {
+        // leave the fallback label
+      }
+      decorated.push({ id: row.id, action: row.action, actorName: row.actorName, createdAt: row.createdAt, title });
+    }
+    setHistory(decorated);
+  }
+
+  async function saveEntry(data: VaultEntryData, existingId?: string) {
+    if (!tableKey) return;
+    const { ciphertext, iv } = await encryptJson(tableKey, data);
+    if (existingId) {
+      await api(`/vault/tables/${table.id}/entries/${existingId}`, { method: "PATCH", body: JSON.stringify({ ciphertext, iv }) });
+    } else {
+      await api(`/vault/tables/${table.id}/entries`, { method: "POST", body: JSON.stringify({ ciphertext, iv }) });
+    }
+    await loadAndDecryptEntries(tableKey);
+  }
+
+  async function importEntries(dataList: VaultEntryData[], onProgress: (done: number, total: number) => void): Promise<{ failed: number }> {
+    if (!tableKey) return { failed: dataList.length };
+    let failed = 0;
+    for (let i = 0; i < dataList.length; i++) {
+      try {
+        const { ciphertext, iv } = await encryptJson(tableKey, dataList[i]);
+        await api(`/vault/tables/${table.id}/entries`, { method: "POST", body: JSON.stringify({ ciphertext, iv }) });
+      } catch {
+        failed++;
+      }
+      onProgress(i + 1, dataList.length);
+    }
+    await loadAndDecryptEntries(tableKey);
+    return { failed };
+  }
+
+  async function deleteEntry(id: string) {
+    if (!window.confirm(t("Наистина ли да изтрия този запис?"))) return;
+    await api(`/vault/tables/${table.id}/entries/${id}`, { method: "DELETE" });
+    if (tableKey) await loadAndDecryptEntries(tableKey);
+  }
+
+  async function copyEntryTo(entry: DecryptedEntry, destTableId: string) {
+    const dest = allTables.find((tb) => tb.id === destTableId);
+    if (!dest?.myWrap) return;
+    try {
+      const destKey = await unwrapVaultKey(dest.myWrap.wrappedKey, dest.myWrap.wrappedKeyIv, stretchedKey);
+      const { ciphertext, iv } = await encryptJson(destKey, entry.data);
+      await api(`/vault/tables/${destTableId}/entries`, { method: "POST", body: JSON.stringify({ ciphertext, iv }) });
+      setCopyingId(null);
+      window.alert(t('Записът е копиран в "{name}".', { name: dest.name }));
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : t("Грешка"));
+    }
+  }
+
+  async function grantAccess(targetUserId: string, theirPassword: string) {
+    if (!tableKey) return;
+    const targetKeyInfo = await api<VaultUserKeyInfo | null>(`/vault/users/${targetUserId}/key`);
+    let wrappingKey: CryptoKey;
+    const saltPayload: { salt?: string; iterations?: number } = {};
+    if (!targetKeyInfo) {
+      const salt = generateSaltB64();
+      saltPayload.salt = salt;
+      saltPayload.iterations = PBKDF2_ITERATIONS;
+      wrappingKey = await deriveStretchedKey(theirPassword, salt, PBKDF2_ITERATIONS);
+    } else {
+      wrappingKey = await deriveStretchedKey(theirPassword, targetKeyInfo.salt, targetKeyInfo.iterations);
+    }
+    const { wrappedKey, wrappedKeyIv } = await wrapVaultKey(tableKey, wrappingKey);
+    await api(`/vault/tables/${table.id}/members`, {
+      method: "POST",
+      body: JSON.stringify({ userId: targetUserId, wrappedKey, wrappedKeyIv, ...saltPayload }),
+    });
+    await refreshMembers();
+    await onTablesChanged();
+  }
+
+  async function revokeAccess(targetUserId: string) {
+    if (!window.confirm(t("Наистина ли да отнемеш достъпа на този човек до тази таблица?"))) return;
+    try {
+      await api(`/vault/tables/${table.id}/members/${targetUserId}`, { method: "DELETE" });
+      await refreshMembers();
+      await onTablesChanged();
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : t("Грешка"));
+    }
+  }
+
+  function toggleReveal(id: string) {
+    setRevealedIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const visibleEntries = (entries ?? []).filter((e) => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return e.data.title.toLowerCase().includes(q) || e.data.username.toLowerCase().includes(q) || e.data.url.toLowerCase().includes(q);
+  });
+  const sortedEntries = [...visibleEntries].sort((a, b) => a.data.title.localeCompare(b.data.title));
+
+  const memberIds = new Set((members ?? []).map((m) => m.userId));
+  const ungranted = candidates.filter((u) => !memberIds.has(u.id));
+  const copyTargets = allTables.filter((tb) => tb.id !== table.id && tb.isMember);
+
+  return (
+    <div>
+      <button className="secondary" onClick={onBack} style={{ marginBottom: 12 }}>
+        {t("← Назад към таблиците")}
+      </button>
+      <div className="page-header">
+        <h2 style={{ margin: 0 }}>{table.name}</h2>
+      </div>
+      {table.description && <p className="muted small">{table.description}</p>}
+
+      <div className="tabs">
+        {table.isMember && (
+          <button className={tab === "entries" ? "active" : ""} onClick={() => setTab("entries")}>
+            {t("Записи")}
+          </button>
+        )}
+        {table.isMember && (
+          <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>
+            {t("История")}
+          </button>
+        )}
+        {isSuperAdmin && (
+          <button className={tab === "access" ? "active" : ""} onClick={() => setTab("access")}>
+            {t("Управление на достъп")} ({table.memberCount})
+          </button>
+        )}
+      </div>
+
+      {tab === "access" && isSuperAdmin && (
+        <VaultAccessPanel
+          members={members ?? []}
+          currentUserId={currentUserId}
+          candidates={ungranted}
+          canGrant={!!tableKey}
+          onGrant={grantAccess}
+          onRevoke={revokeAccess}
+        />
+      )}
+
+      {tab === "history" && table.isMember && (
+        <div className="vault-list">
+          {(history ?? []).length === 0 ? (
+            <p className="muted">{t("Все още няма история в тази таблица.")}</p>
+          ) : (
+            (history ?? []).map((row) => (
+              <div className="vault-item" key={row.id}>
+                <div className="vault-item-main">
+                  <div className="vault-item-title">
+                    {t(HISTORY_ACTION_LABELS[row.action])} · {row.title}
+                  </div>
+                  <div className="vault-item-sub muted small">
+                    {row.actorName} · {new Date(row.createdAt).toLocaleString(locale)}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === "entries" && table.isMember && entries && (
+        <>
+          <div className="vault-toolbar">
+            <div className="search-input">
+              <IconSearch size={16} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Търсене по заглавие / потребител / URL")} />
+            </div>
+            <span className="spacer" />
+            <button
+              className="secondary"
+              onClick={() => {
+                setShowImport((s) => !s);
+                setShowAddForm(false);
+                setEditingId(null);
+              }}
+            >
+              {showImport ? t("Затвори") : t("Импортирай")}
+            </button>
+            <button
+              onClick={() => {
+                setShowAddForm((s) => !s);
+                setShowImport(false);
+                setEditingId(null);
+              }}
+            >
+              {showAddForm ? t("Затвори") : t("+ Нов запис")}
+            </button>
+          </div>
+
+          {showImport && (
+            <VaultImportPanel onImport={importEntries} onDone={() => setShowImport(false)} onCancel={() => setShowImport(false)} />
+          )}
+
+          {showAddForm && (
+            <VaultEntryForm
+              onSave={async (data) => {
+                await saveEntry(data);
+                setShowAddForm(false);
+              }}
+              onCancel={() => setShowAddForm(false)}
+            />
+          )}
+
+          {sortedEntries.length === 0 ? (
+            <p className="muted">{search.trim() ? t("Няма съвпадения.") : t("Vault-ът е празен.")}</p>
+          ) : (
+            <div className="vault-list">
+              {sortedEntries.map((e) => {
+                const isEditing = editingId === e.id;
+                if (isEditing) {
+                  return (
+                    <VaultEntryForm
+                      key={e.id}
+                      item={e.data}
+                      onSave={async (data) => {
+                        await saveEntry(data, e.id);
+                        setEditingId(null);
+                      }}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  );
+                }
+                const revealed = revealedIds.has(e.id);
+                return (
+                  <div key={e.id}>
+                    <div className="vault-item">
+                      <Avatar id={e.id} name={e.data.title || "?"} size={36} />
+                      <div className="vault-item-main">
+                        <div className="vault-item-title">{e.data.title}</div>
+                        <div className="vault-item-sub muted small">{e.data.username || t("без потребител")}</div>
+                      </div>
+                      <div className="vault-item-password">
+                        <code>{revealed ? e.data.password || "—" : "••••••••"}</code>
+                        {e.data.password && (
+                          <>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title={revealed ? t("Скрий") : t("Покажи")}
+                              onClick={() => toggleReveal(e.id)}
+                            >
+                              {revealed ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title={t("Копирай")}
+                              onClick={() => navigator.clipboard.writeText(e.data.password)}
+                            >
+                              <IconCopy size={16} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      <div className="vault-item-url">
+                        {e.data.url ? (
+                          <a href={e.data.url} target="_blank" rel="noreferrer" title={e.data.url}>
+                            {hostnameOf(e.data.url)}
+                          </a>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </div>
+                      <div className="vault-item-actions">
+                        {e.data.url && (
+                          <a className="icon-btn" href={e.data.url} target="_blank" rel="noreferrer" title={t("Отвори")}>
+                            <IconExternalLink size={16} />
+                          </a>
+                        )}
+                        {copyTargets.length > 0 && (
+                          <button
+                            type="button"
+                            className="small-btn secondary"
+                            title={t("Копирай в друга таблица")}
+                            onClick={() => setCopyingId(copyingId === e.id ? null : e.id)}
+                          >
+                            {t("Копирай в…")}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title={t("Редактирай")}
+                          onClick={() => {
+                            setEditingId(e.id);
+                            setShowAddForm(false);
+                          }}
+                        >
+                          <IconEdit size={16} />
+                        </button>
+                        <button type="button" className="icon-btn danger" title={t("Изтрий")} onClick={() => deleteEntry(e.id)}>
+                          <IconTrash size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    {copyingId === e.id && (
+                      <CopyToTableRow targets={copyTargets} onConfirm={(destId) => copyEntryTo(e, destId)} onCancel={() => setCopyingId(null)} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CopyToTableRow({
+  targets,
+  onConfirm,
+  onCancel,
+}: {
+  targets: VaultTableSummary[];
+  onConfirm: (destTableId: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const { t } = useI18n();
+  const [destId, setDestId] = useState(targets[0]?.id ?? "");
+  const [submitting, setSubmitting] = useState(false);
+
+  return (
+    <div className="form-row" style={{ padding: "8px 16px", alignItems: "center" }}>
+      <select value={destId} onChange={(e) => setDestId(e.target.value)}>
+        {targets.map((tb) => (
+          <option key={tb.id} value={tb.id}>
+            {tb.name}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="small-btn"
+        disabled={submitting || !destId}
+        onClick={async () => {
+          setSubmitting(true);
+          await onConfirm(destId);
+          setSubmitting(false);
+        }}
+      >
+        {t("Копирай")}
+      </button>
+      <button type="button" className="small-btn secondary" onClick={onCancel}>
+        {t("Отказ")}
+      </button>
+    </div>
   );
 }
 
@@ -616,7 +921,7 @@ const VAULT_FIELD_LABEL_KEYS: Record<VaultField, string> = {
 // File parsing (parseImportFile) is entirely client-side — see
 // lib/vaultImport.ts. Rows only ever leave this component as individually
 // encrypted ciphertext, through the exact same onImport (→ importEntries →
-// encryptJson → POST /vault/entries) path a manual single save uses.
+// encryptJson → POST .../entries) path a manual single save uses.
 function VaultImportPanel({
   onImport,
   onDone,
@@ -757,9 +1062,7 @@ function VaultImportPanel({
                   </table>
                 </div>
               )}
-              {validRows.length > 5 && (
-                <p className="muted small">{t("… и още {count}", { count: validRows.length - 5 })}</p>
-              )}
+              {validRows.length > 5 && <p className="muted small">{t("… и още {count}", { count: validRows.length - 5 })}</p>}
 
               {importing && progress && (
                 <p className="muted small">{t("Импортиране… {done}/{total}", { done: progress.done, total: progress.total })}</p>
@@ -793,15 +1096,17 @@ function VaultImportPanel({
 }
 
 function VaultAccessPanel({
-  grantedTo,
+  members,
   currentUserId,
   candidates,
+  canGrant,
   onGrant,
   onRevoke,
 }: {
-  grantedTo: VaultStatus["grantedTo"];
+  members: VaultTableMemberInfo[];
   currentUserId: string;
   candidates: User[];
+  canGrant: boolean;
   onGrant: (userId: string, theirPassword: string) => Promise<void>;
   onRevoke: (userId: string) => Promise<void>;
 }) {
@@ -811,15 +1116,24 @@ function VaultAccessPanel({
 
   return (
     <div>
+      {!canGrant && (
+        <p className="muted small">
+          {t("Нямаш тази таблица отключена, затова не можеш да добавяш нови хора — можеш само да виждаш и да отнемаш достъп.")}
+        </p>
+      )}
       <div className="vault-list">
-        {grantedTo.map((g) => (
+        {members.map((g) => (
           <div className="vault-item" key={g.userId}>
             <Avatar id={g.userId} name={g.name} size={36} />
             <div className="vault-item-main">
               <div className="vault-item-title">
                 {g.name}
                 {g.userId === currentUserId && <span className="muted small"> ({t("ти")})</span>}
-                {g.isSuperAdmin && <span className="badge badge-info" style={{ marginLeft: 8 }}>Admin</span>}
+                {g.isSuperAdmin && (
+                  <span className="badge badge-info" style={{ marginLeft: 8 }}>
+                    Admin
+                  </span>
+                )}
               </div>
               <div className="vault-item-sub muted small">
                 {t("Предоставено от")} {g.grantedByName ?? "—"} · {new Date(g.createdAt).toLocaleDateString(locale)}
@@ -834,7 +1148,7 @@ function VaultAccessPanel({
         ))}
       </div>
 
-      {candidates.length > 0 && !showGrantForm && (
+      {canGrant && candidates.length > 0 && !showGrantForm && (
         <button onClick={() => setShowGrantForm(true)} style={{ marginTop: 12 }}>
           {t("+ Добави достъп")}
         </button>
@@ -865,10 +1179,19 @@ function GrantAccessForm({
 }) {
   const { t } = useI18n();
   const [userId, setUserId] = useState(candidates[0]?.id ?? "");
+  const [targetKeyInfo, setTargetKeyInfo] = useState<VaultUserKeyInfo | null | undefined>(undefined);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    setTargetKeyInfo(undefined);
+    api<VaultUserKeyInfo | null>(`/vault/users/${userId}/key`).then(setTargetKeyInfo);
+  }, [userId]);
+
+  const hasExistingPassword = !!targetKeyInfo;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -877,12 +1200,17 @@ function GrantAccessForm({
       setError(t("Избери служител."));
       return;
     }
-    if (password.length < 10) {
-      setError(t("Master паролата трябва да е поне 10 символа."));
-      return;
-    }
-    if (password !== confirm) {
-      setError(t("Паролите не съвпадат."));
+    if (!hasExistingPassword) {
+      if (password.length < 10) {
+        setError(t("Master паролата трябва да е поне 10 символа."));
+        return;
+      }
+      if (password !== confirm) {
+        setError(t("Паролите не съвпадат."));
+        return;
+      }
+    } else if (!password) {
+      setError(t("Въведи съществуващата master парола на служителя."));
       return;
     }
     setSubmitting(true);
@@ -899,9 +1227,16 @@ function GrantAccessForm({
     <form className="card form" onSubmit={handleSubmit} style={{ marginTop: 12 }}>
       <p className="muted small">
         {t(
-          "Служителят трябва да е лично тук и сам да въведе master паролата си — тя никога не трябва да се споделя по чат/имейл, защото криптира целия vault."
+          "Служителят трябва да е лично тук и сам да въведе master паролата си — тя никога не трябва да се споделя по чат/имейл, защото криптира тази таблица."
         )}
       </p>
+      {targetKeyInfo !== undefined && (
+        <p className="muted small">
+          {hasExistingPassword
+            ? t("Този човек вече има master парола от друга таблица — трябва да въведе СЪЩАТА парола тук, не нова.")
+            : t("Този човек няма master парола все още — нека сам си зададе нова сега.")}
+        </p>
+      )}
       <div className="form-row">
         <label>
           {t("Служител")}
@@ -914,13 +1249,15 @@ function GrantAccessForm({
           </select>
         </label>
         <label>
-          {t("Негова/нейна master парола")}
+          {hasExistingPassword ? t("Негова/нейна master парола") : t("Негова/нейна нова master парола")}
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </label>
-        <label>
-          {t("Потвърди паролата")}
-          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-        </label>
+        {!hasExistingPassword && (
+          <label>
+            {t("Потвърди паролата")}
+            <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+          </label>
+        )}
       </div>
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
