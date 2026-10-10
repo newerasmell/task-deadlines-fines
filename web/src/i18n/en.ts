@@ -610,8 +610,8 @@ export const en: Record<string, string> = {
   "+ Добави достъп": "+ Grant access",
   "Криптирана база за пароли, логини и чувствителна информация, разделена на отделни таблици (напр. по екип/отдел) — zero-knowledge: криптирането/декриптирането става в браузъра ти, сървърът никога не вижда plaintext данните нито master паролата ти. Една master парола отключва всички таблици, до които имаш достъп. Отделна е от паролата ти за влизане в TODF.":
     "An encrypted store for passwords, logins and sensitive information, split into separate tables (e.g. by team/department) — zero-knowledge: encryption/decryption happens in your browser, the server never sees the plaintext data or your master password. One master password unlocks every table you have access to. Separate from your TODF login password.",
-  "Нямаш достъп до нито една таблица.": "You don't have access to any table yet.",
-  "Помоли някой Ultimate Admin да ти предостави достъп до съответната таблица:": "Ask an Ultimate Admin to grant you access to the relevant table:",
+  "Помоли някой Ultimate Admin да ти предостави достъп — вече не им трябва нищо от теб за това.":
+    "Ask an Ultimate Admin to grant you access — they no longer need anything from you to do it.",
   "Грешна master парола.": "Wrong master password.",
   "Записи": "Entries",
   "История": "History",
@@ -644,8 +644,10 @@ export const en: Record<string, string> = {
   "Копирай в…": "Copy to…",
   "Копирай в друга таблица": "Copy to another table",
   'Записът е копиран в "{name}".': 'The entry was copied to "{name}".',
-  "Създай първата таблица и задай своя master парола — тя никога не се изпраща към сървъра и не може да бъде възстановена от никого, ако я забравиш. Избери нещо отделно от паролата ти за влизане в TODF. Същата парола ще отключва и всяка следваща таблица, до която имаш достъп.":
-    "Create the first table and set your master password — it's never sent to the server and can't be recovered by anyone if you forget it. Pick something separate from your TODF login password. The same password will unlock every future table you have access to.",
+  "Задай си личен vault ключ": "Set up your personal vault key",
+  "Задай master парола — тя никога не се изпраща към сървъра, никой друг никога не я вижда или въвежда вместо теб, и не може да бъде възстановена от никого, ако я забравиш. Избери нещо отделно от паролата ти за влизане в TODF. Щом го направиш, Ultimate Admin може да ти даде достъп до таблица по всяко време — без да е нужно присъствието ти или да споделяш нищо с него.":
+    "Set a master password — it's never sent to the server, nobody else ever sees it or types it for you, and it can't be recovered by anyone if you forget it. Pick something separate from your TODF login password. Once you've done this, an Ultimate Admin can grant you access to a table at any time — without you needing to be present or share anything with them.",
+  "Задай ключ": "Set up key",
   "Master парола": "Master password",
   "Потвърди паролата": "Confirm password",
   "Отключване…": "Unlocking…",
@@ -659,15 +661,9 @@ export const en: Record<string, string> = {
   "Наистина ли да отнемеш достъпа на този човек до тази таблица?": "Revoke this person's access to this table?",
   "Нямаш тази таблица отключена, затова не можеш да добавяш нови хора — можеш само да виждаш и да отнемаш достъп.":
     "You don't have this table unlocked, so you can't add new people — you can only view and revoke access.",
-  "Служителят трябва да е лично тук и сам да въведе master паролата си — тя никога не трябва да се споделя по чат/имейл, защото криптира тази таблица.":
-    "The employee needs to be here in person and type their own master password — it should never be shared over chat/email, since it encrypts this table.",
-  "Този човек вече има master парола от друга таблица — трябва да въведе СЪЩАТА парола тук, не нова.":
-    "This person already has a master password from another table — they need to type that SAME password here, not a new one.",
-  "Този човек няма master парола все още — нека сам си зададе нова сега.":
-    "This person doesn't have a master password yet — have them set a new one now.",
-  "Негова/нейна master парола": "Their master password",
-  "Негова/нейна нова master парола": "Their new master password",
-  "Въведи съществуващата master парола на служителя.": "Enter the employee's existing master password.",
+  "Този човек още няма личен vault ключ — трябва сам, по всяко време, да отвори Vault и да си зададе master парола. Чак тогава ще можеш да му дадеш достъп (без да е нужно нищо друго от него).":
+    "This person doesn't have a personal vault key yet — they need to open Vault themselves, any time, and set a master password. Only then can you grant them access (and you won't need anything else from them to do it).",
+  "Готово за достъп — не е нужна парола от него, само едно кликване.": "Ready to grant — no password needed from them, just one click.",
   "Предостави достъп": "Grant access",
   "без потребител": "no username",
   "Отвори": "Open",

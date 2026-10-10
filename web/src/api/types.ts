@@ -459,22 +459,33 @@ export interface RecordingSyncState {
 }
 
 // --- Zero-knowledge vault ---
-// Every field here is either ciphertext, a salt, or an IV — never
-// plaintext. See web/src/lib/vaultCrypto.ts for what to do with them.
-// The vault is split into separate "tables" (e.g. Marketing / Management /
-// Accounting) each with its own encryption key — one person's single
-// master password unlocks every table they've been granted (see
-// VaultUserKey/VaultTable in prisma/schema.prisma), but a table's key
-// never lets you decrypt another table's entries.
+// Every field here is either ciphertext, a salt, an IV, or a public key —
+// never plaintext and never a secret someone else could act on. See
+// web/src/lib/vaultCrypto.ts for what to do with them. The vault is split
+// into separate "tables" (e.g. Marketing / Management / Accounting) each
+// with its own encryption key — one person's single master password
+// unlocks every table they've been granted (see VaultUserKey/VaultTable in
+// prisma/schema.prisma), but a table's key never lets you decrypt another
+// table's entries. Granting access never requires the grantee's password —
+// only their public key (see VaultTableMember.wrappedKey server-side).
 
 export interface VaultUserKeyInfo {
   salt: string;
   iterations: number;
+  publicKey: string;
+  wrappedPrivateKey: string;
+  wrappedPrivateKeyIv: string;
 }
 
 export interface VaultTableWrap {
   wrappedKey: string;
-  wrappedKeyIv: string;
+}
+
+// What GET /vault/users/:userId/key returns about someone ELSE — only
+// their public key, since only the owner of a VaultUserKey ever needs
+// their own salt/iterations.
+export interface VaultUserPublicKey {
+  publicKey: string;
 }
 
 export interface VaultTableSummary {

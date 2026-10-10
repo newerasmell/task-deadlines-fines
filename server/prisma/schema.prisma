@@ -791,18 +791,34 @@ model VoiceAssignmentConfig {
 // and managing membership, not reading table contents.
 //
 // One personal master password per person unlocks every table they
-// belong to: VaultUserKey holds ONE PBKDF2 salt per user, set the first
-// time they're ever added to any table, and reused for every
-// VaultTableMember wrap after that (never a fresh salt per table) — so
-// the stretched key the browser derives from "my master password + my
-// salt" is the same regardless of which table it's unwrapping a TK for.
+// belong to — but nobody else ever has to know, let alone type, that
+// password to grant them access. Each person sets this up ONCE,
+// themselves, entirely self-service (there's no "ask an admin" step):
+// their browser derives a stretched key from their password + their own
+// salt, generates an RSA-OAEP keypair, and uploads the PUBLIC key (safe,
+// not secret) plus the PRIVATE key wrapped (AES-GCM) under their stretched
+// key. Granting someone a table then just means "encrypt TK to their
+// public key" — see the comment on VaultTableMember.wrappedKey — which
+// requires nothing from them at grant time and reveals their password to
+// no one, including whoever's granting.
 model VaultUserKey {
-  id         String   @id @default(cuid())
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id])
+  id         String @id @default(cuid())
+  userId     String @unique
+  user       User   @relation(fields: [userId], references: [id])
   salt       String
-  iterations Int      @default(600000)
-  createdAt  DateTime @default(now())
+  iterations Int    @default(600000)
+
+  // RSA-OAEP public key (SPKI, base64) — not secret, safe for anyone to
+  // read; this is what a granter's browser encrypts a TK to.
+  publicKey String
+
+  // The matching private key, AES-GCM(key = stretched master key). Only
+  // this person's own browser, after they type their own password, can
+  // ever decrypt it.
+  wrappedPrivateKey   String
+  wrappedPrivateKeyIv String
+
+  createdAt DateTime @default(now())
 }
 
 model VaultTable {
@@ -819,17 +835,17 @@ model VaultTable {
   history VaultEntryHistory[]
 }
 
-// TK "wrapped" (AES-GCM encrypted) under THIS member's stretched key (see
-// VaultUserKey) — one row per (table, user) pair. Granting requires an
-// admin who already has this table unlocked (TK in their browser's
-// memory) present together with the new member while the new member types
-// their master password (a brand-new one, or their existing one if they
-// already belong to some other table) into that same session, so it can
-// be wrapped for them. Revoking deletes this row only — it does not
-// rotate TK or re-encrypt the table's entries, so someone who already saw
-// them before being revoked isn't retroactively un-shown them; removing
-// the LAST member of a table is blocked (it would brick that table
-// forever, since TK only ever exists wrapped).
+// TK wrapped asymmetrically (RSA-OAEP) under THIS member's own PUBLIC key
+// (see VaultUserKey) — one row per (table, user) pair. Granting only needs
+// an admin who already has this table unlocked (TK in their browser's
+// memory) and the target's public key (fetched from the server — it isn't
+// secret); nobody needs to be present, and the target's master password
+// never enters anyone's browser but their own, at unlock time, long after
+// the grant. Revoking deletes this row only — it does not rotate TK or
+// re-encrypt the table's entries, so someone who already saw them before
+// being revoked isn't retroactively un-shown them; removing the LAST
+// member of a table is blocked (it would brick that table forever, since
+// TK only ever exists wrapped).
 model VaultTableMember {
   id      String     @id @default(cuid())
   tableId String
@@ -837,9 +853,8 @@ model VaultTableMember {
   userId  String
   user    User       @relation("VaultTableMemberUser", fields: [userId], references: [id])
 
-  // AES-GCM(TK, key = PBKDF2(masterPassword, VaultUserKey.salt, iterations)).
-  wrappedKey   String
-  wrappedKeyIv String
+  // RSA-OAEP(TK, key = this member's VaultUserKey.publicKey).
+  wrappedKey String
 
   grantedById String?
   grantedBy   User?    @relation("VaultTableMemberGrantedBy", fields: [grantedById], references: [id])

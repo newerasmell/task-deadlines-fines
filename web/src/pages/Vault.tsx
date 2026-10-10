@@ -9,6 +9,7 @@ import type {
   VaultTableMemberInfo,
   VaultTableSummary,
   VaultUserKeyInfo,
+  VaultUserPublicKey,
 } from "../api/types";
 import { Avatar } from "../components/Avatar";
 import { IconCopy, IconEdit, IconExternalLink, IconEye, IconEyeOff, IconLock, IconSearch, IconTrash } from "../components/icons";
@@ -19,10 +20,15 @@ import {
   decryptJson,
   deriveStretchedKey,
   encryptJson,
+  exportPublicKeyB64,
+  generateKeyPair,
   generateSaltB64,
   generateVaultKey,
-  unwrapVaultKey,
-  wrapVaultKey,
+  importPublicKeyB64,
+  unwrapPrivateKey,
+  unwrapTableKey,
+  wrapPrivateKey,
+  wrapTableKey,
 } from "../lib/vaultCrypto";
 import type { ParsedTable, VaultField } from "../lib/vaultImport";
 import { VAULT_FIELDS, guessColumnMapping, parseImportFile } from "../lib/vaultImport";
@@ -48,16 +54,18 @@ function generateStrongPassword(length = 20): string {
   return Array.from(bytes, (b) => chars[b % chars.length]).join("");
 }
 
-// `stretchedKey` lives only in this component's state — it is NEVER written
+// `privateKey` lives only in this component's state — it is NEVER written
 // to localStorage/sessionStorage/cookies, so navigating away from this page
 // (unmounting it) or reloading the browser re-locks every table automatically.
-// One master password derives this ONE stretched key per person, which then
-// unwraps the separate table key (TK) of every table they belong to — so a
-// single password unlocks everything they've been granted, while each
-// table's entries stay encrypted under their own, cryptographically distinct
-// key (access to one table never implies access to another). See
-// web/src/lib/vaultCrypto.ts for what every crypto call below actually does;
-// nothing here ever sends a password or a derived/table key to the server.
+// It's this person's RSA private key, unwrapped from their own master
+// password; every table they belong to has its table key (TK) wrapped
+// under their PUBLIC key, so this one private key unwraps all of them —
+// one password for everything, while each table's entries stay encrypted
+// under their own, cryptographically distinct TK (access to one table
+// never implies access to another). Crucially, nobody else's browser ever
+// needs this person's password to grant them a table: the granter only
+// ever needs this person's PUBLIC key (not secret, fetched from the
+// server) — see web/src/lib/vaultCrypto.ts for the actual RSA-OAEP calls.
 export function Vault() {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -65,7 +73,7 @@ export function Vault() {
   const [myKeyInfo, setMyKeyInfo] = useState<VaultUserKeyInfo | null>(null);
   const [tables, setTables] = useState<VaultTableSummary[] | null>(null);
   const [activeUsers, setActiveUsers] = useState<User[]>([]);
-  const [stretchedKey, setStretchedKey] = useState<CryptoKey | null>(null);
+  const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
@@ -84,21 +92,31 @@ export function Vault() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Fully self-service: nobody — not an admin, not anyone — ever needs to
+  // be involved for a person to set this up. The password typed here never
+  // leaves this browser in any form; only the derived public key does.
+  async function handleSetupKey(password: string) {
+    const salt = generateSaltB64();
+    const stretched = await deriveStretchedKey(password, salt, PBKDF2_ITERATIONS);
+    const keyPair = await generateKeyPair();
+    const publicKey = await exportPublicKeyB64(keyPair.publicKey);
+    const { wrappedPrivateKey, wrappedPrivateKeyIv } = await wrapPrivateKey(keyPair.privateKey, stretched);
+    await api("/vault/my-key", {
+      method: "POST",
+      body: JSON.stringify({ salt, iterations: PBKDF2_ITERATIONS, publicKey, wrappedPrivateKey, wrappedPrivateKeyIv }),
+    });
+    setMyKeyInfo({ salt, iterations: PBKDF2_ITERATIONS, publicKey, wrappedPrivateKey, wrappedPrivateKeyIv });
+    setPrivateKey(keyPair.privateKey);
+  }
+
   async function handleUnlock(password: string) {
     if (!myKeyInfo) return;
     setUnlockError(null);
     setUnlocking(true);
     try {
       const stretched = await deriveStretchedKey(password, myKeyInfo.salt, myKeyInfo.iterations);
-      // There's no separately stored verifier — try unwrapping any one table
-      // we already belong to; a wrong password fails there with a GCM
-      // auth-tag mismatch. If we don't belong to any table yet, there's
-      // nothing to verify against, so just accept it.
-      const sample = (tables ?? []).find((tb) => tb.myWrap);
-      if (sample?.myWrap) {
-        await unwrapVaultKey(sample.myWrap.wrappedKey, sample.myWrap.wrappedKeyIv, stretched);
-      }
-      setStretchedKey(stretched);
+      const pk = await unwrapPrivateKey(myKeyInfo.wrappedPrivateKey, myKeyInfo.wrappedPrivateKeyIv, stretched);
+      setPrivateKey(pk);
     } catch {
       setUnlockError(t("Грешна master парола."));
     } finally {
@@ -106,23 +124,15 @@ export function Vault() {
     }
   }
 
-  async function handleCreateTable(name: string, description: string, password: string) {
-    let stretched = stretchedKey;
-    let saltPayload: { salt?: string; iterations?: number } = {};
-    if (!myKeyInfo) {
-      const salt = generateSaltB64();
-      stretched = await deriveStretchedKey(password, salt, PBKDF2_ITERATIONS);
-      saltPayload = { salt, iterations: PBKDF2_ITERATIONS };
-    }
-    if (!stretched) return;
+  async function handleCreateTable(name: string, description: string) {
+    if (!myKeyInfo) return;
     const tk = await generateVaultKey();
-    const { wrappedKey, wrappedKeyIv } = await wrapVaultKey(tk, stretched);
+    const ownPublicKey = await importPublicKeyB64(myKeyInfo.publicKey);
+    const wrappedKey = await wrapTableKey(tk, ownPublicKey);
     const created = await api<{ id: string; name: string; description: string | null }>("/vault/tables", {
       method: "POST",
-      body: JSON.stringify({ name, description: description || undefined, wrappedKey, wrappedKeyIv, ...saltPayload }),
+      body: JSON.stringify({ name, description: description || undefined, wrappedKey }),
     });
-    if (!myKeyInfo && saltPayload.salt) setMyKeyInfo({ salt: saltPayload.salt, iterations: saltPayload.iterations! });
-    setStretchedKey(stretched);
     await refreshTables();
     setShowCreateTable(false);
     setSelectedTableId(created.id);
@@ -136,11 +146,11 @@ export function Vault() {
     <div>
       <div className="page-header">
         <h1>{t("Vault")}</h1>
-        {stretchedKey && !selectedTableId && (
+        {privateKey && !selectedTableId && (
           <button
             className="secondary"
             onClick={() => {
-              setStretchedKey(null);
+              setPrivateKey(null);
               setSelectedTableId(null);
             }}
           >
@@ -154,55 +164,31 @@ export function Vault() {
         )}
       </p>
 
-      {!myKeyInfo && !user?.isSuperAdmin && (
-        <div className="vault-gate">
-          <div className="vault-gate-icon">
-            <IconLock size={26} />
-          </div>
-          <p>
-            <strong>{t("Нямаш достъп до нито една таблица.")}</strong>
-          </p>
-          <p className="muted small">{t("Помоли някой Ultimate Admin да ти предостави достъп до съответната таблица:")}</p>
-          <div className="vault-list" style={{ textAlign: "left" }}>
-            {admins.map((a) => (
-              <div className="vault-item" key={a.id}>
-                <Avatar id={a.id} name={a.name} size={32} />
-                <div className="vault-item-main">
-                  <div className="vault-item-title">{a.name}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {!myKeyInfo && <VaultSetupKeyForm onSubmit={handleSetupKey} />}
 
-      {!myKeyInfo && user?.isSuperAdmin && (
-        <VaultCreateTableForm needsNewPassword onSubmit={handleCreateTable} />
-      )}
+      {myKeyInfo && !privateKey && <VaultUnlockForm onSubmit={handleUnlock} error={unlockError} submitting={unlocking} />}
 
-      {myKeyInfo && !stretchedKey && (
-        <VaultUnlockForm onSubmit={handleUnlock} error={unlockError} submitting={unlocking} />
-      )}
-
-      {stretchedKey && !selectedTableId && (
+      {privateKey && !selectedTableId && (
         <div>
           <div className="vault-toolbar">
             <span className="spacer" />
             {user?.isSuperAdmin && (
-              <button
-                onClick={() => setShowCreateTable((s) => !s)}
-              >
-                {showCreateTable ? t("Затвори") : t("+ Нова таблица")}
-              </button>
+              <button onClick={() => setShowCreateTable((s) => !s)}>{showCreateTable ? t("Затвори") : t("+ Нова таблица")}</button>
             )}
           </div>
 
-          {showCreateTable && (
-            <VaultCreateTableForm onSubmit={async (name, description) => handleCreateTable(name, description, "")} />
-          )}
+          {showCreateTable && <VaultCreateTableForm onSubmit={handleCreateTable} />}
 
           {(tables ?? []).length === 0 ? (
-            <p className="muted">{t("Все още няма таблици.")}</p>
+            <p className="muted">
+              {t("Все още няма таблици.")}
+              {!user?.isSuperAdmin && admins.length > 0 && (
+                <>
+                  {" "}
+                  {t("Помоли някой Ultimate Admin да ти предостави достъп — вече не им трябва нищо от теб за това.")}
+                </>
+              )}
+            </p>
           ) : (
             <div className="vault-list">
               {(tables ?? []).map((tb) => (
@@ -235,12 +221,12 @@ export function Vault() {
         </div>
       )}
 
-      {stretchedKey && selectedTableId && (
+      {privateKey && selectedTableId && (
         <VaultTableView
           key={selectedTableId}
           table={(tables ?? []).find((tb) => tb.id === selectedTableId)!}
           allTables={tables ?? []}
-          stretchedKey={stretchedKey}
+          privateKey={privateKey}
           isSuperAdmin={!!user?.isSuperAdmin}
           currentUserId={user!.id}
           candidates={activeUsers}
@@ -249,6 +235,65 @@ export function Vault() {
         />
       )}
     </div>
+  );
+}
+
+function VaultSetupKeyForm({ onSubmit }: { onSubmit: (password: string) => Promise<void> }) {
+  const { t } = useI18n();
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (password.length < 10) {
+      setError(t("Master паролата трябва да е поне 10 символа."));
+      return;
+    }
+    if (password !== confirm) {
+      setError(t("Паролите не съвпадат."));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onSubmit(password);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("Грешка"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card form vault-gate" onSubmit={handleSubmit}>
+      <div className="vault-gate-icon">
+        <IconLock size={26} />
+      </div>
+      <p>
+        <strong>{t("Задай си личен vault ключ")}</strong>
+      </p>
+      <p className="muted small">
+        {t(
+          "Задай master парола — тя никога не се изпраща към сървъра, никой друг никога не я вижда или въвежда вместо теб, и не може да бъде възстановена от никого, ако я забравиш. Избери нещо отделно от паролата ти за влизане в TODF. Щом го направиш, Ultimate Admin може да ти даде достъп до таблица по всяко време — без да е нужно присъствието ти или да споделяш нищо с него."
+        )}
+      </p>
+      <div className="vault-gate-fields">
+        <label>
+          {t("Master парола")}
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
+        </label>
+        <label>
+          {t("Потвърди паролата")}
+          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+        </label>
+        {error && <div className="error-text">{error}</div>}
+        <button type="submit" disabled={submitting}>
+          {submitting ? t("Записване…") : t("Задай ключ")}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -291,18 +336,10 @@ function VaultUnlockForm({
   );
 }
 
-function VaultCreateTableForm({
-  needsNewPassword,
-  onSubmit,
-}: {
-  needsNewPassword?: boolean;
-  onSubmit: (name: string, description: string, password: string) => Promise<void>;
-}) {
+function VaultCreateTableForm({ onSubmit }: { onSubmit: (name: string, description: string) => Promise<void> }) {
   const { t } = useI18n();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -313,23 +350,11 @@ function VaultCreateTableForm({
       setError(t("Името на таблицата е задължително."));
       return;
     }
-    if (needsNewPassword) {
-      if (password.length < 10) {
-        setError(t("Master паролата трябва да е поне 10 символа."));
-        return;
-      }
-      if (password !== confirm) {
-        setError(t("Паролите не съвпадат."));
-        return;
-      }
-    }
     setSubmitting(true);
     try {
-      await onSubmit(name.trim(), description.trim(), password);
+      await onSubmit(name.trim(), description.trim());
       setName("");
       setDescription("");
-      setPassword("");
-      setConfirm("");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("Грешка"));
     } finally {
@@ -338,50 +363,21 @@ function VaultCreateTableForm({
   }
 
   return (
-    <form className={`card form${needsNewPassword ? " vault-gate" : ""}`} onSubmit={handleSubmit}>
-      {needsNewPassword && (
-        <>
-          <div className="vault-gate-icon">
-            <IconLock size={26} />
-          </div>
-          <p>
-            <strong>{t("Все още няма таблици.")}</strong>
-          </p>
-          <p className="muted small">
-            {t(
-              "Създай първата таблица и задай своя master парола — тя никога не се изпраща към сървъра и не може да бъде възстановена от никого, ако я забравиш. Избери нещо отделно от паролата ти за влизане в TODF. Същата парола ще отключва и всяка следваща таблица, до която имаш достъп."
-            )}
-          </p>
-        </>
-      )}
-      <div className={needsNewPassword ? "vault-gate-fields" : ""}>
-        <div className="form-row">
-          <label>
-            {t("Име на таблицата")}
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Напр. Маркетинг")} required autoFocus />
-          </label>
-          <label>
-            {t("Описание (по избор)")}
-            <input value={description} onChange={(e) => setDescription(e.target.value)} />
-          </label>
-        </div>
-        {needsNewPassword && (
-          <>
-            <label>
-              {t("Master парола")}
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </label>
-            <label>
-              {t("Потвърди паролата")}
-              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-            </label>
-          </>
-        )}
-        {error && <div className="error-text">{error}</div>}
-        <button type="submit" disabled={submitting}>
-          {submitting ? t("Записване…") : t("Създай таблица")}
-        </button>
+    <form className="card form" onSubmit={handleSubmit}>
+      <div className="form-row">
+        <label>
+          {t("Име на таблицата")}
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Напр. Маркетинг")} required autoFocus />
+        </label>
+        <label>
+          {t("Описание (по избор)")}
+          <input value={description} onChange={(e) => setDescription(e.target.value)} />
+        </label>
       </div>
+      {error && <div className="error-text">{error}</div>}
+      <button type="submit" disabled={submitting}>
+        {submitting ? t("Записване…") : t("Създай таблица")}
+      </button>
     </form>
   );
 }
@@ -403,7 +399,7 @@ interface DecryptedHistoryRow {
 function VaultTableView({
   table,
   allTables,
-  stretchedKey,
+  privateKey,
   isSuperAdmin,
   currentUserId,
   candidates,
@@ -412,7 +408,7 @@ function VaultTableView({
 }: {
   table: VaultTableSummary;
   allTables: VaultTableSummary[];
-  stretchedKey: CryptoKey;
+  privateKey: CryptoKey;
   isSuperAdmin: boolean;
   currentUserId: string;
   candidates: User[];
@@ -450,7 +446,7 @@ function VaultTableView({
 
   useEffect(() => {
     if (!table.isMember || !table.myWrap) return;
-    unwrapVaultKey(table.myWrap.wrappedKey, table.myWrap.wrappedKeyIv, stretchedKey).then((tk) => {
+    unwrapTableKey(table.myWrap.wrappedKey, privateKey).then((tk) => {
       setTableKey(tk);
       loadAndDecryptEntries(tk);
     });
@@ -520,7 +516,7 @@ function VaultTableView({
     const dest = allTables.find((tb) => tb.id === destTableId);
     if (!dest?.myWrap) return;
     try {
-      const destKey = await unwrapVaultKey(dest.myWrap.wrappedKey, dest.myWrap.wrappedKeyIv, stretchedKey);
+      const destKey = await unwrapTableKey(dest.myWrap.wrappedKey, privateKey);
       const { ciphertext, iv } = await encryptJson(destKey, entry.data);
       await api(`/vault/tables/${destTableId}/entries`, { method: "POST", body: JSON.stringify({ ciphertext, iv }) });
       setCopyingId(null);
@@ -530,23 +526,13 @@ function VaultTableView({
     }
   }
 
-  async function grantAccess(targetUserId: string, theirPassword: string) {
+  async function grantAccess(targetUserId: string, targetPublicKeyB64: string) {
     if (!tableKey) return;
-    const targetKeyInfo = await api<VaultUserKeyInfo | null>(`/vault/users/${targetUserId}/key`);
-    let wrappingKey: CryptoKey;
-    const saltPayload: { salt?: string; iterations?: number } = {};
-    if (!targetKeyInfo) {
-      const salt = generateSaltB64();
-      saltPayload.salt = salt;
-      saltPayload.iterations = PBKDF2_ITERATIONS;
-      wrappingKey = await deriveStretchedKey(theirPassword, salt, PBKDF2_ITERATIONS);
-    } else {
-      wrappingKey = await deriveStretchedKey(theirPassword, targetKeyInfo.salt, targetKeyInfo.iterations);
-    }
-    const { wrappedKey, wrappedKeyIv } = await wrapVaultKey(tableKey, wrappingKey);
+    const targetPublicKey = await importPublicKeyB64(targetPublicKeyB64);
+    const wrappedKey = await wrapTableKey(tableKey, targetPublicKey);
     await api(`/vault/tables/${table.id}/members`, {
       method: "POST",
-      body: JSON.stringify({ userId: targetUserId, wrappedKey, wrappedKeyIv, ...saltPayload }),
+      body: JSON.stringify({ userId: targetUserId, wrappedKey }),
     });
     await refreshMembers();
     await onTablesChanged();
@@ -1107,7 +1093,7 @@ function VaultAccessPanel({
   currentUserId: string;
   candidates: User[];
   canGrant: boolean;
-  onGrant: (userId: string, theirPassword: string) => Promise<void>;
+  onGrant: (userId: string, targetPublicKeyB64: string) => Promise<void>;
   onRevoke: (userId: string) => Promise<void>;
 }) {
   const { t, lang } = useI18n();
@@ -1157,8 +1143,8 @@ function VaultAccessPanel({
       {showGrantForm && (
         <GrantAccessForm
           candidates={candidates}
-          onGrant={async (userId, pw) => {
-            await onGrant(userId, pw);
+          onGrant={async (userId, publicKey) => {
+            await onGrant(userId, publicKey);
             setShowGrantForm(false);
           }}
           onCancel={() => setShowGrantForm(false)}
@@ -1168,30 +1154,30 @@ function VaultAccessPanel({
   );
 }
 
+// No password field anywhere here, on purpose: granting access only ever
+// needs the recipient's PUBLIC key (fetched below), which isn't secret —
+// their master password never touches this screen, this browser, or this
+// admin, at any point.
 function GrantAccessForm({
   candidates,
   onGrant,
   onCancel,
 }: {
   candidates: User[];
-  onGrant: (userId: string, theirPassword: string) => Promise<void>;
+  onGrant: (userId: string, targetPublicKeyB64: string) => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useI18n();
   const [userId, setUserId] = useState(candidates[0]?.id ?? "");
-  const [targetKeyInfo, setTargetKeyInfo] = useState<VaultUserKeyInfo | null | undefined>(undefined);
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const [targetKey, setTargetKey] = useState<VaultUserPublicKey | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
-    setTargetKeyInfo(undefined);
-    api<VaultUserKeyInfo | null>(`/vault/users/${userId}/key`).then(setTargetKeyInfo);
+    setTargetKey(undefined);
+    api<VaultUserPublicKey | null>(`/vault/users/${userId}/key`).then(setTargetKey);
   }, [userId]);
-
-  const hasExistingPassword = !!targetKeyInfo;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -1200,22 +1186,10 @@ function GrantAccessForm({
       setError(t("Избери служител."));
       return;
     }
-    if (!hasExistingPassword) {
-      if (password.length < 10) {
-        setError(t("Master паролата трябва да е поне 10 символа."));
-        return;
-      }
-      if (password !== confirm) {
-        setError(t("Паролите не съвпадат."));
-        return;
-      }
-    } else if (!password) {
-      setError(t("Въведи съществуващата master парола на служителя."));
-      return;
-    }
+    if (!targetKey) return;
     setSubmitting(true);
     try {
-      await onGrant(userId, password);
+      await onGrant(userId, targetKey.publicKey);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("Грешка"));
     } finally {
@@ -1225,43 +1199,29 @@ function GrantAccessForm({
 
   return (
     <form className="card form" onSubmit={handleSubmit} style={{ marginTop: 12 }}>
-      <p className="muted small">
-        {t(
-          "Служителят трябва да е лично тук и сам да въведе master паролата си — тя никога не трябва да се споделя по чат/имейл, защото криптира тази таблица."
-        )}
-      </p>
-      {targetKeyInfo !== undefined && (
+      <label>
+        {t("Служител")}
+        <select value={userId} onChange={(e) => setUserId(e.target.value)} required>
+          {candidates.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {targetKey === null && (
         <p className="muted small">
-          {hasExistingPassword
-            ? t("Този човек вече има master парола от друга таблица — трябва да въведе СЪЩАТА парола тук, не нова.")
-            : t("Този човек няма master парола все още — нека сам си зададе нова сега.")}
+          {t(
+            "Този човек още няма личен vault ключ — трябва сам, по всяко време, да отвори Vault и да си зададе master парола. Чак тогава ще можеш да му дадеш достъп (без да е нужно нищо друго от него)."
+          )}
         </p>
       )}
-      <div className="form-row">
-        <label>
-          {t("Служител")}
-          <select value={userId} onChange={(e) => setUserId(e.target.value)} required>
-            {candidates.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {hasExistingPassword ? t("Негова/нейна master парола") : t("Негова/нейна нова master парола")}
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </label>
-        {!hasExistingPassword && (
-          <label>
-            {t("Потвърди паролата")}
-            <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-          </label>
-        )}
-      </div>
+      {targetKey && <p className="muted small">{t("Готово за достъп — не е нужна парола от него, само едно кликване.")}</p>}
+
       {error && <div className="error-text">{error}</div>}
       <div className="form-row">
-        <button type="submit" disabled={submitting}>
+        <button type="submit" disabled={submitting || !targetKey}>
           {submitting ? t("Записване…") : t("Предостави достъп")}
         </button>
         <button type="button" className="secondary" onClick={onCancel}>
