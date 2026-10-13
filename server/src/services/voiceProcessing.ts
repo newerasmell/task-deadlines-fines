@@ -78,6 +78,15 @@ async function storeSegment(
           source: input.source,
           originalFilename: input.filename,
           meetingSessionId: sessionId,
+          // Chunk 0 is the only one that ever carries this (see
+          // processRecording) — without persisting it here, a chunked
+          // recording's dedup check (findUnique by meetRecordingId, in
+          // runGoogleMeetSync/syncOneRecording) can never match it, so the
+          // whole recording gets re-downloaded and re-transcribed by
+          // Whisper on every single cron tick, forever. Confirmed live:
+          // this exact gap re-billed one long Meet recording every 10
+          // minutes and ran up a $100+ Whisper bill before anyone noticed.
+          meetRecordingId: input.meetRecordingId ?? null,
           // Assembled from VoiceTranscriptSegment once every expected
           // segment has landed — see below.
           transcriptText: "",
