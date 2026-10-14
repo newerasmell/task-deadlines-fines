@@ -118,26 +118,58 @@ async function storeSegment(
   if (input.isFinalSegment) data.expectedSegmentCount = segmentIndex + 1;
   transcript = await prisma.voiceTranscript.update({ where: { id: transcript.id }, data });
 
-  if (transcript.expectedSegmentCount == null) return { transcriptId: transcript.id, readyForExtraction: false };
+  return finalizeTranscriptIfReady(transcript.id);
+}
+
+// Shared tail of "a segment just landed, is this recording complete now?" —
+// used both by storeSegment (every segment upload re-checks this) and by
+// finalizeSession (an explicit "no more parts are coming" signal with no
+// audio of its own attached — see that function's own comment).
+async function finalizeTranscriptIfReady(transcriptId: string): Promise<TranscribeStoreResult> {
+  const transcript = await prisma.voiceTranscript.findUniqueOrThrow({ where: { id: transcriptId } });
+  if (transcript.expectedSegmentCount == null) return { transcriptId, readyForExtraction: false };
 
   const segments = await prisma.voiceTranscriptSegment.findMany({
-    where: { transcriptId: transcript.id },
+    where: { transcriptId },
     orderBy: { segmentIndex: "asc" },
   });
-  if (segments.length < transcript.expectedSegmentCount) return { transcriptId: transcript.id, readyForExtraction: false };
+  if (segments.length < transcript.expectedSegmentCount) return { transcriptId, readyForExtraction: false };
 
   // Every expected segment has landed — atomically claim the right to
   // assemble+extract so a near-simultaneous arrival of two segments can
   // never both trigger extraction for the same recording.
   const claim = await prisma.voiceTranscript.updateMany({
-    where: { id: transcript.id, extractionTriggeredAt: null },
+    where: { id: transcriptId, extractionTriggeredAt: null },
     data: { extractionTriggeredAt: new Date() },
   });
-  if (claim.count === 0) return { transcriptId: transcript.id, readyForExtraction: false };
+  if (claim.count === 0) return { transcriptId, readyForExtraction: false };
 
   const assembledText = segments.map((s) => s.text).join("\n");
-  await prisma.voiceTranscript.update({ where: { id: transcript.id }, data: { transcriptText: assembledText } });
-  return { transcriptId: transcript.id, readyForExtraction: true };
+  await prisma.voiceTranscript.update({ where: { id: transcriptId }, data: { transcriptText: assembledText } });
+  return { transcriptId, readyForExtraction: true };
+}
+
+// Explicitly closes out a multi-part recording session with no new audio of
+// its own — the counterpart to a segment arriving with isFinalSegment:true,
+// for the case where the client doesn't know in advance (or ever) which
+// take will be the last one. Used by VoiceTasks.tsx's "add another part, or
+// I'm done" flow: every part is uploaded as a plain non-final segment, and
+// this is called once the person explicitly says there are no more —
+// setting expectedSegmentCount to however many segments actually landed,
+// then running the exact same completion check a final segment would have.
+// Returns null if the session doesn't exist or nothing was ever recorded
+// for it (nothing to finalize).
+export async function finalizeSession(sessionId: string): Promise<TranscribeStoreResult | null> {
+  const transcript = await prisma.voiceTranscript.findUnique({ where: { meetingSessionId: sessionId } });
+  if (!transcript) return null;
+
+  if (transcript.expectedSegmentCount == null) {
+    const segmentCount = await prisma.voiceTranscriptSegment.count({ where: { transcriptId: transcript.id } });
+    if (segmentCount === 0) return null;
+    await prisma.voiceTranscript.update({ where: { id: transcript.id }, data: { expectedSegmentCount: segmentCount } });
+  }
+
+  return finalizeTranscriptIfReady(transcript.id);
 }
 
 export async function transcribeAndStore(input: TranscribeInput): Promise<TranscribeStoreResult> {

@@ -97,5 +97,28 @@ export function useVoiceUpload() {
     }
   }
 
-  return { busy, outcome, submit };
+  // Counterpart to submit's `segment.final: true` — for a multi-part
+  // recording where the person doesn't decide "no more parts are coming"
+  // until after they've already uploaded one or more non-final segments
+  // (see VoiceTasks.tsx). Finishes the recording using whatever segments
+  // already landed, without any new audio of its own.
+  async function finalizeSession(sessionId: string): Promise<{ ok: boolean }> {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      const res = await api<{ ok: true; sync: true; transcriptId: string; draftsCreated: number }>("/voice/transcribe/finalize", {
+        method: "POST",
+        body: JSON.stringify({ sessionId }),
+      });
+      setOutcome({ kind: "sync", transcriptId: res.transcriptId, draftsCreated: res.draftsCreated });
+      return { ok: true };
+    } catch (err) {
+      setOutcome({ kind: "error", message: err instanceof Error ? err.message : t("Грешка при обработката — опитай отново.") });
+      return { ok: false };
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return { busy, outcome, submit, finalizeSession };
 }

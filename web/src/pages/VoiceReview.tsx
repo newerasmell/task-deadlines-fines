@@ -327,6 +327,7 @@ function DraftCard({
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   });
   const [priority, setPriority] = useState<Priority>(draft.priority);
+  const [meetLink, setMeetLink] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -366,6 +367,7 @@ function DraftCard({
           // actually stick instead of silently landing elsewhere.
           deadline: `${deadline}T${deadlineTime}:00`,
           priority,
+          meetLink: meetLink || null,
         }),
       });
       onChanged();
@@ -538,6 +540,16 @@ function DraftCard({
                 ))}
             </select>
           </label>
+          <label>
+            {t("Google Meet линк (по избор)")}
+            <input
+              type="url"
+              value={meetLink}
+              onChange={(e) => setMeetLink(e.target.value)}
+              placeholder="https://meet.google.com/xxx-xxxx-xxx"
+              disabled={submitting}
+            />
+          </label>
           {error && <div className="error-text small">{error}</div>}
           <div className="form-row" style={{ marginTop: 4 }}>
             <button onClick={approve} disabled={submitting}>
@@ -563,6 +575,7 @@ interface ChainStepDraft {
   priority: Priority;
   deadline: string; // step 0 only
   delayDays: string; // steps 1+ only
+  meetLink: string;
 }
 
 function ChainCard({
@@ -589,6 +602,7 @@ function ChainCard({
       priority: s.priority,
       deadline: s.deadline.slice(0, 10),
       delayDays: s.delayDaysAfterPrevious ? String(s.delayDaysAfterPrevious) : "",
+      meetLink: "",
     }))
   );
   const [error, setError] = useState<string | null>(null);
@@ -623,6 +637,7 @@ function ChainCard({
             priority: s.priority,
             deadline: i === 0 ? s.deadline : undefined,
             delayDays: i > 0 ? Number(s.delayDays) : undefined,
+            meetLink: s.meetLink || null,
           })),
         }),
       });
@@ -772,6 +787,16 @@ function ChainCard({
                           </option>
                         ))}
                     </select>
+                  </label>
+                  <label>
+                    {t("Google Meet линк (по избор)")}
+                    <input
+                      type="url"
+                      value={step.meetLink}
+                      onChange={(e) => updateStep(i, { meetLink: e.target.value })}
+                      placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                      disabled={submitting}
+                    />
                   </label>
                 </div>
               );

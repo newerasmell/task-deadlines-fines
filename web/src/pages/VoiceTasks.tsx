@@ -239,10 +239,34 @@ function pickSupportedMimeType(): string | null {
 
 export function VoiceTasks() {
   const { t } = useI18n();
-  const { busy, outcome, submit } = useVoiceUpload();
+  const { busy, outcome, submit, finalizeSession } = useVoiceUpload();
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [micError, setMicError] = useState<string | null>(null);
+
+  // Off by default: a single recording/upload is submitted immediately and
+  // in full, exactly as before — zero extra friction for the common "one
+  // quick task" case. Switched on, every recording/upload becomes one PART
+  // of the same task instead of a complete submission on its own, and
+  // nothing gets sent to extraction until "Готово" explicitly closes the
+  // session — see finalizeSession. This exists because a complex/multi-step
+  // task described across several separate takes (stop, think, record
+  // again) used to silently fail to link up: each take ran through its own
+  // extraction call, so Claude never saw more than one step at a time and
+  // could never detect a chain between them — chain detection only ever
+  // looks across tasks mentioned within ONE transcript (compare Meeting.tsx,
+  // where a whole call is naturally one continuous, if auto-chunked, take).
+  const [multiPart, setMultiPart] = useState(false);
+  const [partsAdded, setPartsAdded] = useState(0);
+  const [finalizing, setFinalizing] = useState(false);
+  // A failed non-final segment never reaches `outcome` (see useVoiceUpload's
+  // submit — it only ever surfaces a non-final segment's own error there),
+  // so without this a failed part would otherwise just vanish with zero
+  // feedback: no error, no part added, nothing — confirmed live trying to
+  // upload against a misconfigured server. The part isn't retried
+  // automatically; the person re-records/re-uploads it.
+  const [partError, setPartError] = useState<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -254,6 +278,37 @@ export function VoiceTasks() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  // Submits one recording/upload either as a complete one-shot (multiPart
+  // off) or as the next non-final part of the current session (multiPart
+  // on) — starting that session's id on its very first part.
+  async function submitPart(file: File) {
+    if (!multiPart) {
+      await submit(file);
+      return;
+    }
+    setPartError(null);
+    if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID();
+    const segmentIndex = partsAdded;
+    const { ok } = await submit(file, "upload", { sessionId: sessionIdRef.current, segmentIndex, final: false });
+    if (ok) {
+      setPartsAdded(segmentIndex + 1);
+    } else {
+      setPartError(t("Тази част не се качи успешно — опитай отново."));
+    }
+  }
+
+  async function finishSession() {
+    if (!sessionIdRef.current) return;
+    setPartError(null);
+    setFinalizing(true);
+    const { ok } = await finalizeSession(sessionIdRef.current);
+    setFinalizing(false);
+    if (ok) {
+      sessionIdRef.current = null;
+      setPartsAdded(0);
+    }
+  }
 
   async function startRecording() {
     setMicError(null);
@@ -273,7 +328,7 @@ export function VoiceTasks() {
         stream.getTracks().forEach((track) => track.stop());
         const blob = new Blob(chunksRef.current, { type: mimeType });
         const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("aac") ? "aac" : "webm";
-        void submit(new File([blob], `record-${Date.now()}.${ext}`, { type: mimeType }));
+        void submitPart(new File([blob], `record-${Date.now()}.${ext}`, { type: mimeType }));
       };
       mediaRecorderRef.current = recorder;
       recorder.start();
@@ -295,7 +350,7 @@ export function VoiceTasks() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    await submit(file);
+    await submitPart(file);
   }
 
   return (
@@ -317,10 +372,25 @@ export function VoiceTasks() {
           )}
         </p>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+        <label className="muted small" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: partsAdded > 0 ? "default" : "pointer" }}>
+          <input
+            type="checkbox"
+            checked={multiPart}
+            disabled={partsAdded > 0}
+            onChange={(e) => setMultiPart(e.target.checked)}
+          />
+          {t("Сложна задача (запиши/качи на няколко части)")}
+        </label>
+        {multiPart && partsAdded === 0 && (
+          <p className="muted small" style={{ textAlign: "center", marginTop: 2 }}>
+            {t("Всяка част ще се добави към същата задача, вместо да стане отделна — натисни „Готово“, когато приключиш.")}
+          </p>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
           {!recording ? (
             <button className="cta" onClick={startRecording} disabled={busy}>
-              🎙️ {t("Запиши")}
+              🎙️ {partsAdded > 0 ? t("Добави запис") : t("Запиши")}
             </button>
           ) : (
             <button className="cta secondary" onClick={stopRecording}>
@@ -328,7 +398,7 @@ export function VoiceTasks() {
             </button>
           )}
           <button className="cta secondary" onClick={() => fileInputRef.current?.click()} disabled={busy || recording}>
-            📁 {t("Качи файл")}
+            📁 {partsAdded > 0 ? t("Добави файл") : t("Качи файл")}
           </button>
           <input
             ref={fileInputRef}
@@ -348,7 +418,20 @@ export function VoiceTasks() {
           </div>
         )}
         {micError && <div className="error-text small" style={{ marginTop: 12 }}>{micError}</div>}
-        {busy && <p className="muted small" style={{ marginTop: 12 }}>{t("Качване…")}</p>}
+        {partError && <div className="error-text small" style={{ marginTop: 12 }}>{partError}</div>}
+        {busy && !finalizing && <p className="muted small" style={{ marginTop: 12 }}>{t("Качване…")}</p>}
+
+        {partsAdded > 0 && (
+          <div className="card panel-row" style={{ marginTop: 14, justifyContent: "center", gap: 12 }}>
+            <span className="badge badge-info">
+              {partsAdded === 1 ? t("Добавена 1 част") : t("Добавени {n} части", { n: partsAdded })}
+            </span>
+            <button className="small-btn" onClick={finishSession} disabled={busy || recording}>
+              {finalizing ? t("Обработва се…") : t("✓ Готово, обработи")}
+            </button>
+          </div>
+        )}
+
         <VoiceOutcome outcome={outcome} />
 
         <div className="hero-features">

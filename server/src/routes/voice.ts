@@ -10,6 +10,7 @@ import { createTaskAndNotify } from "../services/taskCreation";
 import {
   errorMessageFor,
   extractAndCreateDrafts,
+  finalizeSession,
   processJobInBackground,
   transcribeAndStore,
   type VoiceSource,
@@ -102,6 +103,30 @@ voiceRouter.post("/transcribe", handleAudioUpload, async (req, res) => {
     console.error(`[voice] background job ${job.id} crashed outside its own try/catch:`, err);
   });
   res.json({ ok: true, sync: false, jobId: job.id });
+});
+
+const finalizeSchema = z.object({ sessionId: z.string().min(1) });
+
+// Counterpart to a segment upload carrying `final: true` — for VoiceTasks.tsx's
+// "add another part, or I'm done" flow, where every part is uploaded as a
+// plain non-final segment and the person only decides afterwards (if ever)
+// that no more are coming. See finalizeSession's own comment.
+voiceRouter.post("/transcribe/finalize", async (req, res) => {
+  const parsed = finalizeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const result = await finalizeSession(parsed.data.sessionId);
+  if (!result) return res.status(404).json({ error: "Няма нищо записано за тази сесия." });
+
+  if (!result.readyForExtraction) {
+    return res.json({ ok: true, sync: true, transcriptId: result.transcriptId, draftsCreated: 0 });
+  }
+  try {
+    const draftsCreated = await extractAndCreateDrafts(result.transcriptId);
+    res.json({ ok: true, sync: true, transcriptId: result.transcriptId, draftsCreated });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: errorMessageFor(err) });
+  }
 });
 
 voiceRouter.get("/transcripts/:id", async (req, res) => {
@@ -227,6 +252,7 @@ const approveSchema = z.object({
   ownerId: z.string().nullable().optional(),
   deadline: deadlineFieldSchema.optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+  meetLink: z.string().nullable().optional(),
 });
 
 voiceRouter.post("/drafts/:id/approve", async (req, res) => {
@@ -267,6 +293,7 @@ voiceRouter.post("/drafts/:id/approve", async (req, res) => {
       deadline: parsed.data.deadline ?? draft.deadline,
       priority: parsed.data.priority ?? (draft.priority as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"),
       createdById: req.user!.sub,
+      meetLink: parsed.data.meetLink,
     });
   } catch (err) {
     return res.status(400).json({ error: err instanceof Error ? err.message : "Грешка при създаване на задачата" });
@@ -365,6 +392,7 @@ const chainStepApproveSchema = z.object({
   deadline: deadlineFieldSchema.optional(),
   // Steps 2+ only.
   delayDays: z.number().int().min(1).max(90).optional(),
+  meetLink: z.string().nullable().optional(),
 });
 
 const chainApproveSchema = z.object({
@@ -422,6 +450,7 @@ voiceRouter.post("/chains/:chainGroupId/approve", async (req, res) => {
           priority: s.priority,
           deadline: s.deadline,
           delayDays: s.delayDays,
+          meetLink: s.meetLink,
         };
       }),
       createdById: req.user!.sub,

@@ -447,6 +447,17 @@ export const en: Record<string, string> = {
   "Микрофонът е отказан или недостъпен — провери разрешенията на браузъра.":
     "Microphone access denied or unavailable — check your browser permissions.",
   "Качване…": "Uploading…",
+  "Сложна задача (запиши/качи на няколко части)": "Complex task (record/upload in several parts)",
+  "Всяка част ще се добави към същата задача, вместо да стане отделна — натисни „Готово“, когато приключиш.":
+    "Each part will be added to the same task instead of becoming its own — press \"Done\" once you're finished.",
+  "Добави запис": "Add a recording",
+  "Добави файл": "Add a file",
+  "Добавена 1 част": "1 part added",
+  "Добавени {n} части": "{n} parts added",
+  "✓ Готово, обработи": "✓ Done, process it",
+  "Тази част не се качи успешно — опитай отново.": "This part didn't upload successfully — try again.",
+  "Обработва се…": "Processing…",
+  "Грешка при обработката — опитай отново.": "Processing error — try again.",
   "Готово — открити {n} задача/и.": "Done — found {n} task(s).",
   "Готово.": "Done.",
   "Грешка при разпознаване — опитай отново.": "Recognition error — try again.",
