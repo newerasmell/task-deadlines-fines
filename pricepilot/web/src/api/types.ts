@@ -273,7 +273,7 @@ export interface PublishLogEntry {
   newCompareAt: number | null;
   status: "SUCCESS" | "ERROR";
   errorMessage: string | null;
-  source: "single" | "bulk" | "transfer" | "revert";
+  source: "single" | "bulk" | "transfer" | "revert" | "campaign";
   // Set only when source is "transfer" (or a revert of one) — the store
   // this price was pulled from via the Transfer Prices tab.
   transferFromStoreName: string | null;
@@ -362,4 +362,49 @@ export interface SalesResponse {
   storeCurrencyEurRate: number | null;
   products: SalesProductRow[];
   categories: SalesCategoryRow[];
+}
+
+export type CampaignType = "black_friday" | "christmas" | "summer" | "custom";
+export type CampaignStatus = "ACTIVE" | "REVERTED" | "CANCELLED";
+
+export interface CampaignProductRow {
+  productId: string;
+  title: string;
+  variantTitle: string | null;
+  vendor: string | null;
+  sku: string | null;
+  imageUrl: string | null;
+  price: number;
+  compareAtPrice: number | null;
+  inventoryQuantity: number | null;
+  tags: string[];
+  categoryIds: string[];
+  // Null until a store with salesAnalyticsEnabled has run its nightly sync
+  // at least once since this field existed (see ordersSync.ts) — treated
+  // as "unknown", not "zero", by the Campaigns page's filters.
+  unitsSold20d: number | null;
+}
+
+export interface CampaignProductsResponse {
+  products: CampaignProductRow[];
+  categories: { categoryId: string; title: string }[];
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  campaignType: CampaignType | string;
+  discountPct: number;
+  startedAt: string;
+  endsAt: string;
+  status: CampaignStatus;
+  revertedAt: string | null;
+  itemCount: number;
+  createdByName: string | null;
+}
+
+export interface SetTagResult {
+  productId: string;
+  status: "SUCCESS" | "ERROR";
+  errorMessage?: string;
 }

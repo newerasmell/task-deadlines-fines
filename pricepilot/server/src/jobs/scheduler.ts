@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { prisma } from "../lib/prisma";
+import { autoRevertDueCampaigns } from "../services/campaignEngine";
 import { syncCatalog } from "../services/catalogSync";
 import { refreshSource } from "../services/competitorCollection";
 import { syncOrders } from "../services/ordersSync";
@@ -65,5 +66,13 @@ export function startScheduler() {
     nightlyCatalogSync().catch((err) => console.error("[scheduler] nightly catalog sync failed", err));
   });
 
-  console.log("[scheduler] started (source refresh every 15m check, catalog sync nightly at 03:00)");
+  // Checks every 15 minutes for campaigns whose endsAt has passed and
+  // reverts them — see campaignEngine.ts's own comment on why a refused
+  // (price-changed-since) item just stays flagged rather than failing the
+  // whole tick.
+  cron.schedule("*/15 * * * *", () => {
+    autoRevertDueCampaigns().catch((err) => console.error("[scheduler] campaign auto-revert tick failed", err));
+  });
+
+  console.log("[scheduler] started (source refresh every 15m check, catalog sync nightly at 03:00, campaign auto-revert every 15m check)");
 }

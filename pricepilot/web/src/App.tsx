@@ -6,6 +6,7 @@ import { StoreProvider } from "./context/StoreContext";
 import { I18nProvider, useT } from "./i18n/I18nContext";
 import { AuditLog } from "./pages/AuditLog";
 import { Brands } from "./pages/Brands";
+import { Campaigns } from "./pages/Campaigns";
 import { Login } from "./pages/Login";
 import { PricingTable } from "./pages/PricingTable";
 import { Unmatched } from "./pages/Unmatched";
@@ -41,6 +42,7 @@ function AppRoutes() {
         <Route path="/transfer-prices" element={<TransferPrices />} />
         <Route path="/sales" element={<Sales />} />
         <Route path="/brands" element={<Brands />} />
+        <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/audit-log" element={<AuditLog />} />
         <Route path="/stores" element={<Stores />} />
         <Route path="/stores/:storeId" element={<StoreSettings />} />

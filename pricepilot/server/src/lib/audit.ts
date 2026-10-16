@@ -20,7 +20,10 @@ export type AuditAction =
   | "PRICE_PUBLISHED"
   | "USER_CREATED"
   | "USER_UPDATED"
-  | "USER_DELETED";
+  | "USER_DELETED"
+  | "CAMPAIGN_STARTED"
+  | "CAMPAIGN_REVERTED"
+  | "PRODUCT_TAG_UPDATED";
 
 /**
  * Records one line in the audit trail. actorId is nullable — every route

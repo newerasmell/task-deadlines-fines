@@ -16,6 +16,7 @@ const SOURCE_LABELS: Record<PublishLogEntry["source"], string> = {
   bulk: "Групово",
   transfer: "Прехвърляне",
   revert: "Връщане",
+  campaign: "Кампания",
 };
 
 export function PublishLog() {
@@ -149,6 +150,7 @@ export function PublishLog() {
           <option value="bulk">{t("Групово")}</option>
           <option value="transfer">{t("Прехвърляне")}</option>
           <option value="revert">{t("Връщане")}</option>
+          <option value="campaign">{t("Кампания")}</option>
         </select>
       </div>
 

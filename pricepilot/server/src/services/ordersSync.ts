@@ -1,5 +1,5 @@
 import type { Store } from "@prisma/client";
-import { salesPeriodStart } from "../lib/salesPeriod";
+import { salesPeriodShortStart, salesPeriodStart } from "../lib/salesPeriod";
 import { prisma } from "../lib/prisma";
 import { ShopifyApiError, shopifyGraphQL } from "./shopifyClient";
 
@@ -9,6 +9,7 @@ const ORDERS_BULK_QUERY = (createdAtIso: string) => `
       edges {
         node {
           id
+          createdAt
           cancelledAt
           lineItems {
             edges {
@@ -75,12 +76,18 @@ interface VariantAgg {
 // just an order record that didn't go through. Partial refunds/returns
 // aren't netted out here — a known simplification for v1, same granularity
 // the "units sold" figure needs for a first pass at category performance.
-async function downloadAndAggregate(url: string): Promise<Map<string, VariantAgg>> {
+//
+// Buckets every line item into BOTH the full (6-month) window and the
+// shorter SALES_PERIOD_SHORT_DAYS window at once, from this one bulk query
+// — the short window is a subset of the long one, so there's no reason to
+// run (and wait on) a second Shopify bulk operation just to get it.
+async function downloadAndAggregate(url: string, shortWindowStart: Date): Promise<{ full: Map<string, VariantAgg>; short: Map<string, VariantAgg> }> {
   const res = await fetch(url);
   if (!res.ok) throw new ShopifyApiError(`Failed to download bulk operation result: ${res.status}`);
   const text = await res.text();
 
   const cancelledOrders = new Set<string>();
+  const orderCreatedAt = new Map<string, number>();
   const lineItems: { parentId: string; variantId: string | null; quantity: number; amount: number }[] = [];
 
   for (const line of text.split("\n")) {
@@ -89,6 +96,8 @@ async function downloadAndAggregate(url: string): Promise<Map<string, VariantAgg
 
     if (!node.__parentId) {
       if (node.cancelledAt) cancelledOrders.add(node.id);
+      const createdAt = node.createdAt as string | undefined;
+      if (createdAt) orderCreatedAt.set(node.id, Date.parse(createdAt));
       continue;
     }
     const variant = node.variant as { id: string } | null;
@@ -101,15 +110,25 @@ async function downloadAndAggregate(url: string): Promise<Map<string, VariantAgg
     });
   }
 
-  const byVariant = new Map<string, VariantAgg>();
+  const shortWindowStartMs = shortWindowStart.getTime();
+  const full = new Map<string, VariantAgg>();
+  const short = new Map<string, VariantAgg>();
   for (const item of lineItems) {
     if (!item.variantId || cancelledOrders.has(item.parentId)) continue;
-    const agg = byVariant.get(item.variantId) ?? { unitsSold: 0, revenue: 0 };
+    const agg = full.get(item.variantId) ?? { unitsSold: 0, revenue: 0 };
     agg.unitsSold += item.quantity;
     agg.revenue += item.amount;
-    byVariant.set(item.variantId, agg);
+    full.set(item.variantId, agg);
+
+    const orderMs = orderCreatedAt.get(item.parentId);
+    if (orderMs != null && orderMs >= shortWindowStartMs) {
+      const shortAgg = short.get(item.variantId) ?? { unitsSold: 0, revenue: 0 };
+      shortAgg.unitsSold += item.quantity;
+      shortAgg.revenue += item.amount;
+      short.set(item.variantId, shortAgg);
+    }
   }
-  return byVariant;
+  return { full, short };
 }
 
 export async function syncOrders(storeId: string): Promise<{ variantsWithSales: number }> {
@@ -118,6 +137,7 @@ export async function syncOrders(storeId: string): Promise<{ variantsWithSales: 
 
   const periodEnd = new Date();
   const periodStart = salesPeriodStart(periodEnd);
+  const period20dStart = salesPeriodShortStart(periodEnd);
 
   const run = await shopifyGraphQL<{
     bulkOperationRunQuery: { bulkOperation: { id: string; status: string } | null; userErrors: { field: string[]; message: string }[] };
@@ -128,7 +148,9 @@ export async function syncOrders(storeId: string): Promise<{ variantsWithSales: 
   }
 
   const completed = await pollBulkOperation(store);
-  const byVariant = completed.url ? await downloadAndAggregate(completed.url) : new Map<string, VariantAgg>();
+  const { full: byVariant, short: byVariantShort } = completed.url
+    ? await downloadAndAggregate(completed.url, period20dStart)
+    : { full: new Map<string, VariantAgg>(), short: new Map<string, VariantAgg>() };
 
   // Every one of the store's products gets a fresh row this run — including
   // a 0/0 row for a variant with no sales in the window — so a product that
@@ -137,10 +159,31 @@ export async function syncOrders(storeId: string): Promise<{ variantsWithSales: 
   const products = await prisma.product.findMany({ where: { storeId }, select: { id: true, shopifyVariantId: true } });
   for (const product of products) {
     const agg = byVariant.get(product.shopifyVariantId) ?? { unitsSold: 0, revenue: 0 };
+    const aggShort = byVariantShort.get(product.shopifyVariantId) ?? { unitsSold: 0, revenue: 0 };
     await prisma.productSales.upsert({
       where: { productId: product.id },
-      create: { productId: product.id, unitsSold6m: agg.unitsSold, revenue6m: agg.revenue, periodStart, periodEnd },
-      update: { unitsSold6m: agg.unitsSold, revenue6m: agg.revenue, periodStart, periodEnd, syncedAt: new Date() },
+      create: {
+        productId: product.id,
+        unitsSold6m: agg.unitsSold,
+        revenue6m: agg.revenue,
+        periodStart,
+        periodEnd,
+        unitsSold20d: aggShort.unitsSold,
+        revenue20d: aggShort.revenue,
+        period20dStart,
+        period20dEnd: periodEnd,
+      },
+      update: {
+        unitsSold6m: agg.unitsSold,
+        revenue6m: agg.revenue,
+        periodStart,
+        periodEnd,
+        unitsSold20d: aggShort.unitsSold,
+        revenue20d: aggShort.revenue,
+        period20dStart,
+        period20dEnd: periodEnd,
+        syncedAt: new Date(),
+      },
     });
   }
 

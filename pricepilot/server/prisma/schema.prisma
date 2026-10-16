@@ -33,6 +33,7 @@ model User {
   updatedAt       DateTime @updatedAt
 
   auditLogs AuditLog[]
+  campaigns Campaign[]
 }
 
 // One row per meaningful write — store/source config changes, cost edits,
@@ -139,6 +140,7 @@ model Store {
   codFormulaConfig CodFormulaConfig?
   categories       Category[]        @relation("StoreCategories")
   brands           Brand[]
+  campaigns        Campaign[]
 }
 
 // Up to 3 active competitor sources per store. Refresh health (degraded
@@ -342,7 +344,19 @@ model ProductSales {
   revenue6m   Float // sum of realized line-item price * qty, in store currency
   periodStart DateTime
   periodEnd   DateTime
-  syncedAt    DateTime @default(now())
+
+  // Same aggregation, over just the last SALES_PERIOD_SHORT_DAYS (see
+  // lib/salesPeriod.ts) — computed from the SAME bulk orders query/sync as
+  // the 6-month figures above (ordersSync.ts buckets each line item into
+  // both windows at once), not a separate Shopify round trip. Powers the
+  // Campaigns page's "no recent sales / slowest-moving stock" filter.
+  // Nullable: null until the first sync after this field existed runs.
+  unitsSold20d   Int?
+  revenue20d     Float?
+  period20dStart DateTime?
+  period20dEnd   DateTime?
+
+  syncedAt DateTime @default(now())
 }
 
 // Rolling last-6-months GA4 page views per variant's product page — separate
@@ -580,7 +594,50 @@ model PublishLog {
   // than mutating this row's old/new values in place.
   revertedAt DateTime?
 
+  // Set only when source = "campaign" — links this price change back to
+  // the Campaign that made it, so the scheduler's auto-revert tick (and
+  // the Campaigns page's manual "Revert now") know exactly which log rows
+  // to hand to the existing revertPublishes().
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
 
   @@index([storeId, createdAt])
+  @@index([campaignId])
+}
+
+// A time-boxed bulk discount applied on top of each product's CURRENT live
+// price (never the base/original price) — e.g. "20% off for 10 days for
+// Black Friday". Each affected variant's price change is a normal
+// PublishLog row (source="campaign", campaignId set) made through the same
+// publishPrices() every other publish uses, so a campaign is just "a named,
+// time-boxed group of publishes" rather than a separate pricing mechanism.
+// Reverting (automatic, once endsAt passes — see jobs/scheduler.ts — or
+// manual, via "Revert now") reuses revertPublishes() on that group's log
+// ids, which already refuses to clobber a price that's changed again since
+// — a campaign item that can't be auto-reverted stays ACTIVE and visibly
+// flagged rather than silently failing.
+model Campaign {
+  id      String @id @default(cuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  name         String
+  campaignType String // black_friday | christmas | summer | custom
+  discountPct  Float
+
+  startedAt DateTime @default(now())
+  endsAt    DateTime
+  status    String   @default("ACTIVE") // ACTIVE | REVERTED | CANCELLED
+
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  revertedAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  publishLogs PublishLog[]
+
+  @@index([storeId, status])
 }

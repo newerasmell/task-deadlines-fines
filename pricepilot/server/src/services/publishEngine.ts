@@ -55,7 +55,7 @@ interface TagsRemoveResponse {
   tagsRemove: { userErrors: { field: string[] | null; message: string }[] };
 }
 
-function hasTag(tagsCsv: string | null, tag: string): boolean {
+export function hasTag(tagsCsv: string | null, tag: string): boolean {
   if (!tagsCsv) return false;
   return tagsCsv
     .split(",")
@@ -63,10 +63,71 @@ function hasTag(tagsCsv: string | null, tag: string): boolean {
     .includes(tag.trim().toLowerCase());
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
+export function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
+}
+
+const TAGS_ADD_MUTATION = `
+  mutation AddTags($id: ID!, $tags: [String!]!) {
+    tagsAdd(id: $id, tags: $tags) {
+      userErrors { field message }
+    }
+  }
+`;
+
+interface TagsAddResponse {
+  tagsAdd: { userErrors: { field: string[] | null; message: string }[] };
+}
+
+export interface SetTagResult {
+  productId: string;
+  status: "SUCCESS" | "ERROR";
+  errorMessage?: string;
+}
+
+// Adds or removes a single Shopify tag across a set of our local Product
+// rows (grouped by shopifyProductId, same as publishPrices — Shopify tags
+// live on the PRODUCT, not the variant, so every variant of one product
+// shares the same result) — the manual "Маркирай избраните" action on the
+// Campaigns page. Mirrors the existing tagsRemove usage above (for
+// newArrivalTag) rather than introducing a second way to talk to Shopify's
+// tag mutations.
+export async function setProductTag(store: Store, productIds: string[], tag: string, mode: "add" | "remove"): Promise<SetTagResult[]> {
+  const products = await prisma.product.findMany({ where: { id: { in: productIds }, storeId: store.id } });
+  const byShopifyProduct = new Map<string, Product[]>();
+  for (const p of products) {
+    const group = byShopifyProduct.get(p.shopifyProductId) ?? [];
+    group.push(p);
+    byShopifyProduct.set(p.shopifyProductId, group);
+  }
+
+  const results: SetTagResult[] = [];
+  for (const [shopifyProductId, group] of byShopifyProduct) {
+    try {
+      if (mode === "add") {
+        await shopifyGraphQL<TagsAddResponse>(store, TAGS_ADD_MUTATION, { id: shopifyProductId, tags: [tag] });
+      } else {
+        await shopifyGraphQL<TagsRemoveResponse>(store, TAGS_REMOVE_MUTATION, { id: shopifyProductId, tags: [tag] });
+      }
+      for (const p of group) {
+        const current = (p.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+        const next =
+          mode === "add"
+            ? hasTag(p.tags, tag)
+              ? current
+              : [...current, tag]
+            : current.filter((t) => t.toLowerCase() !== tag.trim().toLowerCase());
+        await prisma.product.update({ where: { id: p.id }, data: { tags: next.join(",") } });
+        results.push({ productId: p.id, status: "SUCCESS" });
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      for (const p of group) results.push({ productId: p.id, status: "ERROR", errorMessage });
+    }
+  }
+  return results;
 }
 
 /**
@@ -79,8 +140,9 @@ function chunk<T>(items: T[], size: number): T[][] {
 export async function publishPrices(
   store: Store,
   items: PublishRequestItem[],
-  source: "single" | "bulk" | "transfer",
-  transferFromStoreName?: string
+  source: "single" | "bulk" | "transfer" | "campaign",
+  transferFromStoreName?: string,
+  campaignId?: string
 ): Promise<PublishResultItem[]> {
   const products = await prisma.product.findMany({
     where: { id: { in: items.map((i) => i.productId) }, storeId: store.id },
@@ -147,6 +209,7 @@ export async function publishPrices(
             errorMessage: batchFailed ? errorMessage : null,
             source,
             transferFromStoreName: source === "transfer" ? transferFromStoreName ?? null : null,
+            campaignId: source === "campaign" ? campaignId ?? null : null,
           },
         });
 

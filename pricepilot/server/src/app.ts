@@ -12,6 +12,7 @@ import { requireAuth, requireUltimateAdmin } from "./middleware/auth";
 import { auditLogRouter } from "./routes/auditLog";
 import { authRouter } from "./routes/auth";
 import { brandsRouter } from "./routes/brands";
+import { campaignsRouter } from "./routes/campaigns";
 import { codConfigRouter } from "./routes/codConfig";
 import { costsRouter } from "./routes/costs";
 import { crossStorePricingRouter } from "./routes/crossStorePricing";
@@ -22,6 +23,7 @@ import { publishLogRouter } from "./routes/publishLog";
 import { salesRouter } from "./routes/sales";
 import { sourcesRouter } from "./routes/sources";
 import { storesRouter } from "./routes/stores";
+import { tagsRouter } from "./routes/tags";
 import { unmatchedRouter } from "./routes/unmatched";
 import { usersRouter } from "./routes/users";
 
@@ -64,6 +66,8 @@ export function createApp() {
   app.use("/api/cod-config", requireAuth, codConfigRouter);
   app.use("/api/sales", requireAuth, salesRouter);
   app.use("/api/brands", requireAuth, brandsRouter);
+  app.use("/api/campaigns", requireAuth, campaignsRouter);
+  app.use("/api/tags", requireAuth, tagsRouter);
   app.use("/api/users", requireAuth, requireUltimateAdmin, usersRouter);
   app.use("/api/audit-log", requireAuth, auditLogRouter);
 
