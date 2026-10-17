@@ -70,6 +70,7 @@ campaignsRouter.get("/:storeId", async (req, res) => {
       status: c.status,
       revertedAt: c.revertedAt,
       itemCount: c._count.publishLogs,
+      tag: c.tag,
       createdByName: c.createdBy?.name ?? null,
     }))
   );
@@ -81,6 +82,10 @@ const startCampaignSchema = z
     name: z.string().min(1),
     campaignType: z.string().min(1),
     discountPct: z.number().positive().max(95),
+    // Added to every selected product when the campaign starts, removed
+    // when it's reverted — never empty, so a campaign always leaves a
+    // clear "in this campaign" marker in Shopify while it's running.
+    tag: z.string().min(1).max(50),
     durationDays: z.number().int().positive().max(365).optional(),
     // Lets a campaign be tested end-to-end (apply → wait a few minutes →
     // confirm auto-revert fired) without waiting a full day for it to expire.
@@ -102,6 +107,7 @@ campaignsRouter.post("/", async (req, res) => {
     name: parsed.data.name,
     campaignType: parsed.data.campaignType,
     discountPct: parsed.data.discountPct,
+    tag: parsed.data.tag,
     durationDays: parsed.data.durationDays,
     durationMinutes: parsed.data.durationMinutes,
     productIds: parsed.data.productIds,
@@ -117,7 +123,7 @@ campaignsRouter.post("/", async (req, res) => {
     "CAMPAIGN_STARTED",
     "Campaign",
     campaignId,
-    `Started campaign "${parsed.data.name}" (${parsed.data.discountPct}% off, ${durationLabel}) on ${store.name}: ${successCount} item(s)${failCount > 0 ? `, ${failCount} failed` : ""}`
+    `Started campaign "${parsed.data.name}" (${parsed.data.discountPct}% off, ${durationLabel}, tag "${parsed.data.tag}") on ${store.name}: ${successCount} item(s)${failCount > 0 ? `, ${failCount} failed` : ""}`
   );
 
   res.json({ campaignId, results });
@@ -135,7 +141,7 @@ campaignsRouter.post("/:id/revert", async (req, res) => {
     "CAMPAIGN_REVERTED",
     "Campaign",
     campaign.id,
-    `Reverted campaign "${campaign.name}" on ${campaign.store.name}: ${successCount} item(s)${failCount > 0 ? `, ${failCount} failed` : ""}`
+    `Reverted campaign "${campaign.name}" on ${campaign.store.name}: ${successCount} item(s)${failCount > 0 ? `, ${failCount} failed` : ` — tag "${campaign.tag}" removed`}`
   );
 
   res.json({ results });

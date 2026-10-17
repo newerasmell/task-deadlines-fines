@@ -1,6 +1,6 @@
 import type { Store } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { publishPrices, revertPublishes, type PublishResultItem, type RevertResultItem } from "./publishEngine";
+import { publishPrices, revertPublishes, setProductTag, type PublishResultItem, type RevertResultItem } from "./publishEngine";
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
@@ -15,6 +15,10 @@ export interface StartCampaignInput {
   // few minutes → confirm it auto-reverted) without waiting a full day.
   durationDays?: number;
   durationMinutes?: number;
+  // Added to every product below when the campaign starts, removed again
+  // once it's fully reverted — required (never ""), so a campaign always
+  // has a clear "these products are in this campaign" marker in Shopify.
+  tag: string;
   productIds: string[];
   createdById: string | null;
 }
@@ -42,6 +46,14 @@ export interface StartCampaignResult {
  * exists to stamp onto the publish results; if every item then fails to
  * publish, the campaign is left with zero successful log rows and the
  * scheduler's auto-revert tick simply has nothing to do for it later.
+ *
+ * Also tags every one of those products with `input.tag` in Shopify (the
+ * same campaign/marketing tag used to shortlist them in the first place,
+ * by default) — this is what revertCampaign later removes once the
+ * campaign ends, so the tag only marks "currently in a running campaign"
+ * rather than lingering forever. Tagging is best-effort: a failure here
+ * is logged, not thrown, since the price change is the part of this that
+ * actually matters.
  */
 export async function startCampaign(store: Store, input: StartCampaignInput): Promise<StartCampaignResult> {
   const products = await prisma.product.findMany({
@@ -57,6 +69,8 @@ export async function startCampaign(store: Store, input: StartCampaignInput): Pr
       name: input.name,
       campaignType: input.campaignType,
       discountPct: input.discountPct,
+      tag: input.tag,
+      productIds: products.map((p) => p.id).join(","),
       endsAt,
       createdById: input.createdById,
     },
@@ -70,6 +84,14 @@ export async function startCampaign(store: Store, input: StartCampaignInput): Pr
   }));
 
   const results = items.length > 0 ? await publishPrices(store, items, "campaign", undefined, campaign.id) : [];
+
+  if (products.length > 0) {
+    const tagResults = await setProductTag(store, products.map((p) => p.id), input.tag, "add");
+    const tagFailCount = tagResults.filter((r) => r.status === "ERROR").length;
+    if (tagFailCount > 0) {
+      console.error(`[campaignEngine] failed to tag ${tagFailCount} product(s) for campaign ${campaign.id}`);
+    }
+  }
 
   return { campaignId: campaign.id, results };
 }
@@ -89,9 +111,14 @@ export interface RevertCampaignResult {
  * is still obviously not fully REVERTED. The campaign only flips to
  * REVERTED once every one of its still-active log rows has actually been
  * reverted; otherwise it's left ACTIVE so the next tick (or another manual
- * click) retries the remainder.
+ * click) retries the remainder. Only once it's fully REVERTED does the
+ * campaign's tag get removed from the products it was applied to
+ * (`productIds`, stamped at start — null for a campaign created before
+ * this field existed, which just skips the untag step) — same best-effort
+ * handling as the tag-add in startCampaign.
  */
 export async function revertCampaign(store: Store, campaignId: string): Promise<RevertCampaignResult> {
+  const campaign = await prisma.campaign.findUniqueOrThrow({ where: { id: campaignId } });
   const logs = await prisma.publishLog.findMany({
     where: { campaignId, storeId: store.id, status: "SUCCESS", revertedAt: null },
   });
@@ -104,6 +131,15 @@ export async function revertCampaign(store: Store, campaignId: string): Promise<
       where: { id: campaignId },
       data: { status: "REVERTED", revertedAt: new Date() },
     });
+
+    const productIds = campaign.productIds ? campaign.productIds.split(",").filter(Boolean) : [];
+    if (productIds.length > 0) {
+      const tagResults = await setProductTag(store, productIds, campaign.tag, "remove");
+      const tagFailCount = tagResults.filter((r) => r.status === "ERROR").length;
+      if (tagFailCount > 0) {
+        console.error(`[campaignEngine] failed to untag ${tagFailCount} product(s) for campaign ${campaignId}`);
+      }
+    }
   }
 
   return { campaignId, results };

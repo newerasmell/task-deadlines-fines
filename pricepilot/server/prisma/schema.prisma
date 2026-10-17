@@ -627,6 +627,20 @@ model Campaign {
   campaignType String // black_friday | christmas | summer | custom
   discountPct  Float
 
+  // Added to every selected product's Shopify tags when the campaign
+  // starts, removed again once it's fully reverted (manually or by the
+  // scheduler) — @default keeps this safe to add to a table that may
+  // already hold real rows (see CLAUDE.md's migration checklist): existing
+  // campaigns silently get "c_marketing", matching what they already did
+  // by hand via the separate "Маркирай избраните" panel.
+  tag        String  @default("c_marketing")
+  // Comma-joined local Product.id list the tag above was actually applied
+  // to, so revert knows exactly what to untag without having to reverse
+  // it out of PublishLog (which only has Shopify variant ids, and only
+  // for items that didn't fail). Null for a campaign created before this
+  // field existed — revert just skips the untag step for those.
+  productIds String?
+
   startedAt DateTime @default(now())
   endsAt    DateTime
   status    String   @default("ACTIVE") // ACTIVE | REVERTED | CANCELLED

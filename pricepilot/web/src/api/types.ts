@@ -400,6 +400,7 @@ export interface Campaign {
   status: CampaignStatus;
   revertedAt: string | null;
   itemCount: number;
+  tag: string;
   createdByName: string | null;
 }
 

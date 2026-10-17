@@ -62,6 +62,11 @@ export function Campaigns() {
   const [campaignName, setCampaignName] = useState("");
   const [campaignType, setCampaignType] = useState("black_friday");
   const [discountPct, setDiscountPct] = useState("20");
+  // Added to every selected product when the campaign starts, removed
+  // again once it's reverted — required (can't launch without one),
+  // independent from tagInput above (the standalone "Маркирай избраните"
+  // panel), though both default to the same marketing-tag convention.
+  const [campaignTag, setCampaignTag] = useState("c_marketing");
   const [durationDays, setDurationDays] = useState("10");
   // Optional override for quick testing (apply → wait a few minutes →
   // confirm the scheduler auto-reverted it) without waiting out a real
@@ -182,6 +187,10 @@ export function Campaigns() {
       setApplyError(t("Попълни валидно име и процент (1–99)."));
       return;
     }
+    if (!campaignTag.trim()) {
+      setApplyError(t("Кампанията трябва да има таг — въведи един."));
+      return;
+    }
     if (usingTestMinutes ? !Number.isInteger(minutes) || minutes <= 0 : !Number.isInteger(days) || days <= 0) {
       setApplyError(
         usingTestMinutes
@@ -213,6 +222,7 @@ export function Campaigns() {
           name: campaignName.trim(),
           campaignType,
           discountPct: pct,
+          tag: campaignTag.trim(),
           ...(usingTestMinutes ? { durationMinutes: minutes } : { durationDays: days }),
           productIds: [...selected],
         }),
@@ -381,6 +391,10 @@ export function Campaigns() {
               <input type="number" step="1" min="1" max="99" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
             </label>
             <label>
+              {t("Таг (добавя се при старт, маха се при край)")}
+              <input value={campaignTag} onChange={(e) => setCampaignTag(e.target.value)} placeholder="c_marketing" required />
+            </label>
+            <label>
               {t("Продължителност, дни")}
               <input
                 type="number"
@@ -467,6 +481,8 @@ export function Campaigns() {
                   </span>
                   <div className="muted small">
                     <span className="badge">{t(STATUS_LABELS[c.status])}</span>
+                    {" · "}
+                    {t("таг")}: {c.tag}
                     {c.createdByName && <> · {t("от {name}", { name: c.createdByName })}</>}
                   </div>
                 </div>
