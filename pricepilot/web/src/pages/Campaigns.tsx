@@ -25,6 +25,16 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
 
+// Minutes-granularity for a sub-day remainder — a test campaign set to
+// expire in a few minutes would otherwise always read "остават 1д" until
+// the instant it ends, making the auto-revert timing impossible to judge.
+function formatRemaining(ms: number, t: (text: string, params?: Record<string, string | number>) => string): string {
+  const totalMinutes = Math.max(0, Math.ceil(ms / (1000 * 60)));
+  if (totalMinutes < 60) return t("{m} мин", { m: totalMinutes });
+  if (totalMinutes < 60 * 24) return t("{h} ч", { h: Math.ceil(totalMinutes / 60) });
+  return t("{d} дни", { d: Math.ceil(totalMinutes / (60 * 24)) });
+}
+
 export function Campaigns() {
   const { currentStore } = useStores();
   const t = useT();
@@ -53,6 +63,10 @@ export function Campaigns() {
   const [campaignType, setCampaignType] = useState("black_friday");
   const [discountPct, setDiscountPct] = useState("20");
   const [durationDays, setDurationDays] = useState("10");
+  // Optional override for quick testing (apply → wait a few minutes →
+  // confirm the scheduler auto-reverted it) without waiting out a real
+  // day-long campaign. Takes over from durationDays whenever it's filled.
+  const [testMinutes, setTestMinutes] = useState("");
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applySummary, setApplySummary] = useState<string | null>(null);
@@ -161,16 +175,28 @@ export function Campaigns() {
     if (!currentStore || selected.size === 0) return;
     const pct = Number(discountPct);
     const days = Number(durationDays);
-    if (!campaignName.trim() || Number.isNaN(pct) || pct <= 0 || pct >= 100 || !Number.isInteger(days) || days <= 0) {
-      setApplyError(t("Попълни валидно име, процент (1–99) и дни (цяло число > 0)."));
+    const minutesRaw = testMinutes.trim();
+    const usingTestMinutes = minutesRaw !== "";
+    const minutes = Number(minutesRaw);
+    if (!campaignName.trim() || Number.isNaN(pct) || pct <= 0 || pct >= 100) {
+      setApplyError(t("Попълни валидно име и процент (1–99)."));
       return;
     }
+    if (usingTestMinutes ? !Number.isInteger(minutes) || minutes <= 0 : !Number.isInteger(days) || days <= 0) {
+      setApplyError(
+        usingTestMinutes
+          ? t("Тестовите минути трябва да са цяло число > 0.")
+          : t("Продължителността в дни трябва да е цяло число > 0.")
+      );
+      return;
+    }
+    const durationLabel = usingTestMinutes ? t("{m} мин (тест)", { m: minutes }) : t("{d} дни", { d: days });
     if (
       !window.confirm(
-        t('Приложи "{name}" (-{pct}% за {days} дни) върху {count} продукта?', {
+        t('Приложи "{name}" (-{pct}% за {duration}) върху {count} продукта?', {
           name: campaignName.trim(),
           pct,
-          days,
+          duration: durationLabel,
           count: selected.size,
         })
       )
@@ -187,7 +213,7 @@ export function Campaigns() {
           name: campaignName.trim(),
           campaignType,
           discountPct: pct,
-          durationDays: days,
+          ...(usingTestMinutes ? { durationMinutes: minutes } : { durationDays: days }),
           productIds: [...selected],
         }),
       });
@@ -356,9 +382,32 @@ export function Campaigns() {
             </label>
             <label>
               {t("Продължителност, дни")}
-              <input type="number" step="1" min="1" value={durationDays} onChange={(e) => setDurationDays(e.target.value)} />
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={durationDays}
+                onChange={(e) => setDurationDays(e.target.value)}
+                disabled={testMinutes.trim() !== ""}
+              />
+            </label>
+            <label>
+              {t("или тест: минути")}
+              <input
+                type="number"
+                step="1"
+                min="1"
+                placeholder={t("незадължително")}
+                value={testMinutes}
+                onChange={(e) => setTestMinutes(e.target.value)}
+              />
             </label>
           </div>
+          {testMinutes.trim() !== "" && (
+            <p className="muted small" style={{ marginTop: -4 }}>
+              {t("Тестов режим — кампанията ще изтече след {m} мин. вместо след зададените дни.", { m: testMinutes.trim() })}
+            </p>
+          )}
 
           <div className="table-wrap" style={{ marginTop: 10 }}>
             <table className="pricing-table">
@@ -383,7 +432,7 @@ export function Campaigns() {
                       </td>
                       <td>{newPrice != null ? <Money value={newPrice} currency={currentStore.currency} eurRate={null} /> : "—"}</td>
                       <td>
-                        <Money value={p.price} currency={currentStore.currency} eurRate={null} />
+                        <Money value={p.compareAtPrice ?? p.price} currency={currentStore.currency} eurRate={null} />
                       </td>
                     </tr>
                   );
@@ -404,7 +453,7 @@ export function Campaigns() {
         <h2>{t("Активни кампании")}</h2>
         <div className="entity-list">
           {campaigns.map((c) => {
-            const daysRemaining = Math.max(0, Math.ceil((new Date(c.endsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+            const remainingMs = new Date(c.endsAt).getTime() - Date.now();
             return (
               <div key={c.id} className="entity-row" style={c.status !== "ACTIVE" ? { opacity: 0.6 } : undefined}>
                 <div>
@@ -414,7 +463,7 @@ export function Campaigns() {
                     {t(CAMPAIGN_TYPE_LABELS[c.campaignType] ?? c.campaignType)}
                     {" · -"}
                     {c.discountPct}% · {c.itemCount} {t("продукта")}
-                    {c.status === "ACTIVE" && <> · {t("остават {days}д", { days: daysRemaining })}</>}
+                    {c.status === "ACTIVE" && <> · {t("остават {remaining}", { remaining: formatRemaining(remainingMs, t) })}</>}
                   </span>
                   <div className="muted small">
                     <span className="badge">{t(STATUS_LABELS[c.status])}</span>

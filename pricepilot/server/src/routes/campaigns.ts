@@ -75,14 +75,21 @@ campaignsRouter.get("/:storeId", async (req, res) => {
   );
 });
 
-const startCampaignSchema = z.object({
-  storeId: z.string().min(1),
-  name: z.string().min(1),
-  campaignType: z.string().min(1),
-  discountPct: z.number().positive().max(95),
-  durationDays: z.number().int().positive().max(365),
-  productIds: z.array(z.string().min(1)).min(1),
-});
+const startCampaignSchema = z
+  .object({
+    storeId: z.string().min(1),
+    name: z.string().min(1),
+    campaignType: z.string().min(1),
+    discountPct: z.number().positive().max(95),
+    durationDays: z.number().int().positive().max(365).optional(),
+    // Lets a campaign be tested end-to-end (apply → wait a few minutes →
+    // confirm auto-revert fired) without waiting a full day for it to expire.
+    durationMinutes: z.number().int().positive().max(366 * 24 * 60).optional(),
+    productIds: z.array(z.string().min(1)).min(1),
+  })
+  .refine((v) => v.durationDays != null || v.durationMinutes != null, {
+    message: "durationDays or durationMinutes is required",
+  });
 
 campaignsRouter.post("/", async (req, res) => {
   const parsed = startCampaignSchema.safeParse(req.body);
@@ -96,10 +103,13 @@ campaignsRouter.post("/", async (req, res) => {
     campaignType: parsed.data.campaignType,
     discountPct: parsed.data.discountPct,
     durationDays: parsed.data.durationDays,
+    durationMinutes: parsed.data.durationMinutes,
     productIds: parsed.data.productIds,
     createdById: req.userId ?? null,
   });
 
+  const durationLabel =
+    parsed.data.durationMinutes != null ? `${parsed.data.durationMinutes}min (test)` : `${parsed.data.durationDays}d`;
   const successCount = results.filter((r) => r.status === "SUCCESS").length;
   const failCount = results.length - successCount;
   await logAudit(
@@ -107,7 +117,7 @@ campaignsRouter.post("/", async (req, res) => {
     "CAMPAIGN_STARTED",
     "Campaign",
     campaignId,
-    `Started campaign "${parsed.data.name}" (${parsed.data.discountPct}% off, ${parsed.data.durationDays}d) on ${store.name}: ${successCount} item(s)${failCount > 0 ? `, ${failCount} failed` : ""}`
+    `Started campaign "${parsed.data.name}" (${parsed.data.discountPct}% off, ${durationLabel}) on ${store.name}: ${successCount} item(s)${failCount > 0 ? `, ${failCount} failed` : ""}`
   );
 
   res.json({ campaignId, results });

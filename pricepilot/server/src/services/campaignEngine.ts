@@ -10,7 +10,11 @@ export interface StartCampaignInput {
   name: string;
   campaignType: string; // black_friday | christmas | summer | custom
   discountPct: number;
-  durationDays: number;
+  // Exactly one is set by the route (zod enforces it) — durationMinutes
+  // exists purely so a campaign can be tested end-to-end (apply → wait a
+  // few minutes → confirm it auto-reverted) without waiting a full day.
+  durationDays?: number;
+  durationMinutes?: number;
   productIds: string[];
   createdById: string | null;
 }
@@ -23,9 +27,13 @@ export interface StartCampaignResult {
 /**
  * Applies a time-boxed extra discount on top of each product's CURRENT
  * live price (never a "base" price field — `product.price` already IS
- * whatever price is live right now, competitor-suggested or otherwise),
- * stamping the pre-discount price onto compareAtPrice so the storefront
- * shows a struck-through "was/now" price. Reuses the exact same
+ * whatever price is live right now, competitor-suggested or otherwise).
+ * compareAtPrice keeps the product's EXISTING compare-at when it already
+ * has one (a genuinely higher original/reference price shouldn't be
+ * clobbered by today's pre-campaign price) and only falls back to the
+ * pre-campaign price for a product that had no compare-at at all — either
+ * way the storefront keeps showing a real struck-through "was/now" price.
+ * Reuses the exact same
  * publishPrices() every other publish path uses — a campaign is just a
  * named, time-boxed group of ordinary publishes (source="campaign",
  * campaignId set on each resulting PublishLog row) — so it inherits the
@@ -40,7 +48,9 @@ export async function startCampaign(store: Store, input: StartCampaignInput): Pr
     where: { id: { in: input.productIds }, storeId: store.id },
   });
 
-  const endsAt = new Date(Date.now() + input.durationDays * 24 * 60 * 60 * 1000);
+  const durationMs =
+    input.durationMinutes != null ? input.durationMinutes * 60 * 1000 : (input.durationDays ?? 0) * 24 * 60 * 60 * 1000;
+  const endsAt = new Date(Date.now() + durationMs);
   const campaign = await prisma.campaign.create({
     data: {
       storeId: store.id,
@@ -55,7 +65,8 @@ export async function startCampaign(store: Store, input: StartCampaignInput): Pr
   const items = products.map((p) => ({
     productId: p.id,
     newPrice: round2(p.price * (1 - input.discountPct / 100)),
-    setCompareAt: true,
+    setCompareAt: false,
+    newCompareAtPrice: p.compareAtPrice ?? p.price,
   }));
 
   const results = items.length > 0 ? await publishPrices(store, items, "campaign", undefined, campaign.id) : [];

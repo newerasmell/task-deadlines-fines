@@ -66,13 +66,17 @@ export function startScheduler() {
     nightlyCatalogSync().catch((err) => console.error("[scheduler] nightly catalog sync failed", err));
   });
 
-  // Checks every 15 minutes for campaigns whose endsAt has passed and
-  // reverts them — see campaignEngine.ts's own comment on why a refused
+  // Checks every minute for campaigns whose endsAt has passed and reverts
+  // them — see campaignEngine.ts's own comment on why a refused
   // (price-changed-since) item just stays flagged rather than failing the
-  // whole tick.
-  cron.schedule("*/15 * * * *", () => {
+  // whole tick. Minute granularity (not the usual 15-min cadence other
+  // ticks use) matters here: a campaign can be set to expire in just a
+  // few minutes (durationMinutes, for testing the auto-revert end-to-end),
+  // and a discount shouldn't realistically outlive its stated window by
+  // up to 15 minutes even for a normal day-long campaign.
+  cron.schedule("* * * * *", () => {
     autoRevertDueCampaigns().catch((err) => console.error("[scheduler] campaign auto-revert tick failed", err));
   });
 
-  console.log("[scheduler] started (source refresh every 15m check, catalog sync nightly at 03:00, campaign auto-revert every 15m check)");
+  console.log("[scheduler] started (source refresh every 15m check, catalog sync nightly at 03:00, campaign auto-revert every 1m check)");
 }
