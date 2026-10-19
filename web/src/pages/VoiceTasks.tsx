@@ -63,7 +63,7 @@ function RecordingRow({ recording, onSynced }: { recording: MeetRecordingSummary
           {t("Грешка")}
         </span>
       )}
-      <button className="small-btn secondary" onClick={() => sync(false)} disabled={syncing}>
+      <button className="small-btn secondary" onClick={() => sync(recording.imported)} disabled={syncing}>
         {recording.imported ? t("Синхронизирай пак") : t("Синхронизирай")}
       </button>
       {state?.status === "FAILED" && <div className="error-text small" style={{ width: "100%" }}>{state.error}</div>}

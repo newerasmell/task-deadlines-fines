@@ -134,6 +134,7 @@ async function processRecording(file: DriveFile): Promise<void> {
           // instead.
           meetRecordingId: i === 0 ? file.id : null,
           meetingSessionId: sessionId,
+          segmentIndex: i,
           isFinalSegment: i === chunkPaths.length - 1,
         };
         const job = await prisma.voiceProcessingJob.create({ data: { source: "MEET", status: "PENDING", createdById: null } });
