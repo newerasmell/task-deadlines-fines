@@ -38,6 +38,11 @@ authRouter.post("/login", async (req, res) => {
       isSuperAdmin: user.isSuperAdmin,
       canAssignTasks: user.canAssignTasks,
       canAccessSubscriptions: user.canAccessSubscriptions,
+      // Same fields GET /auth/me returns — kept in sync so a just-logged-in
+      // employee's Profile page shows correct link state without needing a
+      // page reload to pick up a second /auth/me round trip.
+      telegramChatId: user.telegramChatId,
+      slackMemberId: user.slackMemberId,
     },
   });
 });
@@ -53,6 +58,11 @@ authRouter.get("/me", requireAuth, async (req, res) => {
     isSuperAdmin: user.isSuperAdmin,
     canAssignTasks: user.canAssignTasks,
     canAccessSubscriptions: user.canAccessSubscriptions,
+    // Surfaced so the self-service Profile page can show current link
+    // state (and poll this endpoint while a Telegram link is in flight) —
+    // both already existed on the row, just weren't returned here before.
+    telegramChatId: user.telegramChatId,
+    slackMemberId: user.slackMemberId,
   });
 });
 

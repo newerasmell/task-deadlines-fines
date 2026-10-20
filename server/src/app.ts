@@ -13,6 +13,7 @@ import { projectsRouter } from "./routes/projects";
 import { subscriptionsRouter } from "./routes/subscriptions";
 import { taskTemplatesRouter } from "./routes/taskTemplates";
 import { tasksRouter } from "./routes/tasks";
+import { telegramLinkRouter } from "./routes/telegramLink";
 import { usersRouter } from "./routes/users";
 import { vaultRouter } from "./routes/vault";
 import { voiceRouter } from "./routes/voice";
@@ -41,6 +42,7 @@ export function createApp() {
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/audit-log", auditLogRouter);
   app.use("/api/voice", voiceRouter);
+  app.use("/api/telegram-link", telegramLinkRouter);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

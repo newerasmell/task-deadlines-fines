@@ -47,6 +47,15 @@ export const env = {
   adminSlackWebhookUrl: process.env.ADMIN_SLACK_WEBHOOK_URL ?? "",
 
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+  // The bot's own @username (no "@"), read once from BotFather — needed to
+  // build the "Свържи Telegram" deep link (t.me/<username>?start=<token>)
+  // on the self-service Profile page.
+  telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME ?? "",
+  // Any random string the admin picks, set once via Telegram's setWebhook
+  // call (see README) — doubles as the unguessable path segment that
+  // stands in for auth on the public /telegram-link/webhook/:secret route,
+  // since Telegram itself (not a logged-in user) is what calls it.
+  telegramWebhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? "",
 
   slackWebhookUrl: process.env.SLACK_WEBHOOK_URL ?? "",
   slackBotToken: process.env.SLACK_BOT_TOKEN ?? "",

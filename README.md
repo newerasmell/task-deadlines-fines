@@ -237,12 +237,21 @@ Doc) в определена папка. Сървърът периодично �
 ### Telegram
 
 1. Отвори чат с [@BotFather](https://t.me/BotFather) в Telegram, изпрати
-   `/newbot` и следвай стъпките — ще получиш токен.
-2. Сложи токена в `server/.env` като `TELEGRAM_BOT_TOKEN`.
-3. Всеки служител трябва да си отвори чат с бота и да изпрати `/start`.
-4. За да намериш неговия `chat_id`: служителят пише на бота, после отвори
-   `https://api.telegram.org/bot<TOKEN>/getUpdates` в браузър — ще видиш
-   `chat":{"id": ...}` в отговора. Сложи това число в профила на служителя.
+   `/newbot` и следвай стъпките — ще получиш токен и username (напр.
+   `@todf_notify_bot`).
+2. Сложи в `server/.env`:
+   - `TELEGRAM_BOT_TOKEN` — токена.
+   - `TELEGRAM_BOT_USERNAME` — username-а на бота, без `@`.
+   - `TELEGRAM_WEBHOOK_SECRET` — произволен низ по твой избор (пази го —
+     той е единствената защита на webhook адреса по-долу).
+3. **Еднократно**, след деплой, активирай webhook-а (замени стойностите
+   със своите):
+   ```
+   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=<SERVER_URL>/api/telegram-link/webhook/<TELEGRAM_WEBHOOK_SECRET>"
+   ```
+4. Оттук нататък всеки служител сам се свързва от своя профил (`/profile`
+   в таблото) с бутон „Свържи Telegram“ — едно кликване, после „Start“ в
+   Telegram, готово. Не е нужна никаква ръчна стъпка за нов служител.
 
 ### Slack
 
@@ -257,8 +266,9 @@ Doc) в определена папка. Сървърът периодично �
 1. В същото приложение добави OAuth scope `im:write`, `chat:write`,
    `users:read` и инсталирай в workspace-а.
 2. Копирай Bot User OAuth Token (`xoxb-...`) в `SLACK_BOT_TOKEN`.
-3. За всеки служител вземи неговия Slack Member ID (профил → „Copy member
-   ID“) и го сложи в „Служители“.
+3. Всеки служител сам взема своя Slack Member ID (профил → „Copy member
+   ID“) и го въвежда в собствения си профил (`/profile` в таблото, карта
+   „Slack“) — не е нужно да се докладва на администратор.
 
 ### Email / Gmail
 

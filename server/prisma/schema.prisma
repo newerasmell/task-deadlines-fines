@@ -60,6 +60,14 @@ model User {
   viberUserId      String?
   googleCalendarId String?
 
+  // Self-service Telegram linking (lib/telegramLink.ts): a short-lived,
+  // single-use token embedded in a `t.me/<bot>?start=<token>` deep link —
+  // when the employee taps "Start" in Telegram, the webhook resolves this
+  // back to their account and sets telegramChatId above, then clears both
+  // fields. Null/null the rest of the time.
+  telegramLinkToken          String?   @unique
+  telegramLinkTokenExpiresAt DateTime?
+
   // Per-user "Push to Calendar" OAuth connection (distinct from
   // googleCalendarId above, which is the ADMIN-level shared-calendar
   // broadcast target — this is each person's own personal calendar

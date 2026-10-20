@@ -11,6 +11,8 @@ interface AuthUser {
   isSuperAdmin: boolean;
   canAssignTasks: boolean;
   canAccessSubscriptions: boolean;
+  telegramChatId: string | null;
+  slackMemberId: string | null;
 }
 
 interface AuthContextValue {
@@ -18,6 +20,10 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  // Re-fetches /auth/me and swaps it into context — used by Profile.tsx to
+  // pick up telegramChatId/slackMemberId right after linking, without a
+  // full page reload.
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -51,7 +57,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
+  async function refreshUser() {
+    if (!getToken()) return;
+    setUser(await api<AuthUser>("/auth/me"));
+  }
+
+  return <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {
