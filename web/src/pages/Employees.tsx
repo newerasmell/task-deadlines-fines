@@ -1,11 +1,41 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api/client";
-import type { Role, User } from "../api/types";
+import type { ChannelSendResult, Role, User } from "../api/types";
 import { Avatar } from "../components/Avatar";
 import { IconSearch } from "../components/icons";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
+
+// Shown after creating an account or resending an invite — the raw link
+// is always available as a manual-share fallback even when the email
+// send failed or SMTP isn't configured server-side, since the invite
+// isn't something an admin can meaningfully retry any other way.
+function InviteNotice({ inviteLink, emailResult, onDismiss }: { inviteLink: string; emailResult: ChannelSendResult; onDismiss: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="card notice">
+      {emailResult.status === "SENT" ? (
+        <p>{t("Поканата е изпратена по имейл.")}</p>
+      ) : (
+        <p>
+          {t("Имейлът не можа да се изпрати ({reason}) — сподели този линк ръчно:", {
+            reason: emailResult.error ?? emailResult.status,
+          })}
+        </p>
+      )}
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input readOnly value={inviteLink} style={{ flex: 1 }} onFocus={(e) => e.currentTarget.select()} />
+        <button className="small-btn" onClick={() => navigator.clipboard.writeText(inviteLink)}>
+          {t("Копирай")}
+        </button>
+        <button className="small-btn" onClick={onDismiss}>
+          {t("Затвори")}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function Employees() {
   const { user: currentUser } = useAuth();
@@ -15,6 +45,7 @@ export function Employees() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [invite, setInvite] = useState<{ inviteLink: string; emailResult: ChannelSendResult } | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -48,6 +79,11 @@ export function Employees() {
     refresh();
   }
 
+  async function resendInvite(id: string) {
+    const res = await api<{ inviteLink: string; emailResult: ChannelSendResult }>(`/users/${id}/resend-invite`, { method: "POST" });
+    setInvite(res);
+  }
+
   if (loading) return <p>{t("Зареждане…")}</p>;
 
   const visibleUsers = users.filter(
@@ -77,8 +113,9 @@ export function Employees() {
         <EmployeeForm
           allEmployees={users}
           isSuperAdmin={isSuperAdmin}
-          onSaved={() => {
+          onSaved={(result) => {
             setShowForm(false);
+            if (result) setInvite(result);
             refresh();
           }}
         />
@@ -98,6 +135,7 @@ export function Employees() {
       )}
 
       {testResult && <div className="card notice">{testResult}</div>}
+      {invite && <InviteNotice inviteLink={invite.inviteLink} emailResult={invite.emailResult} onDismiss={() => setInvite(null)} />}
 
       <div className="filter-bar">
         <div className="search-input">
@@ -164,12 +202,22 @@ export function Employees() {
               </td>
               <td data-label={t("Статус")}>
                 <span className={u.active ? "badge badge-success" : "badge"}>{u.active ? t("Активен") : t("Деактивиран")}</span>
+                {!u.inviteAcceptedAt && (
+                  <span className="badge" style={{ marginLeft: 6 }} title={t("Служителят още не си е задал парола от линка в поканата.")}>
+                    {t("Покана: чака")}
+                  </span>
+                )}
               </td>
               <td className="row-actions">
                 <div className="row-actions-group">
                   <button className="small-btn" onClick={() => setEditing(u)}>
                     {t("Редактирай")}
                   </button>
+                  {!u.inviteAcceptedAt && (
+                    <button className="small-btn" onClick={() => resendInvite(u.id)}>
+                      {t("Изпрати пак")}
+                    </button>
+                  )}
                   <button className="small-btn" onClick={() => testSend(u.id)}>
                     {t("Тест известие")}
                   </button>
@@ -206,7 +254,7 @@ function EmployeeForm({
   user?: User;
   allEmployees: User[];
   isSuperAdmin: boolean;
-  onSaved: () => void;
+  onSaved: (result?: { inviteLink: string; emailResult: ChannelSendResult }) => void;
   onCancel?: () => void;
 }) {
   const { t } = useI18n();
@@ -250,6 +298,7 @@ function EmployeeForm({
         ? { role, canAssignTasks, isSuperAdmin: isSuperAdminFlag, canAccessSubscriptions, businessHoursOnly }
         : {};
       let savedId = user?.id;
+      let inviteResult: { inviteLink: string; emailResult: ChannelSendResult } | undefined;
       if (isEdit && user) {
         await api(`/users/${user.id}`, {
           method: "PATCH",
@@ -264,12 +313,11 @@ function EmployeeForm({
           }),
         });
       } else {
-        const created = await api<User>("/users", {
+        const created = await api<{ user: User; inviteLink: string; emailResult: ChannelSendResult }>("/users", {
           method: "POST",
           body: JSON.stringify({
             name,
             email,
-            password,
             role: isSuperAdmin ? role : "EMPLOYEE",
             voiceAssignmentNotes: voiceAssignmentNotes || undefined,
             voiceAssignOnlyWhenNamed,
@@ -277,12 +325,13 @@ function EmployeeForm({
             ...channels,
           }),
         });
-        savedId = created.id;
+        savedId = created.user.id;
+        inviteResult = { inviteLink: created.inviteLink, emailResult: created.emailResult };
       }
       if (isSuperAdmin && savedId && canAssignTasks) {
         await api(`/users/${savedId}/scope`, { method: "PUT", body: JSON.stringify({ employeeIds: scopeIds }) });
       }
-      onSaved();
+      onSaved(inviteResult);
     } catch (err) {
       setError(err instanceof Error ? t(err.message) : t("Грешка"));
     } finally {
@@ -315,17 +364,16 @@ function EmployeeForm({
             </select>
           </label>
         )}
-        <label>
-          {isEdit ? t("Нова парола (остави празно, за да не се сменя)") : t("Парола")}
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required={!isEdit}
-            minLength={6}
-            placeholder={isEdit ? "••••••••" : undefined}
-          />
-        </label>
+        {isEdit ? (
+          <label>
+            {t("Нова парола (остави празно, за да не се сменя)")}
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} placeholder="••••••••" />
+          </label>
+        ) : (
+          <p className="muted small" style={{ alignSelf: "flex-end", marginBottom: 8 }}>
+            {t("Ще получи покана по имейл, за да си зададе парола.")}
+          </p>
+        )}
       </div>
 
       <label>

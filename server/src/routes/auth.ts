@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { hashPassword, signToken, verifyPassword } from "../lib/auth";
+import { acceptInvite, resolveInviteToken } from "../lib/invite";
 import { prisma } from "../lib/prisma";
 import { requireAdmin, requireAuth } from "../middleware/auth";
 
@@ -41,6 +42,49 @@ authRouter.post("/login", async (req, res) => {
       // Same fields GET /auth/me returns — kept in sync so a just-logged-in
       // employee's Profile page shows correct link state without needing a
       // page reload to pick up a second /auth/me round trip.
+      telegramChatId: user.telegramChatId,
+      slackMemberId: user.slackMemberId,
+    },
+  });
+});
+
+// Public — the invited person has no account/session yet. Lets the
+// accept-invite page show a friendly "invalid or expired" state instead
+// of a blind password form that fails on submit.
+authRouter.get("/invite/:token", async (req, res) => {
+  const user = await resolveInviteToken(req.params.token);
+  if (!user) return res.json({ valid: false });
+  res.json({ valid: true, name: user.name, email: user.email });
+});
+
+const acceptInviteSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(6),
+});
+
+// Public — sets the employee's own chosen password and, on success, logs
+// them straight in (same token shape as /login) so they land on the
+// dashboard immediately instead of being bounced to a login screen right
+// after picking a password.
+authRouter.post("/accept-invite", async (req, res) => {
+  const parsed = acceptInviteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const accepted = await acceptInvite(parsed.data.token, parsed.data.password);
+  if (!accepted) return res.status(400).json({ error: "Invalid or expired invite" });
+
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: accepted.id } });
+  const token = signToken({ sub: user.id, role: user.role, email: user.email, isSuperAdmin: user.isSuperAdmin });
+  res.json({
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isSuperAdmin: user.isSuperAdmin,
+      canAssignTasks: user.canAssignTasks,
+      canAccessSubscriptions: user.canAccessSubscriptions,
       telegramChatId: user.telegramChatId,
       slackMemberId: user.slackMemberId,
     },

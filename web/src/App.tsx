@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { I18nProvider, useT } from "./i18n/I18nContext";
+import { AcceptInvite } from "./pages/AcceptInvite";
 import { AuditLog } from "./pages/AuditLog";
 import { CompanyDeadlines } from "./pages/CompanyDeadlines";
 import { Dashboard } from "./pages/Dashboard";
@@ -51,6 +52,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route
         element={
           <RequireAuth>

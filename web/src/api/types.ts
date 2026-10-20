@@ -35,6 +35,15 @@ export interface User {
   voiceAssignmentNotes: string | null;
   voiceAssignOnlyWhenNamed: boolean;
   createdAt: string;
+  // Null until the employee sets their own password via the email-invite
+  // link — lets the Employees page show a "Покана: чака" badge.
+  inviteAcceptedAt: string | null;
+}
+
+export interface ChannelSendResult {
+  channel: string;
+  status: "SENT" | "FAILED" | "SKIPPED";
+  error?: string;
 }
 
 export interface Attachment {

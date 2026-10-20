@@ -68,6 +68,16 @@ model User {
   telegramLinkToken          String?   @unique
   telegramLinkTokenExpiresAt DateTime?
 
+  // Email-invite account creation (lib/invite.ts): an admin creates the
+  // account with no password at all — passwordHash above gets a random,
+  // never-revealed placeholder — and this token (embedded in an
+  // /accept-invite?token=... link, emailed to them) is how the new
+  // employee sets their own real password. inviteAcceptedAt stays null
+  // until they do, so the Employees page can show a pending badge.
+  inviteToken          String?   @unique
+  inviteTokenExpiresAt DateTime?
+  inviteAcceptedAt     DateTime?
+
   // Per-user "Push to Calendar" OAuth connection (distinct from
   // googleCalendarId above, which is the ADMIN-level shared-calendar
   // broadcast target — this is each person's own personal calendar

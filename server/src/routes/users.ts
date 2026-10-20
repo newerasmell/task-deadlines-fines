@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { hashPassword } from "../lib/auth";
+import { createInvite, inviteLinkFor, placeholderPasswordHash, sendInviteEmail } from "../lib/invite";
 import { prisma } from "../lib/prisma";
 import { requireAdmin, requireAuth, requireSuperAdmin } from "../middleware/auth";
 
@@ -27,6 +28,9 @@ const publicUser = {
   voiceAssignmentNotes: true,
   voiceAssignOnlyWhenNamed: true,
   createdAt: true,
+  // Null once they've set their own password via the invite link — lets
+  // the Employees page show a "Покана: чака" badge + resend button.
+  inviteAcceptedAt: true,
 } as const;
 
 // Admins see everyone. Everyone else gets just enough of the roster to
@@ -69,7 +73,6 @@ usersRouter.get("/", async (req, res) => {
 const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  password: z.string().min(6),
   role: z.enum(["ADMIN", "EMPLOYEE"]).default("EMPLOYEE"),
   isSuperAdmin: z.boolean().optional(),
   canAssignTasks: z.boolean().optional(),
@@ -85,6 +88,10 @@ const createSchema = z.object({
   voiceAssignOnlyWhenNamed: z.boolean().optional(),
 });
 
+// Creates the account with no usable password at all (see lib/invite.ts's
+// placeholderPasswordHash) and emails the new employee a link to set
+// their own — replaces the old flow where an admin picked the initial
+// password themselves and had to hand it over out of band.
 usersRouter.post("/", requireAdmin, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -92,7 +99,7 @@ usersRouter.post("/", requireAdmin, async (req, res) => {
   const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
   if (existing) return res.status(409).json({ error: "Email already registered" });
 
-  const { password, ...rest } = parsed.data;
+  const rest = { ...parsed.data };
   if (!req.user!.isSuperAdmin) {
     // Only a super admin may hand out ADMIN role, Lead permission, super-admin
     // status, access to the Subscriptions page, or the business-hours-only flag.
@@ -102,12 +109,18 @@ usersRouter.post("/", requireAdmin, async (req, res) => {
     delete rest.canAccessSubscriptions;
     delete rest.businessHoursOnly;
   }
-  const passwordHash = await hashPassword(password);
+  const passwordHash = await placeholderPasswordHash();
   const user = await prisma.user.create({
     data: { ...rest, passwordHash },
     select: publicUser,
   });
-  res.status(201).json(user);
+
+  const token = await createInvite(user.id);
+  const emailResult = await sendInviteEmail(user, token);
+  // Always included, not just on failure: SMTP might be configured but
+  // still fail for this one address, or not be configured at all — the
+  // admin can always fall back to sharing the link manually either way.
+  res.status(201).json({ user, inviteLink: inviteLinkFor(token), emailResult });
 });
 
 const updateSchema = z.object({
@@ -191,6 +204,19 @@ usersRouter.delete("/:id", requireAdmin, async (req, res) => {
   } catch {
     res.status(404).json({ error: "User not found" });
   }
+});
+
+// Covers a lost/expired invite email without recreating the whole
+// account — only makes sense while the employee hasn't already set their
+// own password.
+usersRouter.post("/:id/resend-invite", requireAdmin, async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+  if (!user) return res.status(404).json({ error: "User not found" });
+  if (user.inviteAcceptedAt) return res.status(400).json({ error: "User already accepted their invite" });
+
+  const token = await createInvite(user.id);
+  const emailResult = await sendInviteEmail(user, token);
+  res.json({ inviteLink: inviteLinkFor(token), emailResult });
 });
 
 // --- Assignment scope: which employees a Lead may create/assign tasks for ---

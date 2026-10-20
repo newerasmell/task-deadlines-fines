@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { api, getToken, setToken } from "../api/client";
 import type { Role } from "../api/types";
 
-interface AuthUser {
+export interface AuthUser {
   id: string;
   name: string;
   email: string;
@@ -24,6 +24,11 @@ interface AuthContextValue {
   // pick up telegramChatId/slackMemberId right after linking, without a
   // full page reload.
   refreshUser: () => Promise<void>;
+  // Same effect as login()'s success branch, but for a token/user pair
+  // already obtained some other way (e.g. POST /auth/accept-invite) —
+  // AcceptInvite.tsx uses this to log a new employee straight in right
+  // after they set their own password, with no extra round trip.
+  setSession: (token: string, user: AuthUser) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -62,7 +67,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await api<AuthUser>("/auth/me"));
   }
 
-  return <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>{children}</AuthContext.Provider>;
+  function setSession(token: string, user: AuthUser) {
+    setToken(token);
+    setUser(user);
+  }
+
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, setSession }}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthContextValue {
