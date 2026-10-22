@@ -44,9 +44,16 @@ async function withTaskTitles<T extends { action: string; entityType: string; en
   });
 }
 
+// entityType/entityId are optional — omitted, this is the existing global
+// recent-activity feed AuditLog.tsx renders; set (e.g. by Tasks.tsx's
+// TaskInfoPanel), it scopes to one entity's full trail instead of however
+// far back it happens to sit in the global feed.
 auditLogRouter.get("/", async (req, res) => {
   const take = Math.min(Number(req.query.limit) || 100, 200);
+  const entityType = typeof req.query.entityType === "string" ? req.query.entityType : undefined;
+  const entityId = typeof req.query.entityId === "string" ? req.query.entityId : undefined;
   const logs = await prisma.auditLog.findMany({
+    where: { ...(entityType ? { entityType } : {}), ...(entityId ? { entityId } : {}) },
     include: { actor: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "desc" },
     take,

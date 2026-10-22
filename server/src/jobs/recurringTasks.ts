@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { logAction } from "../lib/auditLog";
 import { formatDateTime } from "../lib/dateFormat";
 import { env } from "../lib/env";
 import { prisma } from "../lib/prisma";
@@ -108,6 +109,19 @@ export async function spawnRecurringOccurrences(now: Date): Promise<void> {
           status: "PENDING",
         },
       });
+
+      // Previously silent — an auto-spawned occurrence left zero trace in
+      // Дневник. actorId is the template's own creator (same reasoning
+      // the spawned task's own createdById above already uses) since
+      // logAction has no "system" actor convention to fall back on.
+      await logAction(
+        template.createdById,
+        "TASK_CREATED",
+        "Task",
+        task.id,
+        `Автоматично създадена от шаблон "${template.title}"`,
+        { deadline: task.deadline, templateId: template.id }
+      );
 
       await dispatchRespectingBusinessHours(
         toNotificationTarget(template.assignee),

@@ -91,7 +91,18 @@ export async function createTaskAndNotify(input: CreateTaskInput) {
     subject: "Нова задача създадена",
     body: `"${task.title}" → ${assignee.name}, срок ${formatDateTime(task.deadline)}.`,
   });
-  await logAction(input.createdById, "TASK_CREATED", "Task", task.id, `Създадена задача "${task.title}" → ${assignee.name}`);
+  // Carries the actual values set at birth — not just "a task was
+  // created" — so a later mismatch between what the description says and
+  // what the deadline actually is (e.g. a voice-extraction slip) has
+  // something concrete to check against, instead of nothing at all.
+  await logAction(input.createdById, "TASK_CREATED", "Task", task.id, `Създадена задача "${task.title}" → ${assignee.name}`, {
+    deadline: task.deadline,
+    description: task.description,
+    priority: task.priority,
+    definitionOfDone: task.definitionOfDone,
+    assigneeId: task.assigneeId,
+    ownerId: task.ownerId,
+  });
 
   return task;
 }

@@ -2,8 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, apiUpload, attachmentUrl } from "../api/client";
-import { PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
-import type { GoogleCalendarStatus, Priority, Task, TaskSubmission, User } from "../api/types";
+import { ADMIN_ACTION_LABELS, PRIORITY_LABELS, STATUS_LABELS } from "../api/types";
+import type { AuditLogEntry, GoogleCalendarStatus, Priority, Task, TaskSubmission, User } from "../api/types";
 import { Avatar } from "../components/Avatar";
 import { IconInfo, IconSearch, IconX } from "../components/icons";
 import { MeetLinkButton } from "../components/MeetLinkButton";
@@ -1102,6 +1102,43 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   );
 }
 
+// Admin-only (same gate GET /audit-log itself enforces server-side) — the
+// "История" the "Детайли и история" menu item has always promised, but
+// until now this panel only ever showed submission history, nothing about
+// who created/edited the task itself or when. Reuses the existing global
+// audit-log endpoint, just scoped to this one task via entityType/entityId
+// instead of a dedicated per-task endpoint.
+function TaskAuditHistory({ taskId, locale }: { taskId: string; locale: string }) {
+  const { t } = useI18n();
+  const [entries, setEntries] = useState<AuditLogEntry[] | null>(null);
+
+  useEffect(() => {
+    api<AuditLogEntry[]>(`/audit-log?entityType=Task&entityId=${taskId}`)
+      .then(setEntries)
+      .catch(() => setEntries([]));
+  }, [taskId]);
+
+  if (entries === null) return null;
+
+  return (
+    <div className="task-info-history">
+      <h4>{t("История на промените")}</h4>
+      {entries.length === 0 ? (
+        <p className="muted small">{t("Няма записани действия.")}</p>
+      ) : (
+        entries.map((e) => (
+          <p key={e.id} className="small">
+            <strong>{e.actor.name}</strong> · {new Date(e.createdAt).toLocaleString(locale)} ·{" "}
+            <span className="muted">{t(ADMIN_ACTION_LABELS[e.action])}</span>
+            <br />
+            {e.summary}
+          </p>
+        ))
+      )}
+    </div>
+  );
+}
+
 export function TaskInfoPanel({
   taskId,
   isAdmin,
@@ -1263,6 +1300,8 @@ export function TaskInfoPanel({
         </div>
       )}
 
+      {isAdmin && <TaskAuditHistory taskId={task.id} locale={locale} />}
+
       <div className="task-info-actions">
         {canStart && <button onClick={() => onStart(task.id)}>{t("Започни")}</button>}
         {canSubmitCard && <button onClick={() => onSubmit(task.id)}>{t("Подай за преглед")}</button>}
@@ -1419,10 +1458,46 @@ export function ReviewPanel({ taskId, onDone }: { taskId: string; onDone: () => 
   );
 }
 
-function toLocalInputValue(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const TASK_TZ = "Europe/Sofia";
+
+function sofiaDateTimeParts(d: Date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TASK_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour"), minute: get("minute") };
+}
+
+// datetime-local wants "YYYY-MM-DDTHH:mm" in Sofia time specifically, not
+// whatever timezone the browser/OS happens to be set to — every server-
+// side deadline path already explicitly pins to Europe/Sofia (see
+// server/src/lib/businessHours.ts and friends, fixed there after a prior
+// live incident of exactly this bug class), but this client-side
+// conversion used to just trust the browser's own local timezone, which
+// silently shifts a typed deadline by hours on a misconfigured device.
+function toSofiaInputValue(iso: string): string {
+  const p = sofiaDateTimeParts(new Date(iso));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
+
+// Reverse: a "YYYY-MM-DDTHH:mm" string the admin typed, meant as Sofia
+// wall-clock time, converted to the correct UTC instant regardless of the
+// browser's own timezone. Works by rendering a first-guess instant in
+// Sofia time and correcting by the difference — safe since Sofia's UTC
+// offset only ever changes by a whole hour at a DST boundary, never
+// mid-adjustment, so one correction pass is exact.
+function fromSofiaInputValue(local: string): string {
+  const naiveUtc = new Date(`${local}:00Z`);
+  const asSofia = sofiaDateTimeParts(naiveUtc);
+  const sofiaGuess = new Date(`${asSofia.year}-${asSofia.month}-${asSofia.day}T${asSofia.hour}:${asSofia.minute}:00Z`);
+  const offsetMs = sofiaGuess.getTime() - naiveUtc.getTime();
+  return new Date(naiveUtc.getTime() - offsetMs).toISOString();
 }
 
 function TaskForm({
@@ -1448,8 +1523,8 @@ function TaskForm({
   const [definitionOfDone, setDefinitionOfDone] = useState(task?.definitionOfDone ?? "");
   const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? (isAdmin ? employees[0]?.id ?? "" : user?.id ?? ""));
   const [ownerId, setOwnerId] = useState(task?.ownerId ?? "");
-  const [deadline, setDeadline] = useState(task ? toLocalInputValue(task.deadline) : "");
-  const originalDeadline = task ? toLocalInputValue(task.deadline) : "";
+  const [deadline, setDeadline] = useState(task ? toSofiaInputValue(task.deadline) : "");
+  const originalDeadline = task ? toSofiaInputValue(task.deadline) : "";
   const [deadlineChangeReason, setDeadlineChangeReason] = useState("");
   const [priority, setPriority] = useState<Priority>(task?.priority ?? "MEDIUM");
   const [meetLink, setMeetLink] = useState(task?.meetLink ?? "");
@@ -1511,7 +1586,7 @@ function TaskForm({
         definitionOfDone,
         assigneeId,
         ownerId: ownerId || null,
-        deadline: new Date(deadline).toISOString(),
+        deadline: fromSofiaInputValue(deadline),
         priority,
         meetLink: meetLink.trim() || "",
       };
@@ -1770,7 +1845,7 @@ function ComplexTaskForm({
           definitionOfDone: step.definitionOfDone,
           ownerId: step.ownerId || undefined,
           priority: step.priority,
-          deadline: i === 0 ? new Date(step.deadline).toISOString() : undefined,
+          deadline: i === 0 ? fromSofiaInputValue(step.deadline) : undefined,
           delayDays: i > 0 ? Number(step.delayDays) : undefined,
           meetLink: step.meetLink.trim() || "",
         })),

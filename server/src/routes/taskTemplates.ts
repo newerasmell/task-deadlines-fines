@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { OPEN_STATUSES } from "../jobs/deadlineScanner";
+import { logAction } from "../lib/auditLog";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 
@@ -174,6 +175,25 @@ taskTemplatesRouter.patch("/:id", async (req, res) => {
     if (existing.active && parsed.data.active === false) {
       await cancelOpenOccurrences(template.id);
     }
+
+    // Previously silent — a template's description/timeOfDay/etc. could be
+    // edited with zero trace, silently changing every future occurrence it
+    // spawns. Same before/after shape routes/tasks.ts's own generic-field
+    // log already uses.
+    const changed = Object.fromEntries(
+      Object.entries(data).filter(([key, value]) => value !== undefined && (existing as Record<string, unknown>)[key] !== value)
+    );
+    if (Object.keys(changed).length > 0) {
+      await logAction(
+        req.user!.sub,
+        "TASK_UPDATED",
+        "TaskTemplate",
+        template.id,
+        `Редактиран шаблон "${template.title}" (${Object.keys(changed).join(", ")})`,
+        { before: Object.fromEntries(Object.keys(changed).map((k) => [k, (existing as Record<string, unknown>)[k]])), after: changed }
+      );
+    }
+
     res.json(template);
   } catch {
     res.status(404).json({ error: "Not found" });

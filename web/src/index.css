@@ -1460,6 +1460,26 @@ button.meet-link-btn-active:hover {
   margin: 4px 0;
 }
 
+.task-info-history {
+  margin: 0 0 18px;
+}
+
+.task-info-history h4 {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+}
+
+.task-info-history p {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
+
+.task-info-history p:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
 button.link-button {
   background: transparent;
   border: none;
