@@ -85,7 +85,7 @@ export function StoresScreen() {
                     <div role="cell" className="flex justify-end gap-2 px-3.5">
                       {s.audit_batch_id && s.state === 'active' && (
                         <Link to={`/batches/${s.audit_batch_id}/audit`} className="self-center text-sm no-underline">
-                          Одит
+                          Проверка
                         </Link>
                       )}
                       <Button size="sm" className="h-8 px-3" asChild>

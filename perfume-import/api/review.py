@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from api.auth import current_user
-from db import audit, review, upload
+from db import audit, catalog, review, upload
 from pipeline.config import load_group
 
 router = APIRouter(prefix="/api")
@@ -51,6 +51,16 @@ def batches():
 @router.get("/batches/{batch_id}")
 def batch(batch_id: int):
     return _call(review.get_batch, batch_id)
+
+
+@router.get("/catalog")
+def products_catalog(q: str = "", filter: str = "all", offset: int = 0, limit: int = 100):
+    return catalog.catalog(q, filter, max(offset, 0), min(max(limit, 1), 500))
+
+
+@router.get("/products/{product_id}/catalog")
+def product_catalog(product_id: int):
+    return _call(catalog.entry_for, product_id)
 
 
 @router.get("/products/{product_id}")

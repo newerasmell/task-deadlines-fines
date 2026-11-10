@@ -1,8 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useActor } from './actorContext'
-import { api, type Batch, type Product } from './api'
+import { api, type Batch, type CatalogFilter, type Product } from './api'
 
 export const useBatches = () => useQuery({ queryKey: ['batches'], queryFn: api.batches })
+
+export const useCatalog = (q: string, filter: CatalogFilter, limit: number) =>
+  useQuery({
+    queryKey: ['catalog', q, filter, limit],
+    queryFn: () => api.catalog(q, filter, limit),
+    placeholderData: (previous) => previous,
+  })
+
+export const useProductCatalog = (id: number) =>
+  useQuery({ queryKey: ['product-catalog', id], queryFn: () => api.productCatalog(id) })
 
 export const useBatch = (id: number) => useQuery({ queryKey: ['batch', id], queryFn: () => api.batch(id) })
 
@@ -121,7 +131,8 @@ export function useStoreMutation<A, R>(fn: (args: A) => Promise<R>) {
   })
 }
 
-export const useAudit = (batchId: number) => useQuery({ queryKey: ['audit', batchId], queryFn: () => api.audit(batchId) })
+export const useAudit = (batchId: number) =>
+  useQuery({ queryKey: ['audit', batchId], queryFn: () => api.audit(batchId) })
 
 export const useAuditItems = (batchId: number, rule: string | null, limit: number) =>
   useQuery({

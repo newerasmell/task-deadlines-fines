@@ -31,7 +31,7 @@ const QUESTIONS: Record<string, string> = {
   seo_description: 'Одобряваш ли SEO описанието?',
   image: 'Тази снимка ли да отиде в магазина?',
   ean: 'Кой EAN е верният?',
-  compare_at: 'Каква да е зачеркнатата цена?',
+  compare_at: 'Каква да е старата цена?',
   price: 'Каква да е цената?',
   title: 'Вярно ли е заглавието?',
 }
@@ -67,7 +67,7 @@ const isPending = (f?: FieldRecord) => !!f && ['blocked', 'suggested', 'warning'
 export function QueueScreen() {
   const batchId = Number(useParams().batchId)
   const batch = useBatch(batchId)
-  if (batch.isPending) return <Loading what="партидата" />
+  if (batch.isPending) return <Loading what="вноса" />
   if (batch.isError) return <Failure error={batch.error} retry={() => batch.refetch()} />
   return <Queue batch={batch.data} />
 }
@@ -98,7 +98,7 @@ function Queue({ batch }: { batch: Batch }) {
       <header className="flex h-14 shrink-0 items-center gap-5 border-b border-line bg-canvas px-6">
         <div className="flex items-center gap-2 text-base">
           <Link to="/" className="text-ink-2 no-underline hover:text-ink">
-            Партиди
+            Продукти
           </Link>
           <span className="text-muted">/</span>
           <span className="font-semibold">
@@ -174,7 +174,7 @@ function Queue({ batch }: { batch: Batch }) {
         ) : (
           <main className="flex grow flex-col items-start gap-4 px-10 py-8">
             <Empty>
-              {items.length ? 'Всичко чакащо в партидата е решено.' : 'В партидата няма нищо за решаване.'}
+              {items.length ? 'Всичко чакащо във вноса е решено.' : 'В вноса няма нищо за решаване.'}
             </Empty>
             <Button asChild>
               <Link to={`/batches/${batch.id}`}>Към продуктите за одобрение</Link>
@@ -189,7 +189,7 @@ function Queue({ batch }: { batch: Batch }) {
 function itemTitle(it: Item, f?: FieldRecord): string {
   if (it.key === 'compare_at' && f?.message) {
     const ratio = f.message.match(/(\d+(?:\.\d+)?)×/)?.[1]
-    if (ratio) return `Зачеркната ${ratio.replace('.', ',')}× над цената`
+    if (ratio) return `Стара цена ${ratio.replace('.', ',')}× над цената`
   }
   if (it.key === 'price' && f?.status === 'blocked') return 'Липсва цена'
   if (it.key === 'ean' && f?.status === 'blocked') return 'EAN не минава проверката'
@@ -242,7 +242,7 @@ function optionsFor(f: FieldRecord): Option[] {
     })
   }
   if (f.key === 'compare_at' && display(f.value) !== '' && opts.length < 3) {
-    opts.push({ value: '', label: 'Без зачеркната цена', tag: 'бърза поправка', tagClass: 'text-ink-2', why: 'Продуктът се показва само с цената.', action: 'edit' })
+    opts.push({ value: '', label: 'Без стара цена', tag: 'бърза поправка', tagClass: 'text-ink-2', why: 'Продуктът се показва само с цената.', action: 'edit' })
   }
   return opts
 }

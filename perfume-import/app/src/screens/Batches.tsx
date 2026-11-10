@@ -34,7 +34,7 @@ function summary(b: BatchSummary): string {
 }
 
 function action(b: BatchSummary): { label: string; to: string } {
-  if (b.kind === 'audit') return { label: 'Отвори одита', to: `/batches/${b.id}/audit` }
+  if (b.kind === 'audit') return { label: 'Отвори проверката', to: `/batches/${b.id}/audit` }
   if (b.publish_status === 'uploaded') return { label: 'Виж резултата', to: `/batches/${b.id}/upload` }
   if (b.products && b.approved === b.products) return { label: `Качи ${b.approved}`, to: `/batches/${b.id}/upload` }
   if (b.review || b.blocked)
@@ -92,12 +92,12 @@ function JobBanner() {
           <div className="flex min-w-0 grow flex-col gap-0.5">
             <span className="font-medium">
               {j.kind === 'extend'
-                ? 'Добавят се магазини към партида'
+                ? 'Добавят се магазини към внос'
                 : j.kind === 'crosssync'
                   ? 'Попълва се от другите магазини'
                   : j.kind === 'fill'
                     ? 'Попълва се липсващото в продукт'
-                    : 'Проучва се нова партида'}{' '}
+                    : 'Проучват се нови продукти'}{' '}
               · {j.stage_label}
               {j.stage === 'research' ? ` · ${j.done} от ${j.total}` : '…'}
             </span>
@@ -111,7 +111,7 @@ function JobBanner() {
         </>
       ) : j.error ? (
         <>
-          <span className="min-w-0 grow text-blocked-text">Последната нова партида спря: {j.error}</span>
+          <span className="min-w-0 grow text-blocked-text">Последният внос спря: {j.error}</span>
           <Button variant="ghost" size="icon" aria-label="Скрий" onClick={dismiss}>
             <X size={16} />
           </Button>
@@ -119,7 +119,7 @@ function JobBanner() {
       ) : (
         <>
           <span className="min-w-0 grow font-medium">
-            Новата партида е готова{j.cost_usd != null ? ` · $${j.cost_usd.toFixed(2)}` : ''}
+            Новите продукти са готови{j.cost_usd != null ? ` · $${j.cost_usd.toFixed(2)}` : ''}
           </span>
           {j.batch_id && (
             <Button variant="primary" asChild>
@@ -148,10 +148,10 @@ export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
     <div className="flex min-h-screen flex-col">
       <header className="flex h-14 items-center gap-4 border-b border-line px-7">
         <AppNav />
-        <h1 className="sr-only">{kind === 'audit' ? 'Одит на каталог' : 'Партиди'}</h1>
+        <h1 className="sr-only">{kind === 'audit' ? 'Проверка на каталога' : 'История на вноса'}</h1>
         <div className="grow" />
         <Button variant="primary" asChild>
-          <Link to="/batches/new">Нова партида</Link>
+          <Link to="/batches/new">Нов продукт</Link>
         </Button>
       </header>
 
@@ -173,25 +173,29 @@ export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
         </div>
 
         {batches.isPending ? (
-          <Loading what="партидите" />
+          <Loading what="вноса" />
         ) : batches.isError ? (
           <Failure error={batches.error} retry={() => batches.refetch()} />
         ) : !shown.length ? (
           <Empty>
             {batches.data.length
-              ? 'Няма партиди по този филтър.'
+              ? 'Няма внос по този филтър.'
               : kind === 'audit'
-                ? 'Още няма одит. Качи каталог на магазин от „Магазини“.'
-                : 'Още няма партиди. Създай първата с „Нова партида“ горе вдясно.'}
+                ? 'Още няма проверка. Качи каталог на магазин от „Магазини“.'
+                : 'Още няма внос. Създай с „Нов продукт“ горе вдясно.'}
           </Empty>
         ) : (
-          <div className="shrink-0 overflow-hidden rounded-lg border border-line" role="table" aria-label="Партиди">
+          <div
+            className="shrink-0 overflow-hidden rounded-lg border border-line"
+            role="table"
+            aria-label="История на вноса"
+          >
             <div
               role="row"
               className={`grid ${COLUMNS} border-b border-line bg-surface text-xs font-medium text-ink-2`}
             >
               <div role="columnheader" className="px-4 py-2.5">
-                Партида
+                Внос
               </div>
               <div role="columnheader" className="px-4 py-2.5">
                 Група
@@ -216,7 +220,7 @@ export function BatchesScreen({ kind }: { kind?: 'new' | 'audit' }) {
                 <div role="cell" className="flex min-w-0 flex-col px-4 py-2">
                   <span className="font-medium">{shortDate(b.created_at)}</span>
                   <span className="truncate text-xs text-ink-2" title={b.name}>
-                    {b.kind === 'audit' ? 'одит на каталог' : 'нови продукти'}
+                    {b.kind === 'audit' ? 'проверка на каталога' : 'нови продукти'}
                     {b.name.startsWith('Демо') ? ' · демо' : ''}
                   </span>
                 </div>

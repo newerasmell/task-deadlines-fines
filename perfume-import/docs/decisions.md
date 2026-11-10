@@ -48,3 +48,16 @@ product screen takes one price in euros and fills every store by the ECB daily r
 the store writes its prices (whole tens for CZK, hundreds for HUF, else the store's usual cents). Every price in
 another currency shows its euro equivalent. Publishing skips a store whose price in euros is more than 3× away
 from the product's other stores ("провери валутата").
+
+
+## 20. One product list across stores; plainer words
+
+The start page is „Продукти“: every product of every store in one list, one row per EAN (without an EAN, the same
+title in two stores is one row), searched by name or EAN. A store's copy comes from its latest catalog check (it is
+live there) or from an import (prepared here); the catalog check wins for the same store, since it is what the
+store shows. Each store is a square: на живо, има промени за качване (fixes or edits not yet sent), готов, не е
+качен, нужна е намеса (something blocked), няма го. A row opens the product, a square opens that store's copy, and
+the product screen shows the same squares. The list is rebuilt only when products, fields or uploads change.
+Words: „партида“ is gone from the main path (imports are „внос“, under „История на вноса“), the audit is
+„проверка на каталога“, statuses read „провери“, „поправено автоматично“, „липсва или е грешно“, and the
+compare-at price is „стара цена“. Live Shopify sync, the quick new product and one-click publishing follow.

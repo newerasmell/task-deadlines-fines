@@ -43,7 +43,7 @@ export function UploadScreen() {
       <header className="flex h-14 items-center gap-4 border-b border-line px-7">
         <div className="flex items-center gap-2 text-base">
           <Link to="/" className="text-ink-2 no-underline hover:text-ink">
-            Партиди
+            Продукти
           </Link>
           <span className="text-muted">/</span>
           <Link to={`/batches/${b.id}`} className="text-ink-2 no-underline hover:text-ink">
@@ -62,8 +62,8 @@ export function UploadScreen() {
           <span className="text-sm text-ink-2">
             {mode === 'draft' ? 'Като чернови.' : 'Като активни: видими в магазина веднага.'}{' '}
             {waiting > 0
-              ? `${plural(waiting, 'продукт остава', 'продукта остават')} в партидата, докато не ${waiting === 1 ? 'бъде одобрен' : 'бъдат одобрени'}.`
-              : 'Всички продукти в партидата са одобрени.'}
+              ? `${plural(waiting, 'продукт остава', 'продукта остават')} във вноса, докато не ${waiting === 1 ? 'бъде одобрен' : 'бъдат одобрени'}.`
+              : 'Всички продукти във вноса са одобрени.'}
           </span>
         </div>
 
@@ -109,7 +109,7 @@ export function UploadScreen() {
             onRetry={() => start.mutate({ status: mode, stores: [store.key], only_failed: true })}
           />
         ))}
-        {!s.stores.length && <Empty>Партидата няма продукти.</Empty>}
+        {!s.stores.length && <Empty>Вносът няма продукти.</Empty>}
       </main>
     </div>
   )

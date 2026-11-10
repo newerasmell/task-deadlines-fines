@@ -280,7 +280,7 @@ export function FieldPanel({
 
         {shared && (
           <div className="text-xs leading-relaxed text-ink-2">
-            Важи за всички сайтове в партидата. Промяната тук се прилага и в {others.map(storeShort).join(', ')}.
+            Важи за всички сайтове във вноса. Промяната тук се прилага и в {others.map(storeShort).join(', ')}.
           </div>
         )}
 
@@ -293,7 +293,7 @@ export function FieldPanel({
                 disabled={decide.isPending}
                 onClick={() => decide.mutate({ fieldId: field.id, action: 'edit', value: '' })}
               >
-                Махни зачеркнатата цена
+                Махни старата цена
               </Button>
             </div>
           </div>

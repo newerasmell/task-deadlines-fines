@@ -114,7 +114,7 @@ export function rows(p: StoreProfile): Row[] {
     item(p, 'tester_sentence')?.value ? `изречение за тестер: „${String(item(p, 'tester_sentence')?.value).slice(0, 60)}…“` : '', true)
   const rounding = item(p, 'price_rounding')
   const ratio = item(p, 'compare_at_ratio')
-  add('compare_at_ratio', 'Цени', `завършват на ,${rounding?.value ?? '?'}; зачеркната ${((ratio?.value as number[]) ?? []).join('–')} пъти цената`,
+  add('compare_at_ratio', 'Цени', `завършват на ,${rounding?.value ?? '?'}; стара цена ${((ratio?.value as number[]) ?? []).join('–')} пъти цената`,
     ratio?.p50 ? `обикновено ${String(ratio.p50).replace('.', ',')} пъти` : '')
   const fixed = p.profile.items.fixed_columns as Record<string, ProfileItem> | undefined
   if (fixed) {

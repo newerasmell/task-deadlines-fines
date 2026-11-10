@@ -7,17 +7,17 @@ export const SEVERITY: Record<Status, number> = { blocked: 4, warning: 3, sugges
 // Tag above a value (product view) and filter chip names (grid), as in the mockups.
 export const STATUS_TAG: Record<Status, string> = {
   ok: 'ok',
-  suggested: 'AI предложение',
-  fixed: 'поправено',
+  suggested: 'провери',
+  fixed: 'поправено автоматично',
   warning: 'внимание',
-  blocked: 'спряно',
+  blocked: 'липсва или е грешно',
 }
 export const STATUS_FILTER: Record<Status, string> = {
   ok: 'Готови',
-  suggested: 'AI предложения',
-  fixed: 'Автоматично поправени',
-  warning: 'Предупреждения',
-  blocked: 'Спрени',
+  suggested: 'За проверка',
+  fixed: 'Поправени автоматично',
+  warning: 'Внимание',
+  blocked: 'Липсва или е грешно',
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -38,7 +38,7 @@ const FIELD_LABELS: Record<string, string> = {
   base_note: 'Базови нотки',
   ingredients: 'Съставки',
   price: 'Цена',
-  compare_at: 'Зачеркната',
+  compare_at: 'Стара цена',
   image: 'Снимка',
   product_milliliters: 'Обем',
   'custom.product_milliliters': 'Обем',

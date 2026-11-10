@@ -4,11 +4,20 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { FieldPanel } from '../components/FieldPanel'
 import { Failure, Loading } from '../components/States'
 import { StatusMark } from '../components/StatusMark'
+import { StoreChips } from '../components/StoreChips'
 import { BAR, TAG_TEXT, TINT } from '../lib/status'
 import { Button } from '../components/ui/button'
 import { Dialog } from '../components/ui/dialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type Batch, type FieldRecord, type PricePlan, type Product, type StoreInfo } from '../lib/api'
+import {
+  api,
+  type Batch,
+  type CatalogStore,
+  type FieldRecord,
+  type PricePlan,
+  type Product,
+  type StoreInfo,
+} from '../lib/api'
 import { cn } from '../lib/cn'
 import { fromEur, toEur } from '../lib/money'
 import {
@@ -28,7 +37,15 @@ import {
   storeShort,
   stripHtml,
 } from '../lib/labels'
-import { useAcceptAll, useApprove, useBatch, useDecide, useUploadState } from '../lib/queries'
+import {
+  useAcceptAll,
+  useApprove,
+  useBatch,
+  useDecide,
+  useProductCatalog,
+  useStores,
+  useUploadState,
+} from '../lib/queries'
 
 // Main review screen (Product.dc.html): product list, the finished picture, every store side by side.
 
@@ -41,10 +58,10 @@ export function ProductScreen() {
   const batch = useBatch(batchId)
   const [open, setOpen] = useState<Open>(null)
 
-  if (batch.isPending) return <Loading what="партидата" />
+  if (batch.isPending) return <Loading what="вноса" />
   if (batch.isError) return <Failure error={batch.error} retry={() => batch.refetch()} />
   const product = batch.data.products.find((p) => p.id === productId)
-  if (!product) return <Failure error={new Error(`Продукт ${productId} не е в тази партида.`)} />
+  if (!product) return <Failure error={new Error(`Продукт ${productId} не е в този внос.`)} />
 
   return (
     <div className="flex h-screen min-w-[1024px] bg-canvas">
@@ -86,17 +103,19 @@ function ProductList({ batch, current }: { batch: Batch; current: number }) {
     >
       <div className="flex flex-col gap-1 border-b border-line px-5 pb-3.5 pt-[18px]">
         <Link to="/" className="text-sm text-ink-2 no-underline hover:text-ink">
-          Партиди
+          Всички продукти
         </Link>
         <div className="text-md font-semibold">
-          {shortDate(batch.created_at)}, {groupLabel(batch.group)}
+          {batch.kind === 'audit'
+            ? `Каталог на ${batch.stores[0]?.label.split(' (')[0] ?? 'магазина'}`
+            : `Внос от ${shortDate(batch.created_at)}, ${groupLabel(batch.group)}`}
         </div>
         <div className="text-xs text-ink-2">
           {plural(batch.products.length, 'продукт', 'продукта')} · {plural(batch.stores.length, 'сайт', 'сайта')}
           {batch.stores.length > 1 ? `, сравнение ${stores}` : ''}
         </div>
         <Link to={`/batches/${batch.id}/grid`} className="mt-1 text-sm no-underline">
-          Таблица на партидата
+          Таблица на вноса
         </Link>
       </div>
       <div className="overflow-y-auto">
@@ -154,11 +173,12 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
               .join(' · ')}
           </div>
           <h1 className="m-0 line-clamp-2 text-[24px] font-semibold leading-tight">{product.title}</h1>
+          <InStores productId={product.id} />
         </div>
         <FillMissing batch={batch} product={product} />
         {pendingInBatch > 0 && (
           <Button size="lg" asChild>
-            <Link to={`/batches/${batch.id}/queue`}>Реши чакащите в партидата ({pendingInBatch})</Link>
+            <Link to={`/batches/${batch.id}/queue`}>Реши чакащите във вноса ({pendingInBatch})</Link>
           </Button>
         )}
         {approvedInBatch > 0 && (
@@ -196,6 +216,23 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
       )}
       {error && <div className="text-sm text-blocked-text">{error.message}</div>}
     </header>
+  )
+}
+
+/** The same product in every store (by EAN): a square per store opens that store's copy. */
+function InStores({ productId }: { productId: number }) {
+  const entry = useProductCatalog(productId)
+  const stores = useStores()
+  if (!entry.data || !stores.data) return null
+  const shown: CatalogStore[] = stores.data
+    .filter((s) => entry.data.stores[s.key] || s.state === 'active')
+    .map((s) => ({ key: s.key, label: s.label.split(' (')[0], country: s.country, language: s.language }))
+  if (shown.length < 2) return null
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-2">
+      <span>В магазините</span>
+      <StoreChips entry={entry.data} stores={shown} current={productId} />
+    </div>
   )
 }
 
@@ -497,7 +534,7 @@ function PricesSection({ batch, product }: { batch: Batch; product: Product }) {
         >
           <span role="columnheader">Магазин</span>
           <span role="columnheader">Цена</span>
-          <span role="columnheader">Зачеркната</span>
+          <span role="columnheader">Стара цена</span>
           <span role="columnheader">Състояние</span>
           <span role="columnheader" />
           <span role="columnheader" />
@@ -662,7 +699,7 @@ function PriceRow({
       </span>
       <span role="cell" className="flex flex-col gap-0.5">
         <input
-          aria-label={`Зачеркната цена ${store.label} (${eurMode ? 'EUR' : currency})`}
+          aria-label={`Стара цена ${store.label} (${eurMode ? 'EUR' : currency})`}
           inputMode="decimal"
           placeholder="—"
           value={draft.compare}
@@ -758,7 +795,7 @@ function AddStores({ batch }: { batch: Batch }) {
       <Dialog
         open={open}
         onOpenChange={setOpen}
-        title="Добави магазини към партидата"
+        title="Добави магазини към вноса"
         description="Проучването се използва наново, без да се плаща. Всеки нов магазин получава своята снимка, свой текст по шаблона си и полетата си. Решенията ти за EAN, марка, пол и т.н. се пренасят."
         footer={
           <>
@@ -774,7 +811,7 @@ function AddStores({ batch }: { batch: Batch }) {
         ) : options.isError ? (
           <Failure error={options.error} />
         ) : !options.data.stores.length ? (
-          <span className="text-sm text-ink-2">Всички магазини от групата вече са в партидата.</span>
+          <span className="text-sm text-ink-2">Всички магазини от групата вече са във вноса.</span>
         ) : (
           <div className="flex max-h-[320px] flex-col gap-1.5 overflow-y-auto">
             {options.data.stores.map((s) => {
@@ -899,7 +936,7 @@ function EuroPrices({
         onChange={(e) => setPrice(e.target.value)}
         className={input}
       />
-      <span className="text-ink-2">зачеркната</span>
+      <span className="text-ink-2">стара цена</span>
       <input
         inputMode="decimal"
         placeholder="119"

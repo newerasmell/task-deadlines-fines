@@ -33,8 +33,8 @@ RULES = {
     "sku_formula": "SKU не следва SK{EAN}",
     "ean_invalid": "Невалиден EAN в SKU",
     "price_missing": "Липсва цена",
-    "compare_at_not_above": "Зачеркната цена ≤ цена",
-    "compare_at_ratio": "Зачеркната извън разрешеното отношение",
+    "compare_at_not_above": "Стара цена ≤ цена",
+    "compare_at_ratio": "Стара цена извън разрешеното отношение",
     "image_missing": "Без снимка",
 }
 FIELD_RULES = {

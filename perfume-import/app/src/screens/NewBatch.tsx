@@ -133,10 +133,10 @@ function NewBatch({ groups }: { groups: GroupInfo[] }) {
     <div className="flex h-screen min-w-[1024px] flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-7 text-base">
         <Link to="/" className="text-ink-2 no-underline hover:text-ink">
-          Партиди
+          Продукти
         </Link>
         <span className="text-muted">/</span>
-        <span className="font-semibold">Нова партида</span>
+        <span className="font-semibold">Нов продукт</span>
       </header>
       <div className="flex min-h-0 grow">
         <section className="flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto border-r border-line bg-surface p-7 xl:w-[340px]">
@@ -486,10 +486,10 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) 
     <div className="flex h-screen flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-7 text-base">
         <Link to="/" className="text-ink-2 no-underline hover:text-ink">
-          Партиди
+          Продукти
         </Link>
         <span className="text-muted">/</span>
-        <span className="font-semibold">Нова партида</span>
+        <span className="font-semibold">Нов продукт</span>
       </header>
       <main className="flex max-w-[640px] flex-col gap-4 p-7">
         <h1 className="m-0 text-[22px] font-semibold">
@@ -528,14 +528,14 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: (batchId: number) 
               </span>
             )}
             <span className="text-sm leading-normal text-ink-2">
-              Може да затвориш страницата: партидата ще се появи в списъка, когато е готова. Не пускай deploy, докато
-              върви: рестартът я спира.
+              Може да затвориш страницата: вноса ще се появи в списъка, когато е готова. Не пускай deploy, докато върви:
+              рестартът я спира.
             </span>
           </>
         )}
         <div>
           <Button asChild>
-            <Link to="/">Към партидите</Link>
+            <Link to="/">Към продуктите</Link>
           </Button>
         </div>
       </main>

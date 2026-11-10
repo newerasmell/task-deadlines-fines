@@ -126,7 +126,7 @@ function Pattern({ p }: { p: StoreProfile }) {
           <div className="flex flex-col gap-2 text-sm leading-normal text-ink-3">
             <h3 className="m-0 text-sm font-semibold text-ink">След запазване</h3>
             <span>Новите продукти за този магазин ще се генерират точно по този профил, независимо от другите магазини в групата.</span>
-            <span>Намерените грешки (пол, семейство, цени) отиват в одит на каталога.</span>
+            <span>Намерените грешки (пол, семейство, цени) отиват в проверка на каталогаа.</span>
             {lang && lang !== 'en' && <span>Двойките нотки на {languageName(lang)} ще допълнят речника.</span>}
           </div>
 
@@ -149,7 +149,7 @@ function Pattern({ p }: { p: StoreProfile }) {
                   })
                 }
               >
-                {accept.isPending ? 'Записвам и пускам одита…' : group ? 'Запази профила и пусни одит' : 'Избери група'}
+                {accept.isPending ? 'Записвам и проверявам каталога…' : group ? 'Запази шаблона и провери каталога' : 'Избери група'}
               </Button>
               <Button variant="ghost" disabled={reject.isPending} onClick={() => setConfirmReject(true)}>
                 Отхвърли тази версия
@@ -158,7 +158,7 @@ function Pattern({ p }: { p: StoreProfile }) {
           ) : p.state === 'accepted' ? (
             p.audit_batch_id && (
               <Button variant="primary" size="lg" asChild>
-                <Link to={`/batches/${p.audit_batch_id}/audit`}>Отвори одита</Link>
+                <Link to={`/batches/${p.audit_batch_id}/audit`}>Отвори проверката</Link>
               </Button>
             )
           ) : (
@@ -173,7 +173,7 @@ function Pattern({ p }: { p: StoreProfile }) {
             open={confirmReject}
             onOpenChange={setConfirmReject}
             title="Да отхвърля ли тази версия?"
-            description="Профилът няма да се ползва и одит няма да се пусне. За нов профил трябва да качиш каталога отново."
+            description="Шаблонът няма да се ползва и каталогът няма да се провери. За нов шаблон трябва да качиш каталога отново."
             footer={
               <>
                 <Button onClick={() => setConfirmReject(false)}>Откажи</Button>

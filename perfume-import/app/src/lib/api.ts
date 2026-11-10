@@ -247,7 +247,15 @@ export type CheckResult = {
     stores: number
     languages: string[]
     total: number
-    tiers: { tier: string; label: string; products: number; per_product: number; limit: number; ceiling: number; measured: boolean }[]
+    tiers: {
+      tier: string
+      label: string
+      products: number
+      per_product: number
+      limit: number
+      ceiling: number
+      measured: boolean
+    }[]
   }
 }
 
@@ -329,6 +337,29 @@ export type StoreOptions = {
   cost_per_text: number
 }
 
+export type CatalogState = 'live' | 'diff' | 'ready' | 'bad' | 'none'
+export type CatalogFilter = 'all' | 'todo' | 'bad' | 'missing'
+export type CatalogStoreState = { state: CatalogState; product_id: number; batch_id: number; kind: 'new' | 'audit' }
+export type CatalogEntry = {
+  key: string
+  ean: string | null
+  title: string
+  image: string | null
+  product_id: number
+  batch_id: number
+  created_at: string
+  missing: number
+  stores: Record<string, CatalogStoreState>
+}
+export type CatalogStore = { key: string; label: string; country: string | null; language: string | null }
+export type Catalog = {
+  stores: CatalogStore[]
+  total: number
+  found: number
+  counts: Record<CatalogFilter, number>
+  items: CatalogEntry[]
+}
+
 export type User = { id: number; name: string; is_admin: boolean; disabled: boolean }
 
 /** Any 401 means the session ended: the login screen takes over (lib/auth.tsx listens). */
@@ -408,6 +439,9 @@ export const api = {
   checkAccess: (store: string) => post<{ ok: boolean; message: string }>(`/api/stores/${store}/access/check`, {}),
   batches: () => request<BatchSummary[]>('/api/batches'),
   batch: (id: number) => request<Batch>(`/api/batches/${id}`),
+  catalog: (q: string, filter: CatalogFilter, limit: number) =>
+    request<Catalog>(`/api/catalog?${new URLSearchParams({ q, filter, limit: String(limit) })}`),
+  productCatalog: (id: number) => request<CatalogEntry>(`/api/products/${id}/catalog`),
   product: (id: number) => request<Product & { batch_id: number }>(`/api/products/${id}`),
   vocab: (group: string) => request<Record<string, string[]>>(`/api/groups/${group}/vocab`),
   decide: (fieldId: number, action: 'accept' | 'edit' | 'pick', value?: unknown) =>
@@ -427,8 +461,7 @@ export const api = {
     put<Product>(`/api/products/${productId}/prices`, { stores }),
   missing: (productId: number) =>
     request<{ product_id: number; keys: string[]; labels: string[] }>(`/api/products/${productId}/missing`),
-  fill: (productId: number, url: string | null) =>
-    post<{ job_id: string }>(`/api/products/${productId}/fill`, { url }),
+  fill: (productId: number, url: string | null) => post<{ job_id: string }>(`/api/products/${productId}/fill`, { url }),
   syncNotes: (fieldId: number, text: string) => post<Product>(`/api/fields/${fieldId}/sync-notes`, { text }),
   liveChanges: (productId: number) => request<LiveChanges>(`/api/products/${productId}/live`),
   pushLive: (productId: number) => post<LiveChanges>(`/api/products/${productId}/live`, {}),
@@ -449,7 +482,10 @@ export const api = {
       { kinds },
     ),
   publish: (productId: number, stores: string[] | null, status: 'draft' | 'active') =>
-    post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, { stores, status }),
+    post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, {
+      stores,
+      status,
+    }),
   stores: () => request<StoreRow[]>('/api/stores'),
   groups: () => request<GroupInfo[]>('/api/groups'),
   checkBatch: (form: FormData) => upload<CheckResult>('/api/batches/check', form),

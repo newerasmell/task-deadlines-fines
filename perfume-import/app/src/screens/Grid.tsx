@@ -55,7 +55,7 @@ const helper = createColumnHelper<typeof features, Product>()
 export function GridScreen() {
   const batchId = Number(useParams().batchId)
   const batch = useBatch(batchId)
-  if (batch.isPending) return <Loading what="партидата" />
+  if (batch.isPending) return <Loading what="вноса" />
   if (batch.isError) return <Failure error={batch.error} retry={() => batch.refetch()} />
   return <Grid batch={batch.data} />
 }
@@ -180,7 +180,7 @@ function Grid({ batch }: { batch: Batch }) {
       <header className="flex h-14 shrink-0 items-center gap-6 border-b border-line px-5">
         <div className="flex items-center gap-2 text-base">
           <Link to="/" className="text-ink-2 no-underline hover:text-ink">
-            Партиди
+            Продукти
           </Link>
           <span className="text-muted">/</span>
           {batch.kind === 'new' ? (
@@ -189,7 +189,7 @@ function Grid({ batch }: { batch: Batch }) {
             </Link>
           ) : (
             <span className="font-semibold">
-              Одит {storeInfo ? storeInfo.label : ''}, {shortDate(batch.created_at)}
+              Каталог на {storeInfo ? storeInfo.label : ''}, {shortDate(batch.created_at)}
             </span>
           )}
           <span className="text-ink-2">{plural(batch.products.length, 'продукт', 'продукта')}</span>

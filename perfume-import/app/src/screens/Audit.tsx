@@ -36,7 +36,7 @@ export function AuditScreen() {
   const taken = useQuery({ queryKey: ['crosssync-taken', batchId], queryFn: () => api.crossSyncTaken(batchId) })
   const opened = useProduct(open?.productId ?? null) // only this product, not the whole catalog
 
-  if (summary.isPending) return <Loading what="одита" />
+  if (summary.isPending) return <Loading what="проверката" />
   if (summary.isError) return <Failure error={summary.error} retry={() => summary.refetch()} />
   const s = summary.data
   const store = stores.data?.find((x) => x.key === s.store)
@@ -48,7 +48,7 @@ export function AuditScreen() {
       <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line px-7">
         <div className="flex items-center gap-2 text-base">
           <Link to="/audits" className="text-ink-2 no-underline hover:text-ink">
-            Одит на каталог
+            Проверка на каталога
           </Link>
           <span className="text-muted">/</span>
           <span className="font-semibold">
@@ -237,7 +237,7 @@ function ItemsTable({
         {prices ? (
           <>
             <div className="px-3.5 py-2.5 text-right">Цена</div>
-            <div className="px-3.5 py-2.5 text-right">Зачеркната</div>
+            <div className="px-3.5 py-2.5 text-right">Стара цена</div>
           </>
         ) : (
           <>
@@ -424,7 +424,7 @@ function CrossSync({ batchId }: { batchId: number }) {
           <Failure error={options.error} />
         ) : !kinds.length ? (
           <span className="text-sm text-ink-2">
-            Няма какво да се вземе: или нищо не липсва, или другите магазини още нямат одит с тези продукти.
+            Няма какво да се вземе: или нищо не липсва, или другите магазини още нямат проверка с тези продукти.
           </span>
         ) : (
           <div className="flex max-h-[360px] flex-col gap-3 overflow-y-auto">

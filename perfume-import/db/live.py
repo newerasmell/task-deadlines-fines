@@ -20,7 +20,7 @@ LABELS = {
     "seo_description": "SEO описание",
     "handle": "Handle",
     "price": "Цена",
-    "compare_at": "Зачеркната",
+    "compare_at": "Стара цена",
     "sku": "SKU",
     "gender": "Пол",
     "fragrance_family": "Семейство",

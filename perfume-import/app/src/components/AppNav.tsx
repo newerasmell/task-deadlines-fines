@@ -2,7 +2,7 @@ import { NavLink } from 'react-router'
 import { useActor } from '../lib/actorContext'
 import { cn } from '../lib/cn'
 
-/** Top-level sections (Batches.dc.html / Stores.dc.html header). */
+/** Top-level sections: the products of every store, a new product, the stores. */
 export function AppNav() {
   const { user } = useActor()
   const link = ({ isActive }: { isActive: boolean }) =>
@@ -10,10 +10,10 @@ export function AppNav() {
   return (
     <nav aria-label="Раздели" className="flex items-center gap-5">
       <NavLink to="/" end className={link}>
-        Партиди
+        Продукти
       </NavLink>
-      <NavLink to="/audits" className={link}>
-        Одит на каталог
+      <NavLink to="/batches/new" className={link}>
+        Нов продукт
       </NavLink>
       <NavLink to="/stores" className={link}>
         Магазини
