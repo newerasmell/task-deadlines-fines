@@ -161,8 +161,7 @@ def start(store_keys: list[str], actor: str | None, shops: dict | None = None) -
     if not store_keys:
         raise SyncError("Няма свързан магазин с шаблон за изтегляне.")
     with newbatch._lock:
-        if any(j["running"] for j in newbatch._jobs.values()):
-            raise newbatch.NewBatchError("Вече върви задача; изчакай да свърши.")
+        newbatch.busy(sync=True)
         job_id = uuid.uuid4().hex[:12]
         newbatch._jobs[job_id] = {
             "id": job_id,
@@ -215,8 +214,7 @@ def auto_loop(every_hours: float, first_after: float = 600) -> None:
         time.sleep(first_after)
         while True:
             try:
-                if not newbatch.running():
-                    start(ready_stores(), "автоматично")
+                start(ready_stores(), "автоматично")  # refused while another read runs
             except Exception:  # nothing ready, or a job started meanwhile: try next round
                 pass
             time.sleep(every_hours * 3600)

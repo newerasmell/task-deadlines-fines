@@ -122,8 +122,7 @@ def start(batch_id: int, stores: list[str], actor: str | None, fast: bool = True
     if not stores:
         raise newbatch.NewBatchError("Избери поне един магазин, който още не е в партидата.")
     with newbatch._lock:
-        if any(j["running"] for j in newbatch._jobs.values()):
-            raise newbatch.NewBatchError("Вече върви задача; изчакай да свърши.")
+        newbatch.busy()
         job_id = uuid.uuid4().hex[:12]
         newbatch._jobs[job_id] = {
             "id": job_id,

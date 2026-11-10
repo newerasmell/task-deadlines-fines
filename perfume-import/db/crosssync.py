@@ -134,8 +134,7 @@ def start(batch_id: int, kinds: list[str], actor: str | None, client=None, fetch
     if not kinds:
         raise newbatch.NewBatchError("Избери какво да се попълни.")
     with newbatch._lock:
-        if any(j["running"] for j in newbatch._jobs.values()):
-            raise newbatch.NewBatchError("Вече върви задача; изчакай да свърши.")
+        newbatch.busy()
         job_id = uuid.uuid4().hex[:12]
         newbatch._jobs[job_id] = {
             "id": job_id,

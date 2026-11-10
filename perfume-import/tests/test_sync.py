@@ -103,3 +103,16 @@ def test_nothing_to_read_is_refused():
     client = TestClient(app)
     response = client.post("/api/stores/sync", json={"stores": []})
     assert response.status_code == 409 and "Няма свързан магазин" in response.json()["detail"]
+
+
+def test_a_store_read_and_an_ai_job_run_side_by_side(monkeypatch):
+    from db import newbatch
+
+    monkeypatch.setattr(newbatch, "_jobs", {"s": {"running": True, "kind": "sync"}})
+    newbatch.busy()  # an AI job may start while the stores are read
+    with pytest.raises(newbatch.NewBatchError, match="изтеглят"):
+        newbatch.busy(sync=True)
+    monkeypatch.setattr(newbatch, "_jobs", {"f": {"running": True, "kind": "fill", "stage_label": "Чета страницата"}})
+    newbatch.busy(sync=True)  # and the other way round
+    with pytest.raises(newbatch.NewBatchError, match="Чета страницата"):
+        newbatch.busy()

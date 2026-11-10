@@ -31,6 +31,16 @@ class NewBatchError(Exception):
     """Something the person can fix; Bulgarian message."""
 
 
+def busy(sync: bool = False) -> None:
+    """One AI job at a time, and one read of the stores at a time; the two run side by side, so a long Shopify
+    read never blocks filling a product (and the other way round). Call under _lock."""
+    for j in _jobs.values():
+        if j["running"] and (j.get("kind") == "sync") == sync:
+            if sync:
+                raise NewBatchError("Магазините вече се изтеглят от Shopify; изчакай да свърши.")
+            raise NewBatchError(f"Вече върви AI задача ({j.get('stage_label') or 'работа'}); изчакай да свърши.")
+
+
 def _rows(text: str, group_key: str, stores: list[str], mode: str = "table") -> tuple[object, list[InputRow]]:
     install()
     group = load_group(group_key)
@@ -130,8 +140,7 @@ def start(
     if not rows:
         raise NewBatchError("Няма нито един ред без грешка.")
     with _lock:
-        if any(j["running"] for j in _jobs.values()):
-            raise NewBatchError("Вече върви една нова партида; изчакай да свърши.")
+        busy()
         job_id = uuid.uuid4().hex[:12]
         _jobs[job_id] = {
             "id": job_id,

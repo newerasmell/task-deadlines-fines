@@ -90,8 +90,7 @@ def start(product_id: int, url: str | None, actor: str | None, client=None, only
     if not keys:
         raise newbatch.NewBatchError("На продукта не му липсва нищо, което може да се попълни.")
     with newbatch._lock:
-        if any(j["running"] for j in newbatch._jobs.values()):
-            raise newbatch.NewBatchError("Вече върви задача; изчакай да свърши.")
+        newbatch.busy()
         job_id = uuid.uuid4().hex[:12]
         newbatch._jobs[job_id] = {
             "id": job_id,
