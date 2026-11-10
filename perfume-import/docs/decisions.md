@@ -104,3 +104,15 @@ A product read from a store (export or Shopify) has a title and a vendor but no 
 writing its description again said „липсва име на аромата“. The name, the concentration (EDP → Eau de Parfum) and
 the tester marker are now read from the title for the description; notes without an English reference are given
 in the store's language.
+
+
+## 25. „Качи в магазините“: one button per product
+
+The product screen has one primary action. It lists every store of the product's group: a store whose copy is
+live gets only its changed fields written (db.live.push); a copy prepared here is created in the store (active or
+draft); a store without the product can have it made like a quick new product (research reused by EAN when
+known, the store's own text, the price from the euro price of a store that has it), then reviewed and sent from
+the same button; what waits on a person (a suggestion to accept, a missing field) is named per store with a link
+to that copy. „Одобри продукта“ and the upload screen leave the product's path. An AI suggestion goes live only
+once accepted (CLAUDE.md #8), also on live products. After a live push the pushed values are the store's values
+(`previous`), so a later edit shows again as waiting.

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from api.auth import current_user
 from db import audit, catalog, review, upload
+from db import publish as sending
 from pipeline.config import load_group
 
 router = APIRouter(prefix="/api")
@@ -56,6 +57,22 @@ def batch(batch_id: int):
 @router.get("/catalog")
 def products_catalog(q: str = "", filter: str = "all", offset: int = 0, limit: int = 100):
     return catalog.catalog(q, filter, max(offset, 0), min(max(limit, 1), 500))
+
+
+class Send(BaseModel):
+    stores: list[str]
+    status: str = "active"  # for products created in a store; live products keep theirs
+
+
+@router.get("/products/{product_id}/send")
+def send_plan(product_id: int):
+    """What „Качи в магазините“ would do in each store the product is in."""
+    return _call(sending.plan, product_id)
+
+
+@router.post("/products/{product_id}/send")
+def send(product_id: int, body: Send, x_actor: str | None = Header(default=None)):
+    return _call(sending.run, product_id, body.stores, body.status, actor_name(x_actor))
 
 
 @router.get("/products/{product_id}/catalog")

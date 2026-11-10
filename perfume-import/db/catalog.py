@@ -114,9 +114,11 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
             key = f"p{p.id}"
         entry_fix = False
         if p.kind == "audit":
-            if sp.id in changed and sp.upload_status != "uploaded":
+            # A push to the store makes the pushed values the new reference (db.live.push), so what still
+            # differs is waiting, whatever the last push did.
+            if sp.id in changed:
                 state = "diff"
-            elif sp.id in fixes and sp.upload_status != "uploaded" and not blocked.get(sp.id):
+            elif sp.id in fixes and not blocked.get(sp.id):
                 state = "live"
                 entry_fix = True
             else:

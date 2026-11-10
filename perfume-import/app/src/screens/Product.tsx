@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { FieldPanel } from '../components/FieldPanel'
 import { FillMissing } from '../components/FillMissing'
+import { SendButton } from '../components/SendDialog'
 import { Failure, Loading } from '../components/States'
 import { StatusMark } from '../components/StatusMark'
 import { StoreChips } from '../components/StoreChips'
@@ -38,15 +39,7 @@ import {
   storeShort,
   stripHtml,
 } from '../lib/labels'
-import {
-  useAcceptAll,
-  useApprove,
-  useBatch,
-  useDecide,
-  useProductCatalog,
-  useStores,
-  useUploadState,
-} from '../lib/queries'
+import { useAcceptAll, useBatch, useDecide, useProductCatalog, useStores, useUploadState } from '../lib/queries'
 
 // Main review screen (Product.dc.html): product list, the finished picture, every store side by side.
 
@@ -150,19 +143,15 @@ function ProductList({ batch, current }: { batch: Batch; current: number }) {
 
 function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
   const acceptAll = useAcceptAll(batch.id)
-  const approve = useApprove(batch.id)
   const fields = allFields(product)
   const suggested = fields.filter((f) => f.status === 'suggested').length
-  const blocked = fields.filter((f) => f.status === 'blocked').length
-  const approvedInBatch = batch.products.filter((p) => Object.values(p.stores).every((s) => s.approved_at)).length
-  const pendingInBatch = batch.products
-    .flatMap(allFields)
-    .filter((f) => f.status === 'suggested' || f.status === 'blocked').length
+  const pendingInBatch =
+    batch.kind === 'new'
+      ? batch.products.flatMap(allFields).filter((f) => f.status === 'suggested' || f.status === 'blocked').length
+      : 0
   const first = Object.values(product.stores)[0]?.fields ?? {}
-  const approved = Object.values(product.stores).every((s) => s.approved_at)
-  const approvedBy = Object.values(product.stores)[0]?.approved_by
   const tester = /\bTESTER\b/i.test(display(first.title?.value))
-  const error = (acceptAll.error ?? approve.error) as Error | null
+  const error = acceptAll.error as Error | null
 
   return (
     <header className="flex flex-col gap-2 border-b border-line px-7 py-5">
@@ -176,45 +165,19 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
           <h1 className="m-0 line-clamp-2 text-[24px] font-semibold leading-tight">{product.title}</h1>
           <InStores productId={product.id} />
         </div>
+        {pendingInBatch > 0 && batch.products.length > 1 && (
+          <Link to={`/batches/${batch.id}/queue`} className="self-center text-sm no-underline">
+            Всички чакащи от този внос ({pendingInBatch})
+          </Link>
+        )}
         <FillMissing batch={batch} product={product} />
-        {pendingInBatch > 0 && (
-          <Button size="lg" asChild>
-            <Link to={`/batches/${batch.id}/queue`}>Реши чакащите във вноса ({pendingInBatch})</Link>
+        {suggested > 0 && (
+          <Button size="lg" disabled={acceptAll.isPending} onClick={() => acceptAll.mutate({ productId: product.id })}>
+            {`Приеми ${suggested === 1 ? 'предложението' : `всички ${suggested} предложения`}`}
           </Button>
         )}
-        {approvedInBatch > 0 && (
-          <Button size="lg" asChild>
-            <Link to={`/batches/${batch.id}/upload`}>Качи {plural(approvedInBatch, 'одобрен', 'одобрени')}</Link>
-          </Button>
-        )}
-        <Button
-          size="lg"
-          disabled={!suggested || acceptAll.isPending}
-          onClick={() => acceptAll.mutate({ productId: product.id })}
-        >
-          {suggested
-            ? `Приеми ${suggested === 1 ? 'предложението' : `всички ${suggested} предложения`}`
-            : 'Няма предложения'}
-        </Button>
-        <Button
-          variant="primary"
-          size="lg"
-          disabled={approved || !!suggested || !!blocked || approve.isPending}
-          title={
-            blocked
-              ? `${blocked} спрени полета трябва да се поправят преди одобрение`
-              : suggested
-                ? 'Първо реши предложенията'
-                : undefined
-          }
-          onClick={() => approve.mutate(product.id)}
-        >
-          {approved ? 'Одобрен' : 'Одобри продукта'}
-        </Button>
+        <SendButton productId={product.id} />
       </div>
-      {approved && approvedBy && (
-        <div className="text-xs text-ok">Одобрен от {approvedBy}. Всяка промяна по продукта сваля одобрението.</div>
-      )}
       {error && <div className="text-sm text-blocked-text">{error.message}</div>}
     </header>
   )

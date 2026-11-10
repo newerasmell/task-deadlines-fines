@@ -57,7 +57,7 @@ def _changes(rows: list[FieldRow]) -> list[FieldRow]:
         for r in rows
         if r.previous is not None
         and r.key in LABELS
-        and r.status != "blocked"
+        and r.status not in ("blocked", "suggested")  # an AI suggestion goes live only once accepted (CLAUDE.md #8)
         and _text(r.value).strip() != _text(r.previous).strip()
     ]
 
@@ -124,6 +124,8 @@ def push(product_id: int, actor: str | None, shop=None) -> dict:
             sp.upload_status = "uploaded"
             sp.shopify_product_id, sp.uploaded_at = found["id"], datetime.now(UTC)
             sp.upload_message = " ".join([f"Обновени в магазина: {', '.join(LABELS[r.key] for r in todo)}.", *notes])
+            for r in todo:  # what the store shows now: a later edit is a new change waiting to go live
+                r.previous = r.value
         session.add(
             Event(
                 actor=actor,

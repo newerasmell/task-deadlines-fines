@@ -371,6 +371,19 @@ export type Catalog = {
   items: CatalogEntry[]
 }
 
+export type SendAction = 'update' | 'create' | 'wait' | 'none' | 'missing'
+export type SendStore = {
+  store: string
+  product_id: number | null
+  batch_id: number | null
+  kind: 'new' | 'audit' | null
+  action: SendAction
+  changes: string[]
+  reason: string | null
+  message: string | null
+}
+export type SendPlan = { key: string; ean: string | null; title: string; stores: SendStore[] }
+
 export type User = { id: number; name: string; is_admin: boolean; disabled: boolean }
 
 /** Any 401 means the session ended: the login screen takes over (lib/auth.tsx listens). */
@@ -453,6 +466,12 @@ export const api = {
   catalog: (q: string, filter: CatalogFilter, limit: number) =>
     request<Catalog>(`/api/catalog?${new URLSearchParams({ q, filter, limit: String(limit) })}`),
   syncStores: (stores?: string[]) => post<{ job_id: string }>('/api/stores/sync', { stores: stores ?? null }),
+  sendPlan: (id: number) => request<SendPlan>(`/api/products/${id}/send`),
+  send: (id: number, stores: string[], status: 'draft' | 'active') =>
+    post<{ done: Record<string, string>; plan: SendPlan; job_id?: string }>(`/api/products/${id}/send`, {
+      stores,
+      status,
+    }),
   productCatalog: (id: number) => request<CatalogEntry>(`/api/products/${id}/catalog`),
   product: (id: number) => request<Product & { batch_id: number }>(`/api/products/${id}`),
   vocab: (group: string) => request<Record<string, string[]>>(`/api/groups/${group}/vocab`),

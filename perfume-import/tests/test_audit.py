@@ -123,12 +123,17 @@ def test_fixes_are_written_live_only_the_changed_fields(batch):
     ]
     assert fake.variant_updates == []  # price untouched
     assert product_id not in live.pending(batch_id)
+    assert live.changes(product_id)["changes"] == []  # what was sent is what the store shows now
 
     other = FakeShopify([{"id": "gid://shopify/Product/8", "handle": row["Handle"], "title": "x", "sku": "SK000"}])
-    with Session(engine()) as s, s.begin():
-        from db.models import StoreProduct
+    with Session(engine()) as s, s.begin():  # the same fix again, as if the store had changed it back
+        from db.models import FieldRow, StoreProduct
 
-        s.query(StoreProduct).filter(StoreProduct.product_id == product_id).update({"upload_status": None})
+        sp = s.query(StoreProduct).filter(StoreProduct.product_id == product_id).one()
+        sp.upload_status = None
+        s.query(FieldRow).filter(FieldRow.store_product_id == sp.id, FieldRow.key == "gender").update(
+            {"previous": "Womens perfume"}
+        )
     failed = live.push(
         product_id, "Мария", Shopify("p.myshopify.com", "tok", http=other.client(), sleep=lambda s: None)
     )
