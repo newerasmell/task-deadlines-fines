@@ -762,3 +762,36 @@ def _engine():
     from db.repo import engine
 
     return engine()
+
+
+def delete_product(product_id: int, actor: str | None) -> dict:
+    """Remove a product prepared here (a new product, in no store yet); the import goes with its last product.
+    A store's own product or one already sent to a store is never removed here."""
+    with Session(_engine()) as session, session.begin():
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        batch = session.get(Batch, product.batch_id)
+        if batch.kind != "new":
+            raise ReviewError("Това е продукт от каталога на магазина; изтрий го в Shopify.")
+        sps = session.execute(select(StoreProduct).where(StoreProduct.product_id == product_id)).scalars().all()
+        sent = [sp.store_key for sp in sps if sp.upload_status == "uploaded" or sp.shopify_product_id]
+        if sent:
+            raise ReviewError(
+                f"Продуктът вече е в {', '.join(sent)}; изтрий го първо в Shopify, за да не остане там без връзка."
+            )
+        title = product.input.get("name") or product.input.get("title")
+        session.delete(product)
+        session.flush()
+        left = session.execute(select(func.count(Product.id)).where(Product.batch_id == batch.id)).scalar_one()
+        session.add(
+            Event(
+                actor=actor,
+                kind="product_deleted",
+                batch_id=None if not left else batch.id,
+                payload={"product": product_id, "name": title, "batch": batch.id},
+            )
+        )
+        if not left:
+            session.delete(batch)
+    return {"deleted": product_id, "batch_deleted": not left}

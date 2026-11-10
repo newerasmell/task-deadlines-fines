@@ -64,6 +64,12 @@ class Send(BaseModel):
     status: str = "active"  # for products created in a store; live products keep theirs
 
 
+@router.delete("/products/{product_id}")
+def delete_product(product_id: int, x_actor: str | None = Header(default=None)):
+    """A product prepared here and in no store yet."""
+    return _call(review.delete_product, product_id, actor_name(x_actor))
+
+
 @router.get("/products/{product_id}/send")
 def send_plan(product_id: int):
     """What „Качи в магазините“ would do in each store the product is in."""

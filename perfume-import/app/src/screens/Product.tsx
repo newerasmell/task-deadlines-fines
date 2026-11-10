@@ -2,6 +2,7 @@ import { ImageOff } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { FieldPanel } from '../components/FieldPanel'
+import { DeleteProduct } from '../components/DeleteProduct'
 import { FillMissing } from '../components/FillMissing'
 import { SendButton } from '../components/SendDialog'
 import { Failure, Loading } from '../components/States'
@@ -176,6 +177,7 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
             {`Приеми ${suggested === 1 ? 'предложението' : `всички ${suggested} предложения`}`}
           </Button>
         )}
+        <DeleteProduct batch={batch} product={product} />
         <SendButton productId={product.id} />
       </div>
       {error && <div className="text-sm text-blocked-text">{error.message}</div>}

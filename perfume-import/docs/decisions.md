@@ -127,3 +127,10 @@ facts (each in its store's language) into the canonical English facts with each 
 sources, SPEC §3), a fact from one store is a suggestion, nothing absent from every copy is added. The picture is
 taken from a live copy and composed for the store; the text is written by the store's template; the price comes
 from the euro price of a live copy. A product live nowhere is still researched as a new one.
+
+
+## 27. Deleting a product prepared here
+
+„Изтрий“ on a new product removes it with all its store copies, and its import when it was the last product. Only
+a product prepared here and in no store yet: a store's catalog product, or one already sent to a store, is
+refused with what to do (delete it in Shopify first), so nothing in a store loses its link to the app.
