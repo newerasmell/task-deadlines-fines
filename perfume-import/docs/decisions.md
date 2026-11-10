@@ -61,3 +61,15 @@ the product screen shows the same squares. The list is rebuilt only when product
 Words: „партида“ is gone from the main path (imports are „внос“, under „История на вноса“), the audit is
 „проверка на каталога“, statuses read „провери“, „поправено автоматично“, „липсва или е грешно“, and the
 compare-at price is „стара цена“. Live Shopify sync, the quick new product and one-click publishing follow.
+
+
+## 21. Products read live from Shopify
+
+A store with a learned template and Shopify access has its products read straight from Shopify (all but archived,
+25 per call with their custom metafields), shaped like an export and checked by the same rules, so the result is
+the same as uploading a CSV. It runs every 6 hours by itself (`SYNC_HOURS`, 0 = off; the first round 10 minutes
+after a start) and on „Изтегли“ (one store) or „Изтегли от магазините“ (all). Each read replaces the store's older
+catalog check. What was made here and is not in the store yet (a person's edit or decision, an AI suggestion, a
+picture or text taken from another store) is carried onto the same product (same handle) with the store's value
+as `previous`, so it still shows as waiting to go live; pictures move with it. The Shopify product id is kept
+for the later publishing. A store needs one export upload only to learn its template.

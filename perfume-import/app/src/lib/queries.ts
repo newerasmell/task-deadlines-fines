@@ -86,6 +86,15 @@ export const useLatestJob = () =>
     refetchInterval: (query) => (query.state.data?.running ? 5000 : false),
   })
 
+/** Read stores' products from Shopify (all ready stores without a list); the job banner shows the progress. */
+export function useSyncStores() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (stores?: string[]) => api.syncStores(stores),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['job', 'latest'] }),
+  })
+}
+
 export const useUploadState = (batchId: number) =>
   useQuery({
     queryKey: ['upload', batchId],

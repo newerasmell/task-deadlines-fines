@@ -1,11 +1,12 @@
 import { Link } from 'react-router'
 import { AppNav } from '../components/AppNav'
+import { JobBanner } from '../components/JobBanner'
 import { Empty, Failure, Loading } from '../components/States'
 import { StatusMark } from '../components/StatusMark'
 import { Button } from '../components/ui/button'
 import type { StoreRow } from '../lib/api'
-import { languageName, shortDate } from '../lib/labels'
-import { useStores } from '../lib/queries'
+import { ago, languageName, shortDate } from '../lib/labels'
+import { useLatestJob, useStores, useSyncStores } from '../lib/queries'
 
 // Stores (Stores.dc.html): every store, its group, its profile and the last catalog upload.
 
@@ -26,16 +27,24 @@ function action(s: StoreRow): { label: string; to: string } {
 
 export function StoresScreen() {
   const stores = useStores()
+  const sync = useSyncStores()
+  const job = useLatestJob()
+  const busy = !!job.data?.running || sync.isPending
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex h-14 items-center gap-4 border-b border-line px-7">
         <AppNav />
         <div className="grow" />
+        <Button disabled={busy} onClick={() => sync.mutate(undefined)}>
+          Изтегли всички
+        </Button>
         <Button variant="primary" asChild>
           <Link to="/stores/new">Добави магазин</Link>
         </Button>
       </header>
       <main className="flex flex-col gap-3.5 px-7 py-6">
+        <JobBanner only={['sync']} />
+        {sync.error && <div className="text-sm text-blocked-text">{sync.error.message}</div>}
         {stores.isPending ? (
           <Loading what="магазините" />
         ) : stores.isError ? (
@@ -47,8 +56,8 @@ export function StoresScreen() {
             <div className="flex items-baseline gap-3">
               <h1 className="m-0 text-[22px] font-semibold">{stores.data.length} магазина</h1>
               <span className="text-sm text-ink-2">
-                Всеки магазин има собствен профил, изведен от качения му каталог. Новите продукти се генерират по профила
-                на всеки магазин.
+                Всеки магазин има шаблон, научен от каталога му. Продуктите се изтеглят директно от Shopify на всеки
+                няколко часа или веднага с „Изтегли“.
               </span>
             </div>
             <div className="shrink-0 overflow-hidden rounded-lg border border-line" role="table" aria-label="Магазини">
@@ -58,7 +67,7 @@ export function StoresScreen() {
                 <div role="columnheader" className="px-3.5 py-[9px]">Държава · език</div>
                 <div role="columnheader" className="px-3.5 py-[9px] text-right">Продукти</div>
                 <div role="columnheader" className="px-3.5 py-[9px]">Профил</div>
-                <div role="columnheader" className="px-3.5 py-[9px]">Каталог · достъп</div>
+                <div role="columnheader" className="px-3.5 py-[9px]">Продукти от Shopify</div>
                 <div role="columnheader" className="px-3.5 py-[9px]" />
               </div>
               {stores.data.map((s) => {
@@ -78,9 +87,16 @@ export function StoresScreen() {
                       <StatusMark status={state.status} />
                       {state.label}
                     </div>
-                    <div role="cell" className="truncate px-3.5 text-ink-2" title={s.access ?? undefined}>
-                      {s.catalog_at ? shortDate(s.catalog_at) : 'не е качен'}
-                      {s.state === 'active' && (s.access ? ' · без достъп до Shopify' : ` · ${s.shop}`)}
+                    <div role="cell" className="truncate px-3.5 text-ink-2" title={s.access ?? s.shop ?? undefined}>
+                      {s.state !== 'active'
+                        ? s.catalog_at
+                          ? `каталог от ${shortDate(s.catalog_at)}`
+                          : 'няма каталог'
+                        : s.access
+                          ? 'няма достъп до Shopify'
+                          : s.checked_at
+                            ? `изтеглени ${ago(s.checked_at)}`
+                            : 'още не са изтеглени'}
                     </div>
                     <div role="cell" className="flex justify-end gap-2 px-3.5">
                       {s.audit_batch_id && s.state === 'active' && (
@@ -88,9 +104,20 @@ export function StoresScreen() {
                           Проверка
                         </Link>
                       )}
-                      <Button size="sm" className="h-8 px-3" asChild>
-                        <Link to={a.to}>{a.label}</Link>
-                      </Button>
+                      {s.state === 'active' && s.profile_id && (
+                        <Link to={`/profiles/${s.profile_id}`} className="self-center text-sm no-underline">
+                          Шаблон
+                        </Link>
+                      )}
+                      {s.state === 'active' && !s.access ? (
+                        <Button size="sm" className="h-8 px-3" disabled={busy} onClick={() => sync.mutate([s.key])}>
+                          Изтегли
+                        </Button>
+                      ) : (
+                        <Button size="sm" className="h-8 px-3" asChild>
+                          <Link to={a.to}>{a.label}</Link>
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )

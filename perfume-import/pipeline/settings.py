@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     app_dist: Path = ROOT / "app" / "dist"
     # Finished and original pictures (SPEC §6). On Render: the persistent disk at /var/data/media.
     media_dir: Path = ROOT / "output" / "media"
+    # Every store's products are read from Shopify this often (hours); 0 turns it off.
+    sync_hours: float = 6
 
     @property
     def sqlalchemy_url(self) -> str:

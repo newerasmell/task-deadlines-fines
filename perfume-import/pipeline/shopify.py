@@ -575,3 +575,89 @@ def update_live(shop: Shopify, product: dict, changes: dict[str, Any]) -> list[s
         if data["userErrors"]:
             raise ShopifyError("Shopify не прие цената/SKU: " + "; ".join(e["message"] for e in data["userErrors"]))
     return notes
+
+
+# ---- the store's whole catalog, read live (instead of an uploaded CSV export) ----------------------------
+
+CATALOG_PAGE = 25  # products per call: with 25 custom metafields each this stays under the query cost limit
+CATALOG_QUERY = """query($after: String, $first: Int!) {
+  products(first: $first, after: $after, query: "-status:archived", sortKey: ID) {
+    nodes {
+      id handle title descriptionHtml vendor productType status
+      seo { title description }
+      featuredMedia { preview { image { url } } }
+      variants(first: 1) { nodes { sku price compareAtPrice barcode } }
+      metafields(first: 25, namespace: "custom") { nodes { namespace key value type } }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}"""
+
+
+def _metafield_text(value: str | None, kind: str) -> str:
+    """A metafield as a CSV export writes it: lists joined with commas, a measurement as „100 ml“."""
+    if not value:
+        return ""
+    if kind.startswith("list.") or kind in ("volume", "weight", "dimension"):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return value
+        if isinstance(parsed, list):
+            return ", ".join(
+                _metafield_text(json.dumps(i) if isinstance(i, dict) else str(i), kind[5:]) for i in parsed
+            )
+        if isinstance(parsed, dict) and "value" in parsed:
+            number = parsed["value"]
+            number = int(number) if isinstance(number, float) and number.is_integer() else number
+            return f"{number} {str(parsed.get('unit', '')).lower().replace('milliliters', 'ml')}".strip()
+    return value
+
+
+def catalog_rows(shop: Shopify, progress: Callable[[int], None] | None = None) -> tuple[list[str], list[dict]]:
+    """Every product of the store except archived ones, as rows with the columns of a Shopify CSV export
+    (Handle, Title, Body (HTML), Variant SKU…, metafields as „Label (product.metafields.ns.key)“)."""
+    columns = [
+        "Handle", "Title", "Body (HTML)", "Vendor", "Type", "Status", "Variant SKU", "Variant Price",
+        "Variant Compare At Price", "Variant Barcode", "Image Src", "SEO Title", "SEO Description", "Shopify ID",
+    ]  # fmt: skip
+    rows: list[dict] = []
+    after = None
+    while True:
+        page = shop.graphql(CATALOG_QUERY, {"after": after, "first": CATALOG_PAGE})["products"]
+        for node in page["nodes"]:
+            variant = (node["variants"]["nodes"] or [{}])[0]
+            image = ((node.get("featuredMedia") or {}).get("preview") or {}).get("image") or {}
+            seo = node.get("seo") or {}
+            row = {
+                "Handle": node["handle"],
+                "Title": node["title"],
+                "Body (HTML)": node.get("descriptionHtml") or "",
+                "Vendor": node.get("vendor") or "",
+                "Type": node.get("productType") or "",
+                "Status": (node.get("status") or "").lower(),
+                "Variant SKU": variant.get("sku") or "",
+                "Variant Price": variant.get("price") or "",
+                "Variant Compare At Price": variant.get("compareAtPrice") or "",
+                "Variant Barcode": variant.get("barcode") or "",
+                "Image Src": image.get("url") or "",
+                "SEO Title": seo.get("title") or "",
+                "SEO Description": seo.get("description") or "",
+                "Shopify ID": node["id"],
+            }
+            for mf in node["metafields"]["nodes"]:
+                label = mf["key"].replace("_", " ").replace("-", " ").capitalize()
+                column = f"{label} (product.metafields.{mf['namespace']}.{mf['key']})"
+                if column not in columns:
+                    columns.append(column)
+                row[column] = _metafield_text(mf["value"], mf.get("type") or "")
+            rows.append(row)
+        if progress:
+            progress(len(rows))
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        after = page["pageInfo"]["endCursor"]
+    for row in rows:
+        for column in columns:
+            row.setdefault(column, "")
+    return columns, rows

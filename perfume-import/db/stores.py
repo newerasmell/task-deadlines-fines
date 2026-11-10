@@ -145,19 +145,32 @@ def list_stores() -> list[dict]:
                 select(Batch.store_key, func.max(Batch.id)).where(Batch.kind == "audit").group_by(Batch.store_key)
             ).all()
         )
+        checked = dict(
+            session.execute(
+                select(Batch.store_key, func.max(Batch.created_at))
+                .where(Batch.kind == "audit")
+                .group_by(Batch.store_key)
+            ).all()
+        )
 
     out, seen = [], set()
     for group in groups.values():
         for key, store in group.stores.items():
             seen.add(key)
-            out.append(_store_row(key, group.key, store, latest.get(key), accepted.get(key), audits.get(key)))
+            out.append(
+                _store_row(
+                    key, group.key, store, latest.get(key), accepted.get(key), audits.get(key), checked=checked.get(key)
+                )
+            )
     for key, row in db_stores.items():  # stores added in the app and not yet in a group
         if key not in seen and row.settings:
-            out.append(_store_row(key, None, None, latest.get(key), accepted.get(key), audits.get(key), row))
+            out.append(
+                _store_row(key, None, None, latest.get(key), accepted.get(key), audits.get(key), row, checked.get(key))
+            )
     return out
 
 
-def _store_row(key, group_key, store, latest, accepted, audit_batch, row: Store | None = None) -> dict:
+def _store_row(key, group_key, store, latest, accepted, audit_batch, row: Store | None = None, checked=None) -> dict:
     settings = (row.settings if row else {}) or {}
     profile = accepted or latest
     if accepted:
@@ -182,6 +195,7 @@ def _store_row(key, group_key, store, latest, accepted, audit_batch, row: Store 
         "catalog_at": profile.created_at.isoformat() if profile else None,
         "profile_id": latest.id if latest else None,
         "audit_batch_id": audit_batch,
+        "checked_at": checked.isoformat() if checked else None,  # the products as last read (sync or upload)
     }
 
 

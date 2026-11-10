@@ -141,6 +141,7 @@ export type StoreRow = {
   catalog_at: string | null
   profile_id: number | null
   audit_batch_id: number | null
+  checked_at: string | null // the products as last read from the store (Shopify or an uploaded export)
 }
 
 export type ProfileItem = {
@@ -270,9 +271,10 @@ export type Job = {
   batch_id: number | null
   cost_usd: number | null
   fast?: boolean
-  kind?: 'extend' | 'fill' | 'crosssync' // adding stores (db/extend.py) or filling a product's missing facts (db/fill.py)
+  kind?: 'extend' | 'fill' | 'crosssync' | 'sync' // adding stores, filling a product, reading stores from Shopify
+  store?: string | null // sync: the store being read
   product_id?: number
-  result?: Record<string, string> | null
+  result?: unknown
   target_batch_id?: number
   started_at?: number // unix seconds
   finished_at?: number | null
@@ -441,6 +443,7 @@ export const api = {
   batch: (id: number) => request<Batch>(`/api/batches/${id}`),
   catalog: (q: string, filter: CatalogFilter, limit: number) =>
     request<Catalog>(`/api/catalog?${new URLSearchParams({ q, filter, limit: String(limit) })}`),
+  syncStores: (stores?: string[]) => post<{ job_id: string }>('/api/stores/sync', { stores: stores ?? null }),
   productCatalog: (id: number) => request<CatalogEntry>(`/api/products/${id}/catalog`),
   product: (id: number) => request<Product & { batch_id: number }>(`/api/products/${id}`),
   vocab: (group: string) => request<Record<string, string[]>>(`/api/groups/${group}/vocab`),

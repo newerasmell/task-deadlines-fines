@@ -69,6 +69,33 @@ class FakeShopify:
         if "productVariantsBulkUpdate" in query:
             self.variant_updates.append(variables["variants"])
             return self.ok({"productVariantsBulkUpdate": {"userErrors": []}})
+        if "products(first:" in query:  # the whole catalog, page by page (pipeline.shopify.catalog_rows)
+            items = list(self.products.values())
+            start = int(variables["after"] or 0)
+            page = items[start : start + variables["first"]]
+            nodes = [
+                {
+                    "id": p["id"],
+                    "handle": p["handle"],
+                    "title": p["title"],
+                    "descriptionHtml": p.get("body", ""),
+                    "vendor": p.get("vendor", ""),
+                    "productType": "",
+                    "status": p.get("status", "ACTIVE"),
+                    "seo": {"title": None, "description": None},
+                    "featuredMedia": {"preview": {"image": {"url": p["image"]}}} if p.get("image") else None,
+                    "variants": {
+                        "nodes": [
+                            {"sku": p["sku"], "price": p.get("price", "10.00"), "compareAtPrice": None, "barcode": None}
+                        ]
+                    },
+                    "metafields": {"nodes": p.get("metafields", [])},
+                }
+                for p in page
+            ]
+            more = start + len(page) < len(items)
+            info = {"hasNextPage": more, "endCursor": str(start + len(page)) if more else None}
+            return self.ok({"products": {"nodes": nodes, "pageInfo": info}})
         if "product(id:" in query:
             found = self.products.get(variables["id"])
             return self.ok({"product": found and {"id": found["id"]}})

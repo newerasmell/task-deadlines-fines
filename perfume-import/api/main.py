@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -16,7 +18,17 @@ from pipeline.settings import get_settings
 settings = get_settings()
 engine = create_engine(settings.sqlalchemy_url, pool_pre_ping=True)
 
-app = FastAPI(title="Perfume Import")
+
+@asynccontextmanager
+async def lifespan(_app):
+    if settings.sync_hours > 0:  # every store's products are read from Shopify every few hours
+        from db.sync import auto_loop
+
+        auto_loop(settings.sync_hours)
+    yield
+
+
+app = FastAPI(title="Perfume Import", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=2000)  # an audit batch is ~8 MB of JSON, ~1 MB gzipped
 logged_in = [Depends(require_user)]  # everything but health and login needs a session
 app.include_router(auth_router)

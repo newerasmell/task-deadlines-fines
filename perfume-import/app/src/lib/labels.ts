@@ -109,6 +109,17 @@ export function shortDate(iso: string): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`
 }
 
+/** „преди 5 мин“, „преди 3 ч“, „преди 2 дни“. */
+export function ago(iso: string): string {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
+  if (minutes < 1) return 'току-що'
+  if (minutes < 60) return `преди ${minutes} мин`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `преди ${hours} ч`
+  const days = Math.round(hours / 24)
+  return `преди ${days} ${days === 1 ? 'ден' : 'дни'}`
+}
+
 export function groupLabel(key: string): string {
   const m = key.match(/^group-(\d+)$/)
   return m ? `Група ${m[1]}` : key

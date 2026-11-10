@@ -1,13 +1,12 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { AppNav } from '../components/AppNav'
+import { JobBanner } from '../components/JobBanner'
 import { Empty, Failure, Loading } from '../components/States'
 import { Button } from '../components/ui/button'
 import type { BatchSummary } from '../lib/api'
 import { groupLabel, plural, shortDate, storeShort } from '../lib/labels'
-import { useBatches, useLatestJob } from '../lib/queries'
+import { useBatches } from '../lib/queries'
 
 const COLUMNS =
   'grid-cols-[150px_100px_100px_90px_minmax(0,1fr)_190px] xl:grid-cols-[200px_120px_140px_110px_minmax(0,1fr)_200px]'
@@ -49,88 +48,6 @@ function Progress({ b }: { b: BatchSummary }) {
       <div className="bg-ok" style={{ width: pct(b.ready) }} />
       <div className="bg-suggested" style={{ width: pct(b.review) }} />
       <div className="bg-blocked" style={{ width: pct(b.blocked) }} />
-    </div>
-  )
-}
-
-const DISMISSED = 'perfume-import.dismissed-job'
-
-function readDismissed(): string | null {
-  try {
-    return localStorage.getItem(DISMISSED)
-  } catch {
-    return null
-  }
-}
-
-// The new batch running on the server, or how the last one ended, so it never looks lost after leaving its
-// progress screen.
-function JobBanner() {
-  const latest = useLatestJob()
-  const client = useQueryClient()
-  const [dismissed, setDismissed] = useState(readDismissed)
-  const j = latest.data
-  const finished = j && !j.running ? j.id : null
-  useEffect(() => {
-    if (finished) client.invalidateQueries({ queryKey: ['batches'] })
-  }, [finished, client])
-  if (!j || (!j.running && dismissed === j.id)) return null
-  const dismiss = () => {
-    setDismissed(j.id)
-    try {
-      localStorage.setItem(DISMISSED, j.id)
-    } catch {
-      /* only a convenience */
-    }
-  }
-  const tone = j.running ? 'bg-surface' : j.error ? 'bg-blocked-tint' : 'bg-ok-tint'
-  return (
-    <div role="status" className={`flex items-center gap-4 rounded-lg border border-line px-4 py-3 text-sm ${tone}`}>
-      {j.running ? (
-        <>
-          <span className="size-2 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden />
-          <div className="flex min-w-0 grow flex-col gap-0.5">
-            <span className="font-medium">
-              {j.kind === 'extend'
-                ? 'Добавят се магазини към внос'
-                : j.kind === 'crosssync'
-                  ? 'Попълва се от другите магазини'
-                  : j.kind === 'fill'
-                    ? 'Попълва се липсващото в продукт'
-                    : 'Проучват се нови продукти'}{' '}
-              · {j.stage_label}
-              {j.stage === 'research' ? ` · ${j.done} от ${j.total}` : '…'}
-            </span>
-            <span className="text-xs text-ink-2">
-              {plural(j.total, 'продукт', 'продукта')}. Не пускай deploy, докато върви: рестартът я спира.
-            </span>
-          </div>
-          <Button asChild>
-            <Link to={`/batches/new?job=${j.id}`}>Виж прогреса</Link>
-          </Button>
-        </>
-      ) : j.error ? (
-        <>
-          <span className="min-w-0 grow text-blocked-text">Последният внос спря: {j.error}</span>
-          <Button variant="ghost" size="icon" aria-label="Скрий" onClick={dismiss}>
-            <X size={16} />
-          </Button>
-        </>
-      ) : (
-        <>
-          <span className="min-w-0 grow font-medium">
-            Новите продукти са готови{j.cost_usd != null ? ` · $${j.cost_usd.toFixed(2)}` : ''}
-          </span>
-          {j.batch_id && (
-            <Button variant="primary" asChild>
-              <Link to={`/batches/${j.batch_id}`}>Отвори</Link>
-            </Button>
-          )}
-          <Button variant="ghost" size="icon" aria-label="Скрий" onClick={dismiss}>
-            <X size={16} />
-          </Button>
-        </>
-      )}
     </div>
   )
 }

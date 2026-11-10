@@ -2,13 +2,14 @@ import { ImageOff, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { AppNav } from '../components/AppNav'
+import { JobBanner } from '../components/JobBanner'
 import { Empty, Failure, Loading } from '../components/States'
 import { StateLegend, StoreChips } from '../components/StoreChips'
 import { Button } from '../components/ui/button'
 import type { CatalogEntry, CatalogFilter, CatalogStore } from '../lib/api'
 import { cn } from '../lib/cn'
-import { plural } from '../lib/labels'
-import { useCatalog } from '../lib/queries'
+import { ago, plural } from '../lib/labels'
+import { useCatalog, useLatestJob, useStores, useSyncStores } from '../lib/queries'
 
 // Продукти: every product of every store in one list, found by name or EAN. A row opens the product; a store
 // square opens that store's copy.
@@ -39,6 +40,7 @@ export function CatalogScreen() {
   const [text, setText] = useState(q)
   const [limit, setLimit] = useState(PAGE)
   const catalog = useCatalog(q, filter, limit)
+  const sync = useSyncStores()
 
   // Search as you type, a moment after the last key.
   useEffect(() => {
@@ -86,10 +88,14 @@ export function CatalogScreen() {
           <Link to="/batches" className="text-sm no-underline">
             История на вноса
           </Link>
+          <SyncButton sync={sync} />
           <Button variant="primary" asChild>
             <Link to="/batches/new">Нов продукт</Link>
           </Button>
         </div>
+
+        {sync.error && <div className="text-sm text-blocked-text">{sync.error.message}</div>}
+        <JobBanner only={['sync']} />
 
         <label className="relative block max-w-[640px]">
           <span className="sr-only">Търси продукт</span>
@@ -167,6 +173,26 @@ export function CatalogScreen() {
         )}
       </main>
     </div>
+  )
+}
+
+/** Reads every connected store's products from Shopify now (it also happens by itself every few hours). */
+function SyncButton({ sync }: { sync: ReturnType<typeof useSyncStores> }) {
+  const job = useLatestJob()
+  const stores = useStores()
+  const running = !!job.data?.running
+  const last = (stores.data ?? [])
+    .map((s) => s.checked_at)
+    .filter((d): d is string => !!d)
+    .sort()
+    .at(0)
+  return (
+    <span className="flex items-center gap-2">
+      {last && <span className="text-xs text-ink-2">най-старото изтегляне: {ago(last)}</span>}
+      <Button onClick={() => sync.mutate(undefined)} disabled={running || sync.isPending} title={sync.error?.message}>
+        {running && job.data?.kind === 'sync' ? 'Изтегля се…' : 'Изтегли от магазините'}
+      </Button>
+    </span>
   )
 }
 

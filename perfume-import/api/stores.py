@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from api.auth import require_admin
 from api.review import actor_name
-from db import stores
+from db import newbatch, stores, sync
 
 router = APIRouter(prefix="/api")
 MAX_UPLOAD = 60_000_000
@@ -18,13 +18,24 @@ def _call(fn, *args, **kwargs):
         return fn(*args, **kwargs)
     except KeyError as exc:
         raise HTTPException(404, str(exc.args[0]) if exc.args else "Не е намерено.") from exc
-    except stores.StoreError as exc:
+    except (stores.StoreError, sync.SyncError, newbatch.NewBatchError) as exc:
         raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/stores")
 def list_stores():
     return stores.list_stores()
+
+
+class Sync(BaseModel):
+    stores: list[str] | None = None  # None: every store with a template and Shopify access
+
+
+@router.post("/stores/sync", status_code=202)
+def sync_stores(body: Sync, x_actor: str | None = Header(default=None)):
+    """Read the products of these stores live from Shopify (a background job, see /api/jobs/latest)."""
+    keys = body.stores if body.stores is not None else sync.ready_stores()
+    return {"job_id": _call(sync.start, keys, actor_name(x_actor))}
 
 
 @router.post("/stores/analyze", status_code=201)
