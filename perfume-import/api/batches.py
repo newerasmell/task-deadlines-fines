@@ -191,6 +191,7 @@ def product_missing(product_id: int):
 
 class Fill(BaseModel):
     url: str | None = None
+    keys: list[str] | None = None  # one field's panel asks for that field only
 
 
 @router.post("/products/{product_id}/fill", status_code=202)
@@ -198,7 +199,8 @@ def fill_missing(product_id: int, body: Fill, x_actor: str | None = Header(defau
     """Only the missing facts, from a linked page (one fetch) or a short search; suggestions for every store."""
     from db import fill
 
-    return {"job_id": _call(fill.start, product_id, (body.url or "").strip() or None, actor_name(x_actor))}
+    url = (body.url or "").strip() or None
+    return {"job_id": _call(fill.start, product_id, url, actor_name(x_actor), only=body.keys)}
 
 
 class Notes(BaseModel):

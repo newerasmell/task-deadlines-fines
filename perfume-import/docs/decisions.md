@@ -87,3 +87,12 @@ the store's rounding, decisions #19); a price that cannot be set is reported, th
 When done the product opens. The table/CSV form with deep research stays under „Таблица, CSV или задълбочено
 проучване“. A Shopify read is now one transaction (save, carry over, remove the older read), so a restart in the
 middle leaves the store as it was.
+
+
+## 23. AI and links for flagged fields too, and for one field
+
+„Попълни с AI“ now also takes fields a rule flagged (warning: a too short description, notes in the wrong
+script…), not only empty or blocked ones, and works on a store's catalog products as well as new ones. A field's
+panel offers it for that one field: facts from a link or a short search, a description written again from the
+product's facts in each store's template (≈ $0.01 per store), even when the field looks fine. On a live product
+the store's value stays the reference (`previous`), so the result shows as a change waiting to go live.

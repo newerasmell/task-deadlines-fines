@@ -5,6 +5,7 @@ import { cn } from '../lib/cn'
 import { display, fieldLabel, host, LOCALIZED, storeShort, stripHtml } from '../lib/labels'
 import { useDecide, useReplaceImage, useSyncNotes, useVocab } from '../lib/queries'
 import { TAG_TEXT, TINT } from '../lib/status'
+import { FillMissing } from './FillMissing'
 import { Button } from './ui/button'
 
 // Field panel (SPEC §8.3, Main.dc.html): value, origin, confidence, sources, alternatives, previous value;
@@ -184,6 +185,11 @@ export function FieldPanel({
             </div>
           )}
           {field.message && <div className="text-sm leading-normal text-ink-3">{field.message}</div>}
+          {!editing && (
+            <div>
+              <FillMissing batch={batch} product={product} only={fieldKey} />
+            </div>
+          )}
         </div>
 
         {LOCALIZED.has(fieldKey) && field.value_en && (

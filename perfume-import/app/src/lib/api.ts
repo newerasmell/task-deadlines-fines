@@ -473,7 +473,8 @@ export const api = {
     put<Product>(`/api/products/${productId}/prices`, { stores }),
   missing: (productId: number) =>
     request<{ product_id: number; keys: string[]; labels: string[] }>(`/api/products/${productId}/missing`),
-  fill: (productId: number, url: string | null) => post<{ job_id: string }>(`/api/products/${productId}/fill`, { url }),
+  fill: (productId: number, url: string | null, keys?: string[]) =>
+    post<{ job_id: string }>(`/api/products/${productId}/fill`, { url, keys: keys ?? null }),
   syncNotes: (fieldId: number, text: string) => post<Product>(`/api/fields/${fieldId}/sync-notes`, { text }),
   liveChanges: (productId: number) => request<LiveChanges>(`/api/products/${productId}/live`),
   pushLive: (productId: number) => post<LiveChanges>(`/api/products/${productId}/live`, {}),

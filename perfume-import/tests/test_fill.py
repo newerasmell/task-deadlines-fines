@@ -128,3 +128,36 @@ def test_a_field_accepted_empty_is_not_missing(product):
         if f["status"] != "ok":
             review.decide(f["id"], "accept", "Мария")
     assert "ingredients" not in fill.missing(product["id"])["keys"]
+
+
+def test_a_too_short_description_can_be_rewritten(product):
+    """A description flagged by a rule (too short) counts as missing, is rewritten as a suggestion, and the
+    store's text stays as the reference until it goes live."""
+    from db.models import FieldRow, StoreProduct
+
+    with Session(engine()) as session, session.begin():
+        for sp in session.query(StoreProduct).filter(StoreProduct.product_id == product["id"]):
+            row = session.query(FieldRow).filter(FieldRow.store_product_id == sp.id, FieldRow.key == "body_html").one()
+            row.value, row.previous, row.status = "<p>Кратко.</p>", "<p>Кратко.</p>", "warning"
+    assert "body_html" in fill.missing(product["id"])["keys"]
+    fill.run(product["id"], ["body_html"], None, "Мария", FakeClient(responder=responder))
+    for store in STORES:
+        body = review.get_product(product["id"])["stores"][store]["fields"]["body_html"]
+        assert body["value"] != "<p>Кратко.</p>" and body["previous"] == "<p>Кратко.</p>"
+
+
+def test_one_field_by_name_is_rewritten_even_when_it_looks_fine(product):
+    before = {s: review.get_product(product["id"])["stores"][s]["fields"]["body_html"]["value"] for s in STORES}
+    with Session(engine()) as session, session.begin():  # every store's description passes its rules
+        from db.models import FieldRow, StoreProduct
+
+        for sp in session.query(StoreProduct).filter(StoreProduct.product_id == product["id"]):
+            for row in session.query(FieldRow).filter(FieldRow.store_product_id == sp.id, FieldRow.key == "body_html"):
+                row.status, row.value = "ok", "<p>Стар текст.</p>"
+    summary, _ = fill.run(product["id"], ["body_html"], None, "Мария", FakeClient(responder=responder))
+    assert summary["body_html"] == "написано за 2 магазина"
+    assert before  # the stores had texts; now each has a new suggestion
+    for store in STORES:
+        assert (
+            review.get_product(product["id"])["stores"][store]["fields"]["body_html"]["value"] != "<p>Стар текст.</p>"
+        )

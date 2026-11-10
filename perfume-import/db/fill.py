@@ -1,4 +1,5 @@
-"""„Попълни липсващото“: a product's empty or blocked facts filled from a linked page or a short targeted search,
+"""„Попълни с AI“: a product's empty, blocked or flagged (warning) facts filled from a linked page or a short
+targeted search,
 as suggestions for every store (notes in each store's language), with the page or search results as sources.
 Runs as a background job like a new batch (db.newbatch registry: one at a time, progress, lost on a restart).
 """
@@ -48,8 +49,13 @@ def _rows(session: Session, product_id: int) -> dict[str, dict[str, FieldRow]]:
     return _product_rows(session, product_id)
 
 
+def _weak(row: FieldRow) -> bool:
+    """Empty, blocked, or flagged by a rule (a too short description, notes in the wrong script…)."""
+    return _empty(row.value) or row.status in ("blocked", "warning")
+
+
 def missing(product_id: int) -> dict:
-    """The fillable fields that are empty or blocked in any store of the product."""
+    """The fillable fields that are empty, blocked or flagged in any store of the product."""
     with Session(_engine()) as session:
         product = session.get(Product, product_id)
         if product is None:
@@ -61,13 +67,14 @@ def missing(product_id: int) -> dict:
             row = fields.get(key)
             # a field a person accepted as it is (e.g. no published ingredients) is not missing
             decided = row is not None and row.decided_by and row.status == "ok"
-            if row is not None and not decided and (_empty(row.value) or row.status == "blocked"):
+            if row is not None and not decided and _weak(row):
                 keys.append(key)
                 break
     return {"product_id": product_id, "keys": keys, "labels": [LABELS[k] for k in keys]}
 
 
-def start(product_id: int, url: str | None, actor: str | None, client=None) -> str:
+def start(product_id: int, url: str | None, actor: str | None, client=None, only: list[str] | None = None) -> str:
+    """only: these fields (one field's panel); else every missing one."""
     from db.images import ImageError, _public_url
 
     if not api_key() and client is None:
@@ -78,6 +85,8 @@ def start(product_id: int, url: str | None, actor: str | None, client=None) -> s
         except ImageError as exc:
             raise newbatch.NewBatchError(str(exc)) from exc
     keys = missing(product_id)["keys"]
+    if only:
+        keys = [k for k in keys if k in only] or [k for k in only if k in (*FILLABLE, "body_html")]
     if not keys:
         raise newbatch.NewBatchError("На продукта не му липсва нищо, което може да се попълни.")
     with newbatch._lock:
@@ -133,6 +142,7 @@ def run(product_id: int, keys: list[str], url: str | None, actor: str | None, cl
         ml = product.input.get("ml")
 
     texts = "body_html" in keys
+    forced = set(keys) if len(keys) == 1 else set()  # one field asked for by name is written even if it looks fine
     keys = [k for k in keys if k in FILLABLE]
     research_keys = list(dict.fromkeys(FILLABLE[k] for k in keys))
     found, result = find_missing(client, title, ml, research_keys, group, url) if keys else ({}, None)
@@ -157,7 +167,7 @@ def run(product_id: int, keys: list[str], url: str | None, actor: str | None, cl
                 continue
             for store, fields in rows.items():
                 row = fields.get(key)
-                if row is None or not (_empty(row.value) or row.status == "blocked"):
+                if row is None or not (_weak(row) or key in forced):
                     continue
                 note = f"Допълнено от {source}."
                 if key == "ean":  # never written by the AI (CLAUDE.md #6): offered to pick
@@ -170,7 +180,8 @@ def run(product_id: int, keys: list[str], url: str | None, actor: str | None, cl
                     value, value_en = ", ".join(local), ", ".join(fact.value)
                 else:
                     value, value_en = fact.value, None
-                row.previous = row.value
+                if row.previous is None:  # the store's value stays the reference until it goes live
+                    row.previous = row.value
                 row.value, row.value_en = value, value_en
                 row.origin, row.status = "ai_research", "suggested"
                 row.sources = fact.sources
@@ -198,7 +209,7 @@ def run(product_id: int, keys: list[str], url: str | None, actor: str | None, cl
             )
         )
     if texts:
-        summary["body_html"], text_cost = write_texts(product_id, client)
+        summary["body_html"], text_cost = write_texts(product_id, client, force="body_html" in forced)
         cost += text_cost
     return summary, round(cost, 4)
 
@@ -219,9 +230,10 @@ def _facts(fields: dict[str, FieldRow]) -> dict:
     return facts
 
 
-def write_texts(product_id: int, client) -> tuple[str, float]:
+def write_texts(product_id: int, client, force: bool = False) -> tuple[str, float]:
     """English master + every store's text (its own style, or its language's translation) from the current
-    facts; written as suggestions into the stores whose description is empty or blocked."""
+    facts; written as suggestions into the stores whose description is empty, blocked or flagged (every store
+    with force)."""
     from db.stores import accepted_profiles
     from pipeline.generate import generate_texts, store_style, style_key, text_fields
     from pipeline.validate import Context, validate_product
@@ -234,7 +246,8 @@ def write_texts(product_id: int, client) -> tuple[str, float]:
             s
             for s, f in rows.items()
             if s in group.stores
-            and (_empty((f.get("body_html") or FieldRow()).value) or f["body_html"].status == "blocked")
+            and "body_html" in f
+            and (force or (_weak(f["body_html"]) and not (f["body_html"].decided_by and f["body_html"].status == "ok")))
         ]
         facts = _facts(next(iter(rows.values())))
         tester = bool(product.input.get("tester"))
@@ -273,7 +286,8 @@ def _field(row: FieldRow):
 
 
 def _write_field(row: FieldRow, f) -> None:
-    row.previous = row.value
+    if row.previous is None:  # the store's value stays the reference until it goes live
+        row.previous = row.value
     row.value, row.value_en, row.origin, row.status = f.value, f.value_en, f.origin, f.status
     row.message, row.issues, row.alternatives = f.message, f.issues, f.alternatives
     row.decided_by = row.decided_at = None
