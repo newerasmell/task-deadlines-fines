@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from db import newbatch
 from db.models import Batch, Event, FieldRow, Media, Product, StoreProduct
-from db.repo import save_audit
+from db.repo import save_audit_in
 from pipeline.config import load_group
 from pipeline.export import Export
 from pipeline.shopify import catalog_rows, store_client
@@ -71,15 +71,16 @@ def run(store_key: str, actor: str | None, shop=None, job: dict | None = None) -
     stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
     report = run_audit(Export(Path(f"Shopify {stamp}"), columns, rows), group, store_key)
 
-    with Session(_engine()) as session:
+    ids = {r["Handle"]: r["Shopify ID"] for r in rows}
+    # One transaction: the new read, what is carried onto it and the removal of the older reads happen
+    # together, so a restart in the middle (a deploy) leaves the store as it was.
+    with Session(_engine()) as session, session.begin():
         older = list(
             session.execute(
                 select(Batch.id).where(Batch.kind == "audit", Batch.store_key == store_key).order_by(Batch.id)
             ).scalars()
         )
-    batch_id = save_audit(report, actor)
-    ids = {r["Handle"]: r["Shopify ID"] for r in rows}
-    with Session(_engine()) as session, session.begin():
+        batch_id = save_audit_in(session, report, actor)
         new = _by_handle(session, batch_id)
         for handle, (_, sp_id) in new.items():
             if handle in ids:

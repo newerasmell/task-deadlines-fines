@@ -73,3 +73,17 @@ catalog check. What was made here and is not in the store yet (a person's edit o
 picture or text taken from another store) is carried onto the same product (same handle) with the store's value
 as `previous`, so it still shows as waiting to go live; pictures move with it. The Shopify product id is kept
 for the later publishing. A store needs one export upload only to learn its template.
+
+
+## 22. The quick new product
+
+„Нов продукт“ asks only for what a person knows: the product with its volume (and TESTER), the EAN if known and
+the price and the old price in euros, for one product or one per line („Име; EAN; цена; стара цена“, or columns
+pasted from Excel). The free check shows how each line is read, what is missing (the volume; an old price not
+above the price), the expected cost, and when a product with that EAN is already in a store, with a link to
+it instead of creating it again. „Създай“ runs the names mode of a new batch with fast texts in the stores of
+one group with a template (all of them by default), then sets every store's price from the euro price (ECB rate,
+the store's rounding, decisions #19); a price that cannot be set is reported, the product is saved either way.
+When done the product opens. The table/CSV form with deep research stays under „Таблица, CSV или задълбочено
+проучване“. A Shopify read is now one transaction (save, carry over, remove the older read), so a restart in the
+middle leaves the store as it was.

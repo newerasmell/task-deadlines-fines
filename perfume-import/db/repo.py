@@ -44,44 +44,47 @@ def ensure_store(session: Session, group_key: str, store_key: str) -> Store:
 def save_audit(report: AuditReport, author: str | None = None) -> int:
     """Store an audit as a batch (kind 'audit'): one product + store_product per row, every field with provenance."""
     with Session(engine()) as session, session.begin():
-        ensure_store(session, report.group, report.store)
-        batch = Batch(
-            kind="audit",
-            name=f"Одит {report.store} · {report.source}",
-            group_key=report.group,
-            store_key=report.store,
-            author=author,
-        )
-        session.add(batch)
-        session.flush()
+        return save_audit_in(session, report, author)
 
-        products = (
-            session.execute(
-                insert(Product).returning(Product.id),
-                [
-                    {"batch_id": batch.id, "ean": _ean(p) or None, "input": {"handle": p.handle, "title": p.title}}
-                    for p in report.products
-                ],
-            )
-            .scalars()
-            .all()
+
+def save_audit_in(session: Session, report: AuditReport, author: str | None = None) -> int:
+    """save_audit inside a transaction the caller holds (a Shopify read saves, carries over and cleans up at once)."""
+    ensure_store(session, report.group, report.store)
+    batch = Batch(
+        kind="audit",
+        name=f"Одит {report.store} · {report.source}",
+        group_key=report.group,
+        store_key=report.store,
+        author=author,
+    )
+    session.add(batch)
+    session.flush()
+
+    products = (
+        session.execute(
+            insert(Product).returning(Product.id),
+            [
+                {"batch_id": batch.id, "ean": _ean(p) or None, "input": {"handle": p.handle, "title": p.title}}
+                for p in report.products
+            ],
         )
-        store_products = (
-            session.execute(
-                insert(StoreProduct).returning(StoreProduct.id),
-                [{"product_id": pid, "store_key": report.store} for pid in products],
-            )
-            .scalars()
-            .all()
+        .scalars()
+        .all()
+    )
+    store_products = (
+        session.execute(
+            insert(StoreProduct).returning(StoreProduct.id),
+            [{"product_id": pid, "store_key": report.store} for pid in products],
         )
-        rows = [
-            row
-            for sp_id, p in zip(store_products, report.products, strict=True)
-            for row in _field_rows(sp_id, p.fields)
-        ]
-        session.execute(insert(FieldRow), rows)
-        session.add(Event(actor=author, kind="audit_created", batch_id=batch.id, payload=report.summary()))
-        return batch.id
+        .scalars()
+        .all()
+    )
+    rows = [
+        row for sp_id, p in zip(store_products, report.products, strict=True) for row in _field_rows(sp_id, p.fields)
+    ]
+    session.execute(insert(FieldRow), rows)
+    session.add(Event(actor=author, kind="audit_created", batch_id=batch.id, payload=report.summary()))
+    return batch.id
 
 
 def _field_rows(store_product_id: int, fields: dict) -> list[dict]:

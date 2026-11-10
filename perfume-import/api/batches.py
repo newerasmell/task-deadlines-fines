@@ -122,6 +122,30 @@ async def start(
     return {"job_id": job_id}
 
 
+class QuickItem(BaseModel):
+    name: str
+    ean: str = ""
+    price: str = ""
+    compare: str = ""
+
+
+class Quick(BaseModel):
+    items: list[QuickItem]
+    stores: list[str]
+
+
+@router.post("/quick/check")
+def quick_check(body: Quick):
+    return _call(newbatch.quick_check, [i.model_dump() for i in body.items], body.stores)
+
+
+@router.post("/quick/start", status_code=202)
+def quick_start(body: Quick, x_actor: str | None = Header(default=None)):
+    return {
+        "job_id": _call(newbatch.quick_start, [i.model_dump() for i in body.items], body.stores, actor_name(x_actor))
+    }
+
+
 @router.get("/jobs/running")
 def running_job():
     return newbatch.running()

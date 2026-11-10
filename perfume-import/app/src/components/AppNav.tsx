@@ -12,7 +12,7 @@ export function AppNav() {
       <NavLink to="/" end className={link}>
         Продукти
       </NavLink>
-      <NavLink to="/batches/new" className={link}>
+      <NavLink to="/new" className={link}>
         Нов продукт
       </NavLink>
       <NavLink to="/stores" className={link}>

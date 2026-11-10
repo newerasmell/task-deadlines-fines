@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router'
 import { BatchesScreen } from './screens/Batches'
 import { CatalogScreen } from './screens/Catalog'
+import { QuickNewScreen } from './screens/QuickNew'
 import { BatchEntry } from './screens/BatchEntry'
 import { GridScreen } from './screens/Grid'
 import { ProductScreen } from './screens/Product'
@@ -16,6 +17,7 @@ import { AccountScreen } from './screens/Account'
 export const router = createBrowserRouter([
   { path: '/', element: <CatalogScreen /> },
   { path: '/batches', element: <BatchesScreen /> },
+  { path: '/new', element: <QuickNewScreen /> },
   { path: '/audits', element: <BatchesScreen kind="audit" /> },
   { path: '/stores', element: <StoresScreen /> },
   { path: '/account', element: <AccountScreen /> },

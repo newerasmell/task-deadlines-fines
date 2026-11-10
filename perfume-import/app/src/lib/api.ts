@@ -239,6 +239,14 @@ export type CheckedRow = {
   problems: string[]
 }
 
+export type QuickItem = { name: string; ean: string; price: string; compare: string }
+export type QuickRow = CheckedRow & {
+  price_eur: number | null
+  compare_eur: number | null
+  exists: string[] // stores that already have a product with this EAN
+  exists_at?: { batch_id: number; product_id: number }
+}
+
 export type CheckResult = {
   rows: CheckedRow[]
   ready: number
@@ -495,6 +503,9 @@ export const api = {
   checkBatch: (form: FormData) => upload<CheckResult>('/api/batches/check', form),
   startBatch: (form: FormData) => upload<{ job_id: string }>('/api/batches/start', form),
   job: (id: string) => request<Job>(`/api/jobs/${id}`),
+  quickCheck: (items: QuickItem[], stores: string[]) =>
+    post<Omit<CheckResult, 'rows'> & { rows: QuickRow[] }>('/api/quick/check', { items, stores }),
+  quickStart: (items: QuickItem[], stores: string[]) => post<{ job_id: string }>('/api/quick/start', { items, stores }),
   latestJob: () => request<Job | null>('/api/jobs/latest'),
   storeOptions: (batchId: number) => request<StoreOptions>(`/api/batches/${batchId}/stores/options`),
   addStores: (batchId: number, stores: string[], fast: boolean) =>

@@ -116,8 +116,10 @@ def start(
     client=None,
     mode: str = "table",
     fast: bool = False,
+    after=None,
 ) -> str:
-    """Run the batch in a background thread; returns the job id. Rows with problems are left out."""
+    """Run the batch in a background thread; returns the job id. Rows with problems are left out.
+    after(batch_id): runs once the batch is saved (the quick new product sets its prices there)."""
     if not api_key() and client is None:
         raise NewBatchError(
             "Няма ключ за Claude. Добави ANTHROPIC_API_KEY в Render → perfume-import → Environment и опитай отново."
@@ -172,6 +174,8 @@ def start(
             progress("saving", 0, 1)
             batch_id = save_batch(result, author=actor)
             _jobs[job_id].update({"batch_id": batch_id, "cost_usd": result.cost_usd})
+            if after and (note := after(batch_id)):
+                _jobs[job_id]["result"] = note
         except Exception as exc:  # shown in the app; nothing is saved half-way (save_batch is one transaction)
             _jobs[job_id]["error"] = f"{type(exc).__name__}: {exc}"
         finally:
@@ -197,3 +201,106 @@ def latest() -> dict | None:
     if current:
         return current
     return dict(list(_jobs.values())[-1]) if _jobs else None
+
+
+# ---- the quick new product (docs/decisions.md #22) ---------------------------------------------------------
+
+
+def _quick_rows(items: list[dict]) -> tuple[str, dict[int, tuple[float | None, float | None]]]:
+    """One line per product for the names reader („Dior Sauvage EDT 100 ml TESTER 3348901250146“), and the
+    euro prices by line."""
+    lines, prices = [], {}
+    for item in items:
+        name = " ".join(str(item.get("name") or "").split())
+        if not name:
+            continue
+        lines.append(f"{name} {str(item.get('ean') or '').strip()}".strip())
+        prices[len(lines)] = (_euros(item.get("price")), _euros(item.get("compare")))
+    if not lines:
+        raise NewBatchError("Напиши поне един продукт: марка, име, концентрация и обем.")
+    return "\n".join(lines), prices
+
+
+def _euros(value) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        amount = float(str(value).replace(" ", "").replace(",", "."))
+    except ValueError as exc:
+        raise NewBatchError(f"„{value}“ не е цена; напиши я с цифри, напр. 69,00.") from exc
+    if amount <= 0:
+        raise NewBatchError("Цената трябва да е над нула.")
+    return amount
+
+
+def _group_of(stores: list[str]) -> str:
+    from db.stores import list_stores
+
+    known = {s["key"]: s["group"] for s in list_stores()}
+    groups = {known.get(s) for s in stores}
+    if not stores or None in groups:
+        raise NewBatchError("Избери поне един магазин.")
+    if len(groups) > 1:
+        raise NewBatchError("Избери магазини от една група; за другата група създай продукта отделно.")
+    return groups.pop()
+
+
+def quick_check(items: list[dict], stores: list[str]) -> dict:
+    """Free: each product as it will be read (volume, tester, EAN), what is missing, the expected cost, and the
+    stores where a product with this EAN already is."""
+    from db.catalog import catalog
+
+    text, prices = _quick_rows(items)
+    result = check(text, _group_of(stores), stores, mode="names", fast=True)
+    for row in result["rows"]:
+        price, compare = prices.get(row["line"], (None, None))
+        row["price_eur"], row["compare_eur"] = price, compare
+        row["exists"] = []
+        if row["ean"]:
+            found = [e for e in catalog(q=row["ean"], limit=5)["items"] if e["ean"] == row["ean"]]
+            if found:
+                row["exists"] = sorted(found[0]["stores"])
+                row["exists_at"] = {"batch_id": found[0]["batch_id"], "product_id": found[0]["product_id"]}
+        if compare is not None and price is not None and compare <= price:
+            row["problems"].append("Старата цена трябва да е по-висока от цената.")
+    return result
+
+
+def quick_start(items: list[dict], stores: list[str], actor: str | None, client=None) -> str:
+    """Research, texts per store, pictures and fields like a new batch (fast texts), then each product gets its
+    prices in every store's currency from the euro price (ECB rate, the store's rounding)."""
+    text, prices = _quick_rows(items)
+    for price, compare in prices.values():
+        if compare is not None and price is not None and compare <= price:
+            raise NewBatchError("Старата цена трябва да е по-висока от цената.")
+
+    def set_prices(batch_id: int) -> dict | None:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from db import review
+        from db.models import Product
+
+        with Session(review._engine()) as session:
+            products = session.execute(select(Product.id, Product.input).where(Product.batch_id == batch_id)).all()
+        problems = []
+        for product_id, row in products:
+            price, compare = prices.get(row.get("line"), (None, None))
+            if price is None:
+                continue
+            try:  # the product is saved either way; a price that could not be set is entered on its screen
+                plan = review.price_plan(product_id, price, compare)["stores"]
+                review.set_prices(
+                    product_id,
+                    {k: {"price": v["price"], "compare_at": v["compare_at"]} for k, v in plan.items() if "price" in v},
+                    actor,
+                )
+            except Exception as exc:
+                problems.append(f"{row.get('name')}: {exc}")
+        return {"Цени": "; ".join(problems)} if problems else None
+
+    name = f"{date.today().isoformat()} · {len(prices)} {'продукт' if len(prices) == 1 else 'продукта'}"
+    return start(
+        text, _group_of(stores), stores, name=name, actor=actor, client=client, mode="names", fast=True,
+        after=set_prices,
+    )  # fmt: skip

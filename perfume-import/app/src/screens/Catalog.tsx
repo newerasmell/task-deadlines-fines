@@ -96,7 +96,7 @@ export function CatalogScreen() {
           </Link>
           <SyncButton sync={sync} />
           <Button variant="primary" asChild>
-            <Link to="/batches/new">Нов продукт</Link>
+            <Link to="/new">Нов продукт</Link>
           </Button>
         </div>
 
@@ -132,7 +132,7 @@ export function CatalogScreen() {
         ) : !catalog.data.total ? (
           <Empty>
             Още няма продукти. Свържи магазин и качи каталога му в <Link to="/stores">Магазини</Link> или създай{' '}
-            <Link to="/batches/new">нов продукт</Link>.
+            <Link to="/new">нов продукт</Link>.
           </Empty>
         ) : !catalog.data.items.length ? (
           <Empty>
