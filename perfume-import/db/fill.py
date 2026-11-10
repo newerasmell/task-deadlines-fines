@@ -4,6 +4,7 @@ as suggestions for every store (notes in each store's language), with the page o
 Runs as a background job like a new batch (db.newbatch registry: one at a time, progress, lost on a restart).
 """
 
+import re
 import threading
 import time
 import uuid
@@ -214,18 +215,32 @@ def run(product_id: int, keys: list[str], url: str | None, actor: str | None, cl
 
 
 def _facts(fields: dict[str, FieldRow]) -> dict:
-    """The facts a description is written from, as they are now in the store (decisions included)."""
+    """The facts a description is written from, as they are now in the store (decisions included). A store's
+    catalog product has no name or concentration fields: they are read from its title (decisions #24); notes
+    without an English reference are given in the store's language and the writer takes them as they are."""
+    from pipeline.titles import ABBREVIATIONS, parse_title
+
     facts = {}
     for key, fact in (("vendor", "brand"), ("name", "name"), ("concentration", "concentration")):
         if key in fields and not _empty(fields[key].value) and fields[key].status != "blocked":
             facts[fact] = fields[key].value
+    title = fields.get("title")
+    if title is not None and not _empty(title.value) and not facts.get("name"):
+        parsed = parse_title(str(title.value), str(facts.get("brand") or ""))
+        if parsed.name:
+            facts["name"] = parsed.name
+        if parsed.concentration and not facts.get("concentration"):
+            facts["concentration"] = ABBREVIATIONS.get(parsed.concentration.upper(), parsed.concentration)
+        if parsed.brand and not facts.get("brand"):
+            facts["brand"] = parsed.brand
     for key in ("gender", "fragrance_family"):
         if key in fields and not _empty(fields[key].value):
             facts[key] = fields[key].value
     for key in NOTES:
-        english = fields[key].value_en if key in fields else None
-        if english:
-            facts[key] = [t.strip() for t in str(english).split(",") if t.strip()]
+        row = fields.get(key)
+        notes = (row.value_en or row.value) if row is not None else None
+        if notes and row.status != "blocked":
+            facts[key] = [t.strip() for t in str(notes).split(",") if t.strip()]
     return facts
 
 
@@ -248,8 +263,10 @@ def write_texts(product_id: int, client, force: bool = False) -> tuple[str, floa
             and "body_html" in f
             and (force or (_weak(f["body_html"]) and not (f["body_html"].decided_by and f["body_html"].status == "ok")))
         ]
-        facts = _facts(next(iter(rows.values())))
-        tester = bool(product.input.get("tester"))
+        first = next(iter(rows.values()))
+        facts = _facts(first)
+        title = str((first.get("title") or FieldRow()).value or "")
+        tester = bool(product.input.get("tester")) or bool(re.search(r"\btester\b", title, re.IGNORECASE))
     if not targets:
         return "вече има описания", 0.0
     if not facts.get("name"):

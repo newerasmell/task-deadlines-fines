@@ -161,3 +161,18 @@ def test_one_field_by_name_is_rewritten_even_when_it_looks_fine(product):
         assert (
             review.get_product(product["id"])["stores"][store]["fields"]["body_html"]["value"] != "<p>Стар текст.</p>"
         )
+
+
+def test_a_store_catalog_product_gets_its_name_from_the_title():
+    """A product read from a store has a title but no name or concentration field."""
+    from db.fill import _facts
+    from db.models import FieldRow
+
+    fields = {
+        "title": FieldRow(key="title", value="Tom Ford Fucking Fabulous EDP 100 ml", status="ok"),
+        "vendor": FieldRow(key="vendor", value="Tom Ford", status="ok"),
+        "top_note": FieldRow(key="top_note", value="λεβάντα, λουίζα", value_en=None, status="ok"),
+    }
+    facts = _facts(fields)
+    assert facts["name"] == "Fucking Fabulous" and facts["concentration"] == "Eau de Parfum"
+    assert facts["brand"] == "Tom Ford" and facts["top_note"] == ["λεβάντα", "λουίζα"]

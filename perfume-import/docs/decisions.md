@@ -96,3 +96,11 @@ script…), not only empty or blocked ones, and works on a store's catalog produ
 panel offers it for that one field: facts from a link or a short search, a description written again from the
 product's facts in each store's template (≈ $0.01 per store), even when the field looks fine. On a live product
 the store's value stays the reference (`previous`), so the result shows as a change waiting to go live.
+
+
+## 24. A store's own products: name and concentration from the title
+
+A product read from a store (export or Shopify) has a title and a vendor but no name or concentration field, so
+writing its description again said „липсва име на аромата“. The name, the concentration (EDP → Eau de Parfum) and
+the tester marker are now read from the title for the description; notes without an English reference are given
+in the store's language.
