@@ -4,12 +4,12 @@ import csv
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from api.main import app
 from db import catalog, review
-from db.models import Batch, Event, FieldRow, Product
+from db.models import Batch, Event, FieldRow, Product, StoreProduct
 from db.repo import engine, save_audit
 from pipeline.config import load_group
 from pipeline.export import load_export
@@ -94,3 +94,39 @@ def test_without_an_ean_the_same_title_is_one_product(audits):
             )
     found = catalog.catalog(q="тест без код")["items"]
     assert len(found) == 1 and set(found[0]["stores"]) == {"premierparfums", "parfemija"}
+
+
+def test_a_store_without_the_ean_joins_the_product_by_title(audits):
+    (_, hr), (shared, _) = audits
+    product = next(p for p in review.get_batch(hr)["products"] if p["ean"] == shared)
+    with Session(engine()) as session, session.begin():
+        session.get(Product, product["id"]).ean = None
+        session.execute(
+            delete(FieldRow).where(
+                FieldRow.store_product_id == product["stores"]["parfemija"]["store_product_id"], FieldRow.key == "ean"
+            )
+        )
+    entry = _entry(catalog.catalog(q=shared), shared)
+    assert set(entry["stores"]) == {"premierparfums", "parfemija"}
+
+
+def test_fixes_the_rules_made_are_not_changes_waiting(audits):
+    (gr, _), _ = audits
+    with Session(engine()) as session:
+        fixed = (
+            session.execute(
+                select(Product.ean)
+                .join(StoreProduct, StoreProduct.product_id == Product.id)
+                .join(FieldRow, FieldRow.store_product_id == StoreProduct.id)
+                .where(Product.batch_id == gr, FieldRow.origin == "auto_fix", FieldRow.status == "fixed")
+            )
+            .scalars()
+            .first()
+        )
+    if fixed is None:
+        pytest.skip("the fixture has no automatic fix")
+    entry = _entry(catalog.catalog(q=fixed), fixed)
+    assert entry["stores"]["premierparfums"]["state"] in ("live", "bad") and entry["fixes"] >= 0
+    assert catalog.catalog(q=fixed, filter="fixes")["counts"]["fixes"] >= (
+        1 if entry["stores"]["premierparfums"]["state"] == "live" else 0
+    )

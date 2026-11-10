@@ -19,6 +19,7 @@ const FILTERS: { key: CatalogFilter; label: string }[] = [
   { key: 'todo', label: 'Има промени за качване' },
   { key: 'bad', label: 'Нужна е намеса' },
   { key: 'missing', label: 'Липсва в някой магазин' },
+  { key: 'fixes', label: 'Автоматични поправки' },
 ]
 const PAGE = 100
 const COLUMNS = 'grid-cols-[44px_minmax(0,1fr)_120px_auto_170px]'
@@ -30,6 +31,11 @@ function todo(entry: CatalogEntry): { text: string; tone: string } {
   if (bad) return { text: `Нужна е намеса в ${bad === 1 ? '1 магазин' : `${bad} магазина`}`, tone: 'text-blocked-text' }
   if (waiting)
     return { text: `Качи в ${waiting === 1 ? '1 магазин' : `${waiting} магазина`}`, tone: 'text-warning-text' }
+  if (entry.fixes)
+    return {
+      text: `Автоматични поправки в ${entry.fixes === 1 ? '1 магазин' : `${entry.fixes} магазина`}`,
+      tone: 'text-fixed-text',
+    }
   return { text: 'Всичко е качено', tone: 'text-ok' }
 }
 

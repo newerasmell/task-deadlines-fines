@@ -340,7 +340,7 @@ export type StoreOptions = {
 }
 
 export type CatalogState = 'live' | 'diff' | 'ready' | 'bad' | 'none'
-export type CatalogFilter = 'all' | 'todo' | 'bad' | 'missing'
+export type CatalogFilter = 'all' | 'todo' | 'bad' | 'missing' | 'fixes'
 export type CatalogStoreState = { state: CatalogState; product_id: number; batch_id: number; kind: 'new' | 'audit' }
 export type CatalogEntry = {
   key: string
@@ -351,6 +351,7 @@ export type CatalogEntry = {
   batch_id: number
   created_at: string
   missing: number
+  fixes: number // stores where the store's rules fixed something that is not sent yet
   stores: Record<string, CatalogStoreState>
 }
 export type CatalogStore = { key: string; label: string; country: string | null; language: string | null }

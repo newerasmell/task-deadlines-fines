@@ -16,6 +16,7 @@ FILTERS = {
     "todo": lambda e: any(s["state"] in ("diff", "ready") for s in e["stores"].values()),
     "bad": lambda e: any(s["state"] == "bad" for s in e["stores"].values()),
     "missing": lambda e: e["missing"] > 0,
+    "fixes": lambda e: e["fixes"] > 0,
 }
 
 
@@ -81,19 +82,24 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
     ):
         values.setdefault(sp_id, {})[key] = value
     # Only the columns the comparison needs, and only rows that differ at all (db.live._changes decides).
-    changed = {
-        sp_id
-        for sp_id, value, previous in session.execute(
-            select(FieldRow.store_product_id, FieldRow.value, FieldRow.previous).where(
-                FieldRow.store_product_id.in_(sp_ids),
-                FieldRow.previous.is_not(None),
-                FieldRow.key.in_(list(LABELS)),
-                FieldRow.status != "blocked",
-                FieldRow.value.is_distinct_from(FieldRow.previous),
-            )
+    # A change a person or the AI made waits to go live (diff); a fix the store's rules made by themselves is
+    # counted apart, so the list is not all orange after every catalog check.
+    changed: set[int] = set()
+    fixes: set[int] = set()
+    for sp_id, value, previous, origin, decided_by in session.execute(
+        select(
+            FieldRow.store_product_id, FieldRow.value, FieldRow.previous, FieldRow.origin, FieldRow.decided_by
+        ).where(
+            FieldRow.store_product_id.in_(sp_ids),
+            FieldRow.previous.is_not(None),
+            FieldRow.key.in_(list(LABELS)),
+            FieldRow.status != "blocked",
+            FieldRow.value.is_distinct_from(FieldRow.previous),
         )
-        if _text(value) != _text(previous)
-    }
+    ):
+        # previous is JSON null (not SQL NULL) on fields the store had and nothing changed: not a change.
+        if previous is not None and _text(value) != _text(previous):
+            (fixes if origin == "auto_fix" and not decided_by else changed).add(sp_id)
 
     entries: dict[str, dict] = {}
     order: list[str] = []
@@ -103,12 +109,16 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
         ean = _text(p.ean) or _text(own.get("ean"))
         title = _text(own.get("title")) or _text(p.input.get("name")) or _text(p.input.get("title"))
         # Without an EAN the same title in two stores is taken as the same product; else it stands alone.
-        key = ean or (f"t:{' '.join(title.casefold().split())}" if title else f"p{p.id}")
+        key = ean or (f"t:{_norm(title)}" if title else f"p{p.id}")
         if not ean and sp.store_key in entries.get(key, {}).get("stores", {}):
             key = f"p{p.id}"
+        entry_fix = False
         if p.kind == "audit":
             if sp.id in changed and sp.upload_status != "uploaded":
                 state = "diff"
+            elif sp.id in fixes and sp.upload_status != "uploaded" and not blocked.get(sp.id):
+                state = "live"
+                entry_fix = True
             else:
                 state = "bad" if blocked.get(sp.id) else "live"
         elif sp.upload_status == "uploaded":
@@ -126,7 +136,11 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
                 "product_id": p.id,
                 "batch_id": p.batch_id,
                 "created_at": p.created_at.isoformat(),
+                "fixes": 0,
+                "_titles": set(),
             }
+        if title:
+            entry["_titles"].add(_norm(title))
         image = _text(own.get("image"))
         # The newest new-products batch is the place to work on a product: every store side by side.
         if p.kind == "new":
@@ -146,13 +160,40 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
                 "product_id": p.id,
                 "batch_id": p.batch_id,
                 "kind": p.kind,
+                "fixes": entry_fix,
             }
+    _merge_by_title(entries)
     out = []
     for entry in entries.values():
+        entry.pop("_titles", None)
+        entry["fixes"] = sum(1 for s in entry["stores"].values() if s.pop("fixes", False))
         entry["missing"] = sum(1 for k in order if k not in entry["stores"])
         out.append(entry)
     out.sort(key=lambda e: (e["title"] or "").casefold())
     return out, order
+
+
+def _norm(title: str) -> str:
+    return " ".join(title.casefold().split())
+
+
+def _merge_by_title(entries: dict[str, dict]) -> None:
+    """A store that keeps no EAN (or another code) still lists the product under the same title: such a row
+    joins the product with an EAN and that title, when the store is not in it yet."""
+    by_title: dict[str, dict] = {}
+    for entry in entries.values():
+        if entry["ean"]:
+            for t in entry["_titles"]:
+                by_title.setdefault(t, entry)
+    for key in [k for k, e in entries.items() if not e["ean"]]:
+        entry = entries[key]
+        target = next((by_title[t] for t in entry["_titles"] if t in by_title), None)
+        if target is None or set(entry["stores"]) & set(target["stores"]):
+            continue
+        target["stores"].update(entry["stores"])
+        target["_titles"] |= entry["_titles"]
+        target["image"] = target["image"] or entry["image"]
+        del entries[key]
 
 
 def _matches(entry: dict, words: list[str]) -> bool:
