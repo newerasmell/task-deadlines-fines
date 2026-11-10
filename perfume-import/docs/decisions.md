@@ -116,3 +116,14 @@ the same button; what waits on a person (a suggestion to accept, a missing field
 to that copy. „Одобри продукта“ and the upload screen leave the product's path. An AI suggestion goes live only
 once accepted (CLAUDE.md #8), also on live products. After a live push the pushed values are the store's values
 (`previous`), so a later edit shows again as waiting.
+
+
+## 26. A missing store is made from the live copies, not researched again
+
+When a product is already live in other stores, making it for a store that lacks it („Качи в магазините“ →
+„Няма го в магазина: създай го“) reads those copies instead of researching the web: one small call turns their
+facts (each in its store's language) into the canonical English facts with each store page as a source
+(`pipeline.unify`), saved as the product's research. A fact two stores state alike is `ok` (two independent
+sources, SPEC §3), a fact from one store is a suggestion, nothing absent from every copy is added. The picture is
+taken from a live copy and composed for the store; the text is written by the store's template; the price comes
+from the euro price of a live copy. A product live nowhere is still researched as a new one.

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from db import catalog, live, review
 from db.models import FieldRow, StoreProduct
+from pipeline.ai import AIError
 
 
 def _engine():
@@ -115,7 +116,7 @@ def _euro_price(product_id: int) -> tuple[str, str]:
     return "", ""
 
 
-def run(product_id: int, stores: list[str], status: str, actor: str | None) -> dict:
+def run(product_id: int, stores: list[str], status: str, actor: str | None, client=None) -> dict:
     """Send the product to these stores. Live updates are done when this returns; new products are created by a
     background upload (its state on the product screen). Returns what happened per store and the new plan."""
     current = {s["store"]: s for s in plan(product_id)["stores"]}
@@ -150,19 +151,53 @@ def run(product_id: int, stores: list[str], status: str, actor: str | None) -> d
             for key in keys:
                 done[key] = str(exc)
     if missing:
-        # Made like a quick new product: research by name and EAN (reused when known), each store's text by its
-        # template, the price from the euro price of a store that has the product. Reviewed, then sent from here.
+        # Made like a quick new product, its facts from the live copies (no new research when there are any),
+        # each store's text by its template, the price from the euro price of a store that has the product.
         from db import newbatch
 
         whole = plan(product_id)
         price, compare = _euro_price(product_id)
         item = {"name": whole["title"], "ean": whole["ean"] or "", "price": price, "compare": compare}
         try:
-            job_id = newbatch.quick_start([item], missing, actor)
+            research = _from_live(product_id, client)
+            job_id = newbatch.quick_start([item], missing, actor, client=client, research=research)
             for store in missing:
                 done[store] = "създава се (около минута); после го прегледай и го качи оттук"
             return {"done": done, "plan": plan(product_id), "job_id": job_id}
-        except newbatch.NewBatchError as exc:
+        except (newbatch.NewBatchError, AIError) as exc:
             for store in missing:
                 done[store] = str(exc)
     return {"done": done, "plan": plan(product_id)}
+
+
+COPY_KEYS = ("title", "vendor", "gender", "fragrance_family", "top_note", "middle_note", "base_note", "ingredients")
+
+
+def _from_live(product_id: int, client=None) -> dict | None:
+    """The product's facts from its live copies (pipeline.unify), as saved research; None without live copies."""
+    from db.models import Batch, Product
+    from pipeline.ai import default_client
+    from pipeline.config import load_group
+    from pipeline.unify import unify_facts
+
+    entry = catalog.entry_for(product_id)
+    copies, group = [], None
+    with Session(_engine()) as session:
+        for store, at in entry["stores"].items():
+            if at["kind"] != "audit" or at["state"] == "bad":
+                continue
+            group = group or load_group(session.get(Batch, session.get(Product, at["product_id"]).batch_id).group_key)
+            fields = review._product_rows(session, at["product_id"]).get(store, {})
+            cfg = group.stores.get(store)
+            handle = str((fields.get("handle") or FieldRow()).value or "")
+            shop = (cfg.shop if cfg and cfg.shop not in (None, "CHANGE_ME") else None) or f"{store}.shop"
+            copy = {"url": f"https://{shop}/products/{handle}", "language": cfg.language if cfg else None}
+            for key in (*COPY_KEYS, "image"):
+                row = fields.get(key)
+                if row is not None and row.value not in (None, "") and row.status != "blocked":
+                    copy[key] = row.value
+            copies.append(copy)
+    if not copies:
+        return None
+    raw, _ = unify_facts(client or default_client(), copies, group)
+    return raw

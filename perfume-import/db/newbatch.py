@@ -127,6 +127,7 @@ def start(
     mode: str = "table",
     fast: bool = False,
     after=None,
+    research: dict | None = None,
 ) -> str:
     """Run the batch in a background thread; returns the job id. Rows with problems are left out.
     after(batch_id): runs once the batch is saved (the quick new product sets its prices there)."""
@@ -173,7 +174,7 @@ def start(
                 group,
                 stores,
                 batch_name,
-                saved_research=find_research,
+                saved_research=(lambda ean: research) if research else find_research,
                 default_tier=tier,
                 deep_eans=set(deep or []),
                 profiles=accepted_profiles(stores),
@@ -275,7 +276,9 @@ def quick_check(items: list[dict], stores: list[str]) -> dict:
     return result
 
 
-def quick_start(items: list[dict], stores: list[str], actor: str | None, client=None) -> str:
+def quick_start(
+    items: list[dict], stores: list[str], actor: str | None, client=None, research: dict | None = None
+) -> str:
     """Research, texts per store, pictures and fields like a new batch (fast texts), then each product gets its
     prices in every store's currency from the euro price (ECB rate, the store's rounding)."""
     text, prices = _quick_rows(items)
@@ -311,5 +314,5 @@ def quick_start(items: list[dict], stores: list[str], actor: str | None, client=
     name = f"{date.today().isoformat()} · {len(prices)} {'продукт' if len(prices) == 1 else 'продукта'}"
     return start(
         text, _group_of(stores), stores, name=name, actor=actor, client=client, mode="names", fast=True,
-        after=set_prices,
+        after=set_prices, research=research,
     )  # fmt: skip

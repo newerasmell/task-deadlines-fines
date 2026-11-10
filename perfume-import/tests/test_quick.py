@@ -67,3 +67,48 @@ def test_the_run_prices_every_store_from_the_euro_price(monkeypatch, fixed_rates
         with Session(engine()) as session, session.begin():
             session.execute(delete(Event).where(Event.batch_id == job["batch_id"]))
             session.execute(delete(Batch).where(Batch.id == job["batch_id"]))
+
+
+def test_facts_two_live_stores_agree_on_are_not_asked_again(monkeypatch, fixed_rates):
+    """Made from live copies (pipeline.unify): no web research, and a fact two stores state is ok."""
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    gr, hr = "https://gr.shop/products/x", "https://hr.shop/products/x"
+    both = [{"url": gr, "says": "a", "supports": True}, {"url": hr, "says": "a", "supports": True}]
+    fact = lambda value, sources=both: {"value": value, "sources": sources}  # noqa: E731
+    research = {
+        "brand": fact("Dior"),
+        "name": fact("Sauvage"),
+        "concentration": fact("Eau de Toilette"),
+        "gender": fact("Men's Perfume"),
+        "fragrance_family": fact("Woody", both[:1]),
+        "top_note": fact(["bergamot"]),
+        "middle_note": fact(["pepper"]),
+        "base_note": fact(["ambroxan"]),
+        "ingredients": fact("", []),
+        "images": [{"url": "https://cdn.shopify.com/s/sauvage.png", "width": 0, "height": 0, "source": "live store"}],
+        "mismatch": "none",
+        "problem": "",
+        "ean_for_volume": fact("", []),
+        "_sources_seen": [gr, hr],
+        "_tier": "economy",
+    }
+    client = FakeClient(responder=responder)
+    job_id = newbatch.quick_start(
+        [{"name": "Dior Sauvage EDT 100 ml", "ean": "3348901250146", "price": "69"}],
+        STORES,
+        "Мария",
+        client=client,
+        research=research,
+    )
+    worker = next(t for t in threading.enumerate() if t.name == f"new-batch-{job_id}")
+    worker.join(timeout=120)
+    job = newbatch.job(job_id)
+    try:
+        assert job["error"] is None, job
+        assert not [c for c in client.calls if c.get("tools")]  # no web research
+        fields = review.get_batch(job["batch_id"])["products"][0]["stores"][STORES[0]]["fields"]
+        assert fields["gender"]["status"] == "ok" and fields["fragrance_family"]["status"] == "suggested"
+    finally:
+        with Session(engine()) as session, session.begin():
+            session.execute(delete(Event).where(Event.batch_id == job["batch_id"]))
+            session.execute(delete(Batch).where(Batch.id == job["batch_id"]))
