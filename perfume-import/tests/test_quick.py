@@ -112,3 +112,32 @@ def test_facts_two_live_stores_agree_on_are_not_asked_again(monkeypatch, fixed_r
         with Session(engine()) as session, session.begin():
             session.execute(delete(Event).where(Event.batch_id == job["batch_id"]))
             session.execute(delete(Batch).where(Batch.id == job["batch_id"]))
+
+
+def test_with_own_pictures_none_is_searched(monkeypatch, fixed_rates):
+    """„Снимките ги качвам аз“: no picture is searched or downloaded; the field asks for one."""
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    fetched = []
+    monkeypatch.setattr("pipeline.images.fetch", lambda url: fetched.append(url) or b"")
+    client = FakeClient(responder=responder)
+    job_id = newbatch.quick_start(
+        [{"name": "Dior Sauvage EDT 100 ml", "ean": "3348901250146", "price": "69"}],
+        STORES,
+        "Мария",
+        client=client,
+        own_images=True,
+    )
+    worker = next(t for t in threading.enumerate() if t.name == f"new-batch-{job_id}")
+    worker.join(timeout=120)
+    job = newbatch.job(job_id)
+    try:
+        assert job["error"] is None, job
+        assert fetched == []
+        assert not [c for c in client.calls if str(c.get("system", "")).startswith("You find packshot")]
+        product = review.get_batch(job["batch_id"])["products"][0]
+        image = product["stores"][STORES[0]]["fields"]["image"]
+        assert image["status"] == "blocked" and "качваш ти" in image["message"] and not product["media"]
+    finally:
+        with Session(engine()) as session, session.begin():
+            session.execute(delete(Event).where(Event.batch_id == job["batch_id"]))
+            session.execute(delete(Batch).where(Batch.id == job["batch_id"]))

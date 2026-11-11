@@ -44,6 +44,7 @@ class ProductResult:
     original: Checked | None = None  # the picture the finished images were made from
     composed: dict[str, Composed] = field(default_factory=dict)  # store -> finished image (shared per layout)
     compose_error: str | None = None
+    own_images: bool = False  # the team uploads the pictures: none is searched, downloaded or composed
 
     @property
     def cost_usd(self) -> float:
@@ -163,7 +164,17 @@ def store_fields(result: ProductResult, group: Group, store_key: str, profile: d
                 fields[key] = copy.deepcopy(research.fields[key])
         gender = research.value("gender")
         fields["google.gender"] = Field("google.gender", google_gender(gender, group), "template", "ok")
-        fields["image"] = image_field(result.images, group.spec.rules.image_min_height)
+        if result.own_images:
+            fields["image"] = Field(
+                "image",
+                "",
+                "input",
+                "blocked",
+                message="Снимката я качваш ти: отвори „Снимка“ и качи файл или постави линк (сглобява се по "
+                "размерите и фона на всеки магазин).",
+            )
+        else:
+            fields["image"] = image_field(result.images, group.spec.rules.image_min_height)
         if "image_search" in result.skipped and fields["image"].status == "blocked":
             fields["image"].message += " Търсене на снимка: " + result.skipped["image_search"]
         image_composed(fields["image"], result.composed.get(store_key), result.compose_error)
@@ -275,11 +286,13 @@ def research_step(
     tier: Tier | None = None,
     max_cost: float | None = None,
     texts: int = 1,
+    own_images: bool = False,
 ) -> ProductResult:
     """texts: how many texts this product still needs (English + translations); their expected cost is kept
     in reserve, so the optional image lookup never eats the budget for the description."""
     tier = tier or TIERS[DEFAULT_TIER]
     result = ProductResult(row=row, tier=tier, max_cost=max_cost if max_cost is not None else tier.max_cost)
+    result.own_images = own_images
     raw = None if refresh or not row.ean else saved_research(row.ean)
     if raw and not good_enough(raw, tier):
         raw = None  # saved economy research does not satisfy a deep request
@@ -289,7 +302,7 @@ def research_step(
         result.research = research_product(client, row, group, tier, budget=result.ceiling)
         result.research.raw["_tier"] = tier.name
         result.usage["research"] = result.research.usage.to_dict()
-    if not result.research.error:
+    if not result.research.error and not own_images:
         result.images = check_all(result.research.images, fetch_image)
         min_height = group.spec.rules.image_min_height
         if (
@@ -350,6 +363,7 @@ def run_batch(
     deep_eans: set[str] = frozenset(),
     profiles: dict[str, dict] | None = None,
     progress: Callable[[str, int, int], None] | None = None,
+    own_images: bool = False,
 ) -> BatchResult:
     """Research every product (parallel, interactive: it needs web search), then all texts at once
     (English masters in one round, every product x language in the next). Each product has a tier
@@ -363,7 +377,9 @@ def run_batch(
     lock = threading.Lock()
 
     def researched(rt):
-        result = research_step(client, rt[0], group, saved_research, refresh, fetch_image, rt[1], max_cost, n_texts)
+        result = research_step(
+            client, rt[0], group, saved_research, refresh, fetch_image, rt[1], max_cost, n_texts, own_images
+        )
         with lock:
             done[0] += 1
             report("research", done[0], len(rows))

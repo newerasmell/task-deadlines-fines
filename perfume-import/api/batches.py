@@ -132,6 +132,7 @@ class QuickItem(BaseModel):
 class Quick(BaseModel):
     items: list[QuickItem]
     stores: list[str]
+    own_images: bool = False  # the team uploads the pictures: none is searched
 
 
 @router.post("/quick/check")
@@ -141,9 +142,9 @@ def quick_check(body: Quick):
 
 @router.post("/quick/start", status_code=202)
 def quick_start(body: Quick, x_actor: str | None = Header(default=None)):
-    return {
-        "job_id": _call(newbatch.quick_start, [i.model_dump() for i in body.items], body.stores, actor_name(x_actor))
-    }
+    items = [i.model_dump() for i in body.items]
+    actor = actor_name(x_actor)
+    return {"job_id": _call(newbatch.quick_start, items, body.stores, actor, own_images=body.own_images)}
 
 
 @router.get("/jobs/running")

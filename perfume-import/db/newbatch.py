@@ -128,6 +128,7 @@ def start(
     fast: bool = False,
     after=None,
     research: dict | None = None,
+    own_images: bool = False,
 ) -> str:
     """Run the batch in a background thread; returns the job id. Rows with problems are left out.
     after(batch_id): runs once the batch is saved (the quick new product sets its prices there)."""
@@ -180,6 +181,7 @@ def start(
                 profiles=accepted_profiles(stores),
                 progress=progress,
                 batch_texts=False if fast else None,
+                own_images=own_images,
             )
             progress("saving", 0, 1)
             batch_id = save_batch(result, author=actor)
@@ -277,7 +279,12 @@ def quick_check(items: list[dict], stores: list[str]) -> dict:
 
 
 def quick_start(
-    items: list[dict], stores: list[str], actor: str | None, client=None, research: dict | None = None
+    items: list[dict],
+    stores: list[str],
+    actor: str | None,
+    client=None,
+    research: dict | None = None,
+    own_images: bool = False,
 ) -> str:
     """Research, texts per store, pictures and fields like a new batch (fast texts), then each product gets its
     prices in every store's currency from the euro price (ECB rate, the store's rounding)."""
@@ -314,5 +321,5 @@ def quick_start(
     name = f"{date.today().isoformat()} · {len(prices)} {'продукт' if len(prices) == 1 else 'продукта'}"
     return start(
         text, _group_of(stores), stores, name=name, actor=actor, client=client, mode="names", fast=True,
-        after=set_prices, research=research,
+        after=set_prices, research=research, own_images=own_images,
     )  # fmt: skip

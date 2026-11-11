@@ -157,3 +157,11 @@ without HTML tags, entities and extra spacing, numbers by value (db.live.same), 
 Several new products at once restarted the server (512 MB): every picture candidate of every product kept its
 bytes until the batch ended, and ten products were composed at a time. Now only the picture that will be used
 keeps its bytes, pictures are composed two at a time, and the automatic Shopify read waits while an AI job runs.
+
+
+## 31. „Снимките ще ги кача сам“
+
+A new product can be made without pictures: no picture is searched, downloaded or composed (less cost, time and
+memory). The picture field then asks for one (blocked until it is there, so nothing goes live without a picture);
+uploading a file or a link in it composes the picture for every store's layout as before. The choice is
+remembered in the browser.

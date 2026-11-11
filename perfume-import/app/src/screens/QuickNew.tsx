@@ -25,6 +25,16 @@ function parseMany(text: string): QuickItem[] {
     .map(([name = '', ean = '', price = '', compare = '']) => ({ name, ean, price, compare }))
 }
 
+const OWN_IMAGES = 'perfume-import.own-images'
+
+function readOwnImages(): boolean {
+  try {
+    return localStorage.getItem(OWN_IMAGES) === '1'
+  } catch {
+    return false
+  }
+}
+
 function code(s: StoreRow): string {
   return s.country ?? s.key.slice(0, 2).toUpperCase()
 }
@@ -40,6 +50,7 @@ export function QuickNewScreen() {
   const [picked, setPicked] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
+  const [ownImages, setOwnImages] = useState(readOwnImages)
 
   const ready = useMemo(() => (stores.data ?? []).filter((s) => s.state === 'active'), [stores.data])
   const group = ready[0]?.group ?? null
@@ -78,7 +89,7 @@ export function QuickNewScreen() {
     setError(null)
     setStarting(true)
     try {
-      const { job_id } = await api.quickStart(items, chosen)
+      const { job_id } = await api.quickStart(items, chosen, ownImages)
       setParams({ job: job_id })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -205,6 +216,29 @@ export function QuickNewScreen() {
               )}
             </div>
 
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={ownImages}
+                onChange={(e) => {
+                  setOwnImages(e.target.checked)
+                  try {
+                    localStorage.setItem(OWN_IMAGES, e.target.checked ? '1' : '')
+                  } catch {
+                    /* only a convenience */
+                  }
+                }}
+              />
+              <span className="flex flex-col gap-0.5">
+                Снимките ще ги кача сам
+                <span className="text-xs text-ink-2">
+                  AI не търси и не сваля снимки: по-евтино и по-бързо. После в продукта отваряш „Снимка“ и качваш файл
+                  или линк; сглобява се по размерите и фона на всеки магазин.
+                </span>
+              </span>
+            </label>
+
             {check.data && items.length > 0 && <Preview rows={check.data.rows} />}
             {check.error && <div className="text-sm text-blocked-text">{(check.error as Error).message}</div>}
             {error && <div className="text-sm text-blocked-text">{error}</div>}
@@ -290,7 +324,7 @@ function Preview({ rows }: { rows: QuickRow[] }) {
 
 const STEPS = [
   ['research', 'Проучване: нотки, семейство, източници'],
-  ['images', 'Снимка по размерите на всеки магазин'],
+  ['images', 'Снимка по размерите на всеки магазин (или я качваш ти)'],
   ['texts', 'Описанията за всеки магазин'],
   ['fields', 'Полета по шаблона на магазина'],
   ['saving', 'Запис и цени във валутата на магазина'],

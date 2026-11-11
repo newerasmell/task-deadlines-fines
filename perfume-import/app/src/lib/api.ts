@@ -527,7 +527,8 @@ export const api = {
   job: (id: string) => request<Job>(`/api/jobs/${id}`),
   quickCheck: (items: QuickItem[], stores: string[]) =>
     post<Omit<CheckResult, 'rows'> & { rows: QuickRow[] }>('/api/quick/check', { items, stores }),
-  quickStart: (items: QuickItem[], stores: string[]) => post<{ job_id: string }>('/api/quick/start', { items, stores }),
+  quickStart: (items: QuickItem[], stores: string[], ownImages = false) =>
+    post<{ job_id: string }>('/api/quick/start', { items, stores, own_images: ownImages }),
   latestJob: () => request<Job | null>('/api/jobs/latest'),
   storeOptions: (batchId: number) => request<StoreOptions>(`/api/batches/${batchId}/stores/options`),
   addStores: (batchId: number, stores: string[], fast: boolean) =>
