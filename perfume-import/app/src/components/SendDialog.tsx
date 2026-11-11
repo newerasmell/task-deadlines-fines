@@ -71,7 +71,7 @@ function SendDialog({ productId, onClose }: { productId: number; onClose: () => 
       open
       onOpenChange={(o) => !o && onClose()}
       title="Качи в магазините"
-      description="Във всеки магазин отива само това, което е прието. Продуктите, които вече са в магазина, се обновяват само в променените полета."
+      description="Отметнатите магазини се качват, а AI предложенията в тях се приемат с качването. Продуктите, които вече са в магазина, се обновяват само в променените полета."
       footer={
         <>
           {creates && (
@@ -169,6 +169,7 @@ function Row({
         <span className={cn('text-xs', s.action === 'wait' ? 'text-warning-text' : can ? 'text-ink-3' : 'text-ink-2')}>
           {text}
           {s.action === 'update' && s.reason ? ` · чака: ${s.reason}` : ''}
+          {can && s.accept > 0 ? ` · приемат се ${s.accept === 1 ? '1 предложение' : `${s.accept} предложения`}` : ''}
         </span>
         {s.message && <span className="text-xs text-blocked-text">Последният опит: {s.message}</span>}
         {result && <span className="text-xs text-ok">{result}</span>}

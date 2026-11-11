@@ -42,8 +42,9 @@ def test_a_live_product_sends_only_its_changed_fields(batch, monkeypatch):  # no
     assert fake.updates and _store(product["id"])["action"] == "none"
 
 
-def test_an_ai_suggestion_waits_until_it_is_accepted(batch):  # noqa: F811
-    batch_id, _ = batch
+def test_sending_a_store_accepts_its_suggestions(batch, monkeypatch):  # noqa: F811
+    """Picking a store in „Качи в магазините“ is the person's acceptance of its AI suggestions."""
+    batch_id, rows = batch
     product = next(p for p in review.get_batch(batch_id)["products"] if p["id"] != _fixed(batch_id)["id"])
     vendor = product["stores"]["premierparfums"]["fields"]["vendor"]
     from sqlalchemy.orm import Session
@@ -55,10 +56,18 @@ def test_an_ai_suggestion_waits_until_it_is_accepted(batch):  # noqa: F811
         row = session.get(FieldRow, vendor["id"])
         row.previous, row.value, row.status, row.origin = row.value, "AI марка", "suggested", "ai_research"
     store = _store(product["id"])
-    assert "Марка" not in store["changes"] and "1 предложение за приемане" in (store["reason"] or "")
-    review.decide(vendor["id"], "accept", "Мария")
-    store = _store(product["id"])
-    assert "Марка" in store["changes"] and store["action"] == "update"
+    assert "Марка" in store["changes"] and store["accept"] == 1 and store["action"] == "update"
+
+    handle = product["stores"]["premierparfums"]["fields"]["handle"]["value"]
+    sku = product["stores"]["premierparfums"]["fields"]["sku"]["value"]
+    fake = FakeShopify([{"id": "gid://shopify/Product/9", "handle": handle, "title": "x", "sku": sku}])
+    monkeypatch.setattr(
+        "db.live.store_client", lambda group, key: Shopify("p.myshopify.com", "tok", http=fake.client())
+    )
+    publish.run(product["id"], ["premierparfums"], "active", "Мария")
+    after = review.get_product(product["id"])["stores"]["premierparfums"]["fields"]["vendor"]
+    assert after["status"] == "ok" and after["decided_by"] == "Мария"
+    assert fake.updates and fake.updates[0]["vendor"] == "AI марка"
 
 
 def test_a_store_without_the_product_can_have_it_made(batch, monkeypatch, fixed_rates):  # noqa: F811

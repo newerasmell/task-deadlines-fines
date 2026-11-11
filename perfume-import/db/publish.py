@@ -32,6 +32,10 @@ def _waiting(rows: list[FieldRow]) -> str | None:
     return " и ".join(parts) or None
 
 
+def _differs(row: FieldRow) -> bool:
+    return row.previous is not None and str(row.value or "").strip() != str(row.previous or "").strip()
+
+
 def plan(product_id: int) -> dict:
     """Per store: what „Качи“ would do (update the live product / create it), what changes, or why not."""
     entry = catalog.entry_for(product_id)
@@ -46,16 +50,21 @@ def plan(product_id: int) -> dict:
             rows = list(session.execute(select(FieldRow).where(FieldRow.store_product_id == sp.id)).scalars())
             item = {"store": store, "product_id": at["product_id"], "batch_id": at["batch_id"], "kind": at["kind"]}
             waiting = _waiting(rows)
+            blocked = any(r.status == "blocked" for r in rows)
+            # AI suggestions are accepted by „Качи“ itself (the person picked the store); a blocked field is not.
+            suggested = [r for r in rows if r.status == "suggested"]
+            item["accept"] = len(suggested)
             if at["kind"] == "audit":
                 changed = live._changes(rows)
+                changed += [r for r in suggested if r.key in live.LABELS and _differs(r)]
                 item["changes"] = [live.LABELS[r.key] for r in changed]
                 if changed:
-                    item.update(action="update", reason=waiting)  # the accepted part goes; the rest waits
+                    item.update(action="update", reason=waiting if blocked else None)
                 else:
                     item.update(action="none", reason=waiting or "няма промени")
             elif sp.upload_status == "uploaded":
                 item.update(action="none", changes=[], reason="вече е качен")
-            elif waiting:
+            elif blocked:
                 item.update(action="wait", changes=[], reason=waiting)
             else:
                 item.update(action="create", changes=[], reason=None)
@@ -78,6 +87,7 @@ def plan(product_id: int) -> dict:
                     "changes": [],
                     "reason": None,
                     "message": None,
+                    "accept": 0,
                 }
             )
     return {"key": entry["key"], "ean": entry["ean"], "title": entry["title"], "stores": out}
@@ -123,6 +133,11 @@ def run(product_id: int, stores: list[str], status: str, actor: str | None, clie
     done: dict[str, str] = {}
     create: dict[int, list[str]] = {}
     missing: list[str] = []
+    for store in stores:  # the suggestions of a picked store are accepted first (it is what the person sends)
+        item = current.get(store)
+        if item and item.get("accept") and item["action"] in ("update", "create"):
+            review.accept_all(item["product_id"], actor, store)
+    current = {s["store"]: s for s in plan(product_id)["stores"]}
     for store in stores:
         item = current.get(store)
         if item is None:

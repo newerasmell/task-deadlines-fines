@@ -134,3 +134,11 @@ from the euro price of a live copy. A product live nowhere is still researched a
 „Изтрий“ on a new product removes it with all its store copies, and its import when it was the last product. Only
 a product prepared here and in no store yet: a store's catalog product, or one already sent to a store, is
 refused with what to do (delete it in Shopify first), so nothing in a store loses its link to the app.
+
+
+## 28. Sending a store accepts its suggestions
+
+Picking a store in „Качи в магазините“ is the person's acceptance of that store's AI suggestions (CLAUDE.md #8
+holds: a person decides, now with one click per store instead of one per field): they are accepted, then the
+store is sent. A blocked field still keeps its store back, named with a link. „Приеми всички предложения“ in the
+product header does the same for every store without sending.

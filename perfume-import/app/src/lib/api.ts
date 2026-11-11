@@ -381,6 +381,7 @@ export type SendStore = {
   changes: string[]
   reason: string | null
   message: string | null
+  accept: number // AI suggestions of this store, accepted when it is sent
 }
 export type SendPlan = { key: string; ean: string | null; title: string; stores: SendStore[] }
 
