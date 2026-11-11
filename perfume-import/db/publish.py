@@ -33,7 +33,7 @@ def _waiting(rows: list[FieldRow]) -> str | None:
 
 
 def _differs(row: FieldRow) -> bool:
-    return row.previous is not None and str(row.value or "").strip() != str(row.previous or "").strip()
+    return row.previous is not None and not live.same(row.value, row.previous)
 
 
 def plan(product_id: int) -> dict:

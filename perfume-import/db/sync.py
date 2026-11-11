@@ -15,6 +15,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from db import newbatch
+from db.live import same
 from db.models import Batch, Event, FieldRow, Media, Product, StoreProduct
 from db.repo import save_audit_in
 from pipeline.config import load_group
@@ -142,7 +143,7 @@ def _carry_over(session: Session, old_batch: int, new: dict[str, tuple[int, int]
     for sp_id, rows in by_new_sp.items():
         for row in rows:
             target = targets.get((sp_id, row.key))
-            if target is None or _text(target.value) == _text(row.value):
+            if target is None or same(target.value, row.value):
                 continue  # live already, or a field the store no longer has
             live = target.value
             for attr in ("value", "origin", "status", "confidence", "sources", "alternatives", "value_en"):

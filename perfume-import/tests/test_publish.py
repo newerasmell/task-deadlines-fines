@@ -116,3 +116,15 @@ def test_a_store_without_the_product_can_have_it_made(batch, monkeypatch, fixed_
     research = asked["research"]  # facts from the live store, no web research
     assert research["gender"]["value"] == "Women's Perfume" and research["_from_stores"]
     assert "premierparfums" in seen["listing"] or ".shop/products/" in seen["listing"]
+
+
+def test_markup_and_number_format_are_not_a_change():
+    """Shopify gives a description back with its own markup: the same words are not a change to send again."""
+    from db.live import same
+
+    ours = "<p>Tom Ford <strong>Fucking Fabulous</strong> είναι ένα   τολμηρό άρωμα.</p>"
+    theirs = '<p class="x">Tom Ford <b>Fucking Fabulous</b> είναι ένα τολμηρό άρωμα.</p>\n'
+    assert same(ours, theirs)
+    assert same("124", "124.00") and same("124,5", "124.50")
+    assert not same("<p>Нов текст.</p>", "<p>Стар текст.</p>") and not same("124", "125")
+    assert same("Tom &amp; Ford", "Tom & Ford")

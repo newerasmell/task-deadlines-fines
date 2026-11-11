@@ -5,7 +5,7 @@ has. A store's copy comes from its latest catalog audit (it is live there) or fr
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.live import LABELS
+from db.live import LABELS, same
 from db.models import Batch, FieldRow, Product, StoreProduct
 
 # live: in the store, nothing to send; diff: in the store, changes made here wait to go live;
@@ -98,7 +98,7 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
         )
     ):
         # previous is JSON null (not SQL NULL) on fields the store had and nothing changed: not a change.
-        if previous is not None and _text(value) != _text(previous):
+        if previous is not None and not same(value, previous):
             (fixes if origin == "auto_fix" and not decided_by else changed).add(sp_id)
 
     entries: dict[str, dict] = {}

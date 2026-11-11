@@ -142,3 +142,11 @@ Picking a store in „Качи в магазините“ is the person's accept
 holds: a person decides, now with one click per store instead of one per field): they are accepted, then the
 store is sent. A blocked field still keeps its store back, named with a link. „Приеми всички предложения“ in the
 product header does the same for every store without sending.
+
+
+## 29. A change is a change of content
+
+A store's description comes back from Shopify with its own markup, and a price as „124.00“ where the app wrote
+„124“, so a product already sent kept showing a change to send. Values are compared as the shopper sees them:
+without HTML tags, entities and extra spacing, numbers by value (db.live.same), everywhere a change is judged
+(the product list, the send plan, a live push, a Shopify read).

@@ -2,6 +2,8 @@
 fix or a person changed (value ≠ the export's value) are sent, to the existing Shopify product found by its
 handle and checked by its SKU. Nothing else of the product is touched."""
 
+import html
+import re
 import threading
 from datetime import UTC, datetime
 
@@ -50,6 +52,23 @@ def _text(value) -> str:
     return "" if value is None else str(value)
 
 
+def comparable(value) -> str:
+    """A value as the shopper sees it: HTML tags, entities and spacing do not count (Shopify gives a description
+    back with its own markup), nor how a number is written (124 = 124.00)."""
+    text = _text(value)
+    if "<" in text or "&" in text:
+        text = re.sub(r"<[^>]+>", " ", html.unescape(text))
+    text = " ".join(text.split())
+    try:
+        return f"{float(text.replace(',', '.')):.2f}" if re.fullmatch(r"\d+(?:[.,]\d+)?", text) else text
+    except ValueError:
+        return text
+
+
+def same(a, b) -> bool:
+    return comparable(a) == comparable(b)
+
+
 def _changes(rows: list[FieldRow]) -> list[FieldRow]:
     """Fields whose value differs from the export, not blocked, and not the derived EAN."""
     return [
@@ -58,7 +77,7 @@ def _changes(rows: list[FieldRow]) -> list[FieldRow]:
         if r.previous is not None
         and r.key in LABELS
         and r.status not in ("blocked", "suggested")  # an AI suggestion goes live only once accepted (CLAUDE.md #8)
-        and _text(r.value).strip() != _text(r.previous).strip()
+        and not same(r.value, r.previous)
     ]
 
 
