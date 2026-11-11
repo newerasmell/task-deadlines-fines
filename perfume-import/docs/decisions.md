@@ -150,3 +150,10 @@ A store's description comes back from Shopify with its own markup, and a price a
 „124“, so a product already sent kept showing a change to send. Values are compared as the shopper sees them:
 without HTML tags, entities and extra spacing, numbers by value (db.live.same), everywhere a change is judged
 (the product list, the send plan, a live push, a Shopify read).
+
+
+## 30. Less memory for several new products at once
+
+Several new products at once restarted the server (512 MB): every picture candidate of every product kept its
+bytes until the batch ended, and ten products were composed at a time. Now only the picture that will be used
+keeps its bytes, pictures are composed two at a time, and the automatic Shopify read waits while an AI job runs.

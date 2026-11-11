@@ -24,6 +24,7 @@ from pipeline.tiers import DEFAULT_TIER, OVERRUN, TIERS, Tier, ceiling, tier
 from pipeline.validate import Context, validate_batch, validate_product
 
 MAX_PARALLEL = 10  # SPEC: one researcher per product, at most 10 at a time
+COMPOSE_PARALLEL = 2  # pictures cut out and composed at a time (memory, not time, is the limit)
 SHARED = ("name", "concentration", "gender", "fragrance_family", "ingredients")
 
 
@@ -309,6 +310,12 @@ def research_step(
             known = {c.url for c in result.images}
             extra = [i for i in fragrantica_bottle(result.research) if i["url"] not in known]
             result.images += check_all(extra, fetch_image)
+        # Only the picture that will be used keeps its bytes: ten products with a few big candidates each would
+        # otherwise hold hundreds of MB until the batch ends (the server has 512 MB).
+        keep = best(result.images)
+        for c in result.images:
+            if c is not keep:
+                c.data = None
     return result
 
 
@@ -371,7 +378,9 @@ def run_batch(
     with ThreadPoolExecutor(max_workers=max(1, min(workers, MAX_PARALLEL))) as pool:
         report("research", 0, len(rows))
         products = list(pool.map(researched, zip(rows, tiers, strict=True)))
-        report("images", 0, len(products))
+    report("images", 0, len(products))
+    # Pictures two at a time: each is decoded and composed for every layout, which takes a lot of memory.
+    with ThreadPoolExecutor(max_workers=COMPOSE_PARALLEL) as pool:
         list(pool.map(lambda p: compose_step(p, group, stores), products))
 
     # Texts always run: they are the cheapest step and a product without a description is of no use. The

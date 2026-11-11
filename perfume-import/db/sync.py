@@ -215,7 +215,8 @@ def auto_loop(every_hours: float, first_after: float = 600) -> None:
         time.sleep(first_after)
         while True:
             try:
-                start(ready_stores(), "автоматично")  # refused while another read runs
+                if not newbatch.running():  # an automatic round waits for an AI job: memory is shared
+                    start(ready_stores(), "автоматично")
             except Exception:  # nothing ready, or a job started meanwhile: try next round
                 pass
             time.sleep(every_hours * 3600)
