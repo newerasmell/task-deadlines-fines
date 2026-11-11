@@ -81,24 +81,28 @@ def test_ean_is_read_from_the_sku(ctx):
 
 
 @pytest.mark.parametrize(
-    ("sku", "field", "rule"),
+    ("sku", "rule"),
     [
-        ("SK1000000034912N", "ean", "ean_invalid"),  # letter after the EAN
-        ("SK692753569784", "ean", "ean_invalid"),  # wrong check digit
-        ("SK73348901116817", "ean", "ean_invalid"),  # extra leading digit
-        ("XX692753569783", "sku", "sku_formula"),  # does not follow SK{ean}
-        ("NAN", "sku", "sku_missing"),
-        ("", "sku", "sku_missing"),
+        ("SK1000000034912N", "ean_invalid"),  # letter after the EAN
+        ("SK692753569784", "ean_invalid"),  # wrong check digit
+        ("SK73348901116817", "ean_invalid"),  # extra leading digit
+        ("XX692753569783", "ean_missing"),  # an own code: no EAN in it, and none given
+        ("NAN", "ean_missing"),
+        ("", "ean_missing"),
     ],
 )
-def test_bad_sku_or_ean_is_blocked(ctx, sku, field, rule):
+def test_without_an_ean_it_is_read_from_the_sku_or_missing(ctx, sku, rule):
     p = run(ctx, ean="", sku=sku)
-    assert (p[field].status, p[field].rule) == ("blocked", rule)
+    assert (p["ean"].status, p["ean"].rule) == ("blocked", rule)
+    assert p["sku"].status != "blocked"  # the SKU is the team's own code (decisions #32)
 
 
-def test_sku_must_match_given_ean(ctx):
-    p = run(ctx, sku="SK3614273776127")
-    assert (p["sku"].status, p["sku"].alternatives) == ("blocked", ["SK692753569783"])
+def test_the_sku_is_the_teams_own_code(ctx):
+    """An SKU that does not carry the EAN is left alone; a missing one gets the usual code offered, not written."""
+    p = run(ctx, sku="SK5901234000001")
+    assert p["sku"].status == "ok" and p["sku"].value == "SK5901234000001"
+    p = run(ctx, sku="")
+    assert (p["sku"].status, p["sku"].value, p["sku"].alternatives) == ("warning", "", ["SK692753569783"])
 
 
 @pytest.mark.parametrize(

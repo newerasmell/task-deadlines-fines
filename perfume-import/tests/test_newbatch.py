@@ -107,8 +107,8 @@ def test_names_only_reads_volume_tester_and_ean_from_the_line():
 
 
 @pytest.mark.db
-def test_product_by_name_gets_the_sourced_ean_to_pick_and_the_sku_follows(monkeypatch):
-    """CLAUDE.md #6: no EAN is filled in by the AI; the sourced one is offered, a person picks it, SKU follows."""
+def test_product_by_name_gets_the_sourced_ean_to_pick(monkeypatch):
+    """CLAUDE.md #6: no EAN is filled in by the AI; the sourced one is offered and a person picks it."""
     from db import review
     from db.repo import save_batch
     from pipeline.batch import run_batch
@@ -139,7 +139,8 @@ def test_product_by_name_gets_the_sourced_ean_to_pick_and_the_sku_follows(monkey
         for store in STORES:
             fields = after["stores"][store]["fields"]
             assert fields["ean"]["value"] == "3614270581670" and fields["ean"]["status"] == "ok"
-            assert fields["sku"]["value"] == "SK3614270581670" and fields["sku"]["status"] == "ok"
+            # The SKU is the team's own code (decisions #32): the usual one is offered, never written by itself.
+            assert fields["sku"]["value"] in ("", None, "SK") and fields["sku"]["status"] != "blocked"
     finally:
         with Session(engine()) as session, session.begin():
             session.execute(delete(Event).where(Event.batch_id == batch_id))

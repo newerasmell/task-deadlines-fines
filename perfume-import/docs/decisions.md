@@ -165,3 +165,12 @@ A new product can be made without pictures: no picture is searched, downloaded o
 memory). The picture field then asks for one (blocked until it is there, so nothing goes live without a picture);
 uploading a file or a link in it composes the picture for every store's layout as before. The choice is
 remembered in the browser.
+
+
+## 32. The SKU is the team's own code
+
+The SKU is an internal code the team decides. Nothing rewrites it (a new EAN no longer rebuilds it in any store)
+and nothing judges it against the EAN (the „SKU не съвпада с EAN“ block is gone). A new product starts with the
+group's formula (SK{ean}) as its first value; a product without an SKU gets that code offered as a choice, never
+written by itself. The EAN is still checked (check digit, length), and a product without an EAN of its own has
+it read from an SKU that follows the formula, as older exports do.

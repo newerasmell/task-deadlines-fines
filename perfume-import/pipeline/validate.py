@@ -92,30 +92,25 @@ def _controlled(fields: dict[str, Field], ctx: Context) -> None:
 
 
 def _ean_and_sku(fields: dict[str, Field], ctx: Context) -> None:
-    """The EAN lives in the SKU (group.yaml `sku`, e.g. SK{ean}); the old sklad metafield is not used."""
+    """The SKU is the team's own code and is never judged against the EAN (decisions #32). Only a product with no
+    EAN of its own has it read from an SKU that follows the group's formula (e.g. SK{ean}), as older exports do."""
     sku, code_field = fields["sku"], fields["ean"]
     raw = (sku.value or "").strip()
-    if not raw or raw.upper() == "NAN":
-        sku.flag("blocked", "Липсва SKU, затова няма и EAN.", "sku_missing")
-        return
+    missing = not raw or raw.upper() == "NAN"
     if not (code_field.value or "").strip():
-        found = ean_from_sku(raw, ctx.spec.sku)
+        found = ean_from_sku(raw, ctx.spec.sku) if not missing else None
         if found is None:
-            sku.flag(
-                "blocked",
-                f"SKU „{raw}“ не следва {ctx.spec.sku}, затова EAN не може да се прочете от него.",
-                "sku_formula",
-            )
+            code_field.flag("blocked", "Липсва EAN. Въведи го от опаковката.", "ean_missing")
+            if missing:
+                sku.flag("warning", "Няма SKU. Въведи вътрешния код.", "sku_missing")
             return
         code_field.value = found
     code = ean.clean(code_field.value)
     if problem := ean.problem(code):
-        code_field.flag("blocked", f"{problem} (от SKU „{raw}“)", "ean_invalid")
-        return
-    expected = render(ctx.spec.sku, {"ean": code})
-    if raw != expected:
-        sku.alternatives = [expected]
-        sku.flag("blocked", f"SKU „{raw}“ не съвпада с EAN {code}; очаквано „{expected}“.", "sku_formula")
+        code_field.flag("blocked", problem, "ean_invalid")
+    elif missing:  # the group's usual code offered with one click, never written by itself
+        sku.alternatives = [render(ctx.spec.sku, {"ean": code})]
+        sku.flag("warning", "Няма SKU. Избери предложения код или въведи вашия.", "sku_missing")
 
 
 def _title(fields: dict[str, Field], ctx: Context) -> None:

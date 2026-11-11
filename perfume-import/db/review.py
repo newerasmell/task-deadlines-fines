@@ -17,7 +17,6 @@ from db.models import Batch, Event, FieldRow, Media, Product, Store, StoreProduc
 from pipeline.build import google_gender
 from pipeline.config import load_group
 from pipeline.fields import SEVERITY, Field
-from pipeline.titles import render
 from pipeline.validate import CONTROLLED, Context, validate_product
 
 # Facts researched once per product: a decision applies to every store.
@@ -449,11 +448,7 @@ def _set_value(batch: Batch, store_key: str, rows: dict[str, FieldRow], key: str
     )
     fields[key] = edited
     changed = {key}
-    # Values built from this one.
-    if key == "ean" and group.spec and "{ean}" in group.spec.sku and "sku" in fields:
-        sku = render(group.spec.sku, {"ean": value})
-        fields["sku"] = _rebuilt(fields["sku"], sku, f"SKU сглобено наново от EAN {value}.", actor)
-        changed.add("sku")
+    # Values built from this one. The SKU is the team's own code: a new EAN never rewrites it (decisions #32).
     if key == "gender" and "google.gender" in fields:
         fields["google.gender"] = _rebuilt(fields["google.gender"], google_gender(value, group), "Следва пола.", actor)
         changed.add("google.gender")

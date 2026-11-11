@@ -86,14 +86,15 @@ def test_edit_is_validated_with_the_related_field(batch):
     assert fields(after)["compare_at"]["status"] == "ok"
 
 
-def test_new_ean_rebuilds_the_sku_in_every_store(batch):
+def test_a_new_ean_leaves_the_sku_alone(batch):
+    """The SKU is the team's own code (decisions #32): a new EAN reaches every store, the SKU stays."""
     product = batch["products"][0]
     ean = fields(product)["ean"]
     after = review.decide(ean["id"], "edit", ACTOR, "3614270581670")
     for store in STORES:
         f = fields(after, store)
         assert f["ean"]["value"] == "3614270581670" and f["ean"]["status"] == "ok"
-        assert f["sku"]["value"] == "SK3614270581670" and f["sku"]["previous"] == "SK3614270581656"
+        assert f["sku"]["value"] == "SK3614270581656" and f["sku"]["status"] != "blocked"
     after = review.decide(ean["id"], "edit", ACTOR, "3614270581671")  # wrong check digit
     assert fields(after)["ean"]["status"] == "blocked"
 
@@ -184,4 +185,4 @@ def test_a_decided_ean_reaches_stores_whose_ean_and_sku_are_empty(batch):
     for store in STORES:
         f = fields(after, store)
         assert f["ean"]["value"] == "3614270581670", store
-        assert f["sku"]["value"] == "SK3614270581670", store
+        assert f["sku"]["status"] != "blocked", store  # the SKU stays the team's to set
