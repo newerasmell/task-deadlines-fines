@@ -503,6 +503,7 @@ export const api = {
   syncNotes: (fieldId: number, text: string) => post<Product>(`/api/fields/${fieldId}/sync-notes`, { text }),
   liveChanges: (productId: number) => request<LiveChanges>(`/api/products/${productId}/live`),
   pushLive: (productId: number) => post<LiveChanges>(`/api/products/${productId}/live`, {}),
+  refreshLive: (productId: number) => post<LiveChanges>(`/api/products/${productId}/refresh`, {}),
   liveBatch: (batchId: number) => request<LiveBatch>(`/api/batches/${batchId}/live`),
   startLiveBatch: (batchId: number, productIds?: number[]) =>
     post<LiveBatch>(`/api/batches/${batchId}/live`, { product_ids: productIds ?? null }),

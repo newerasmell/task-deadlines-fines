@@ -64,6 +64,20 @@ class Send(BaseModel):
     status: str = "active"  # for products created in a store; live products keep theirs
 
 
+@router.post("/products/{product_id}/refresh")
+def refresh_product(product_id: int, x_actor: str | None = Header(default=None)):
+    """„Провери в магазина“: the product read again from Shopify; what did not reach the store waits again."""
+    from db import sync
+    from pipeline.shopify import ShopifyError
+
+    try:
+        return sync.refresh_product(product_id, actor_name(x_actor))
+    except KeyError as exc:
+        raise HTTPException(404, str(exc.args[0])) from exc
+    except (sync.SyncError, ShopifyError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @router.delete("/products/{product_id}")
 def delete_product(product_id: int, x_actor: str | None = Header(default=None)):
     """A product prepared here and in no store yet."""

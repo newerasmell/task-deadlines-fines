@@ -69,6 +69,12 @@ class FakeShopify:
         if "productVariantsBulkUpdate" in query:
             self.variant_updates.append(variables["variants"])
             return self.ok({"productVariantsBulkUpdate": {"userErrors": []}})
+        if "descriptionHtml" in query and ("product(id:" in query or "productByIdentifier" in query):
+            if "product(id:" in query:
+                found = self.products.get(variables["id"])
+                return self.ok({"product": found and self.node(found)})
+            found = next((p for p in self.products.values() if p["handle"] == variables["h"]), None)
+            return self.ok({"productByIdentifier": found and self.node(found)})
         if "products(first:" in query:  # the whole catalog, page by page (pipeline.shopify.catalog_rows)
             items = list(self.products.values())
             start = int(variables["after"] or 0)
@@ -152,6 +158,25 @@ class FakeShopify:
             product = {"id": pid, "handle": data["handle"], "status": data["status"]}
             return self.ok({"productSet": {"product": product, "userErrors": []}})
         raise AssertionError(f"unexpected query: {query[:80]}")
+
+    @staticmethod
+    def node(p: dict) -> dict:
+        """A product as the Admin API returns it to pipeline.shopify (catalog and single reads)."""
+        return {
+            "id": p["id"],
+            "handle": p["handle"],
+            "title": p["title"],
+            "descriptionHtml": p.get("body", ""),
+            "vendor": p.get("vendor", ""),
+            "productType": "",
+            "status": p.get("status", "ACTIVE"),
+            "seo": {"title": None, "description": None},
+            "featuredMedia": {"preview": {"image": {"url": p["image"]}}} if p.get("image") else None,
+            "variants": {
+                "nodes": [{"sku": p["sku"], "price": p.get("price", "10.00"), "compareAtPrice": None, "barcode": None}]
+            },
+            "metafields": {"nodes": p.get("metafields", [])},
+        }
 
     @staticmethod
     def ok(data: dict) -> httpx.Response:

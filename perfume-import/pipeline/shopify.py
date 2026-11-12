@@ -614,44 +614,54 @@ def _metafield_text(value: str | None, kind: str) -> str:
     return value
 
 
+BASE_COLUMNS = [
+    "Handle", "Title", "Body (HTML)", "Vendor", "Type", "Status", "Variant SKU", "Variant Price",
+    "Variant Compare At Price", "Variant Barcode", "Image Src", "SEO Title", "SEO Description", "Shopify ID",
+]  # fmt: skip
+PRODUCT_FIELDS = CATALOG_QUERY[
+    CATALOG_QUERY.index("nodes {") + len("nodes {") : CATALOG_QUERY.index("    }\n    pageInfo")
+]
+
+
+def _node_row(node: dict, columns: list[str]) -> dict:
+    """One product from the Admin API as a CSV export row; new metafield columns are added to `columns`."""
+    variant = (node["variants"]["nodes"] or [{}])[0]
+    image = ((node.get("featuredMedia") or {}).get("preview") or {}).get("image") or {}
+    seo = node.get("seo") or {}
+    row = {
+        "Handle": node["handle"],
+        "Title": node["title"],
+        "Body (HTML)": node.get("descriptionHtml") or "",
+        "Vendor": node.get("vendor") or "",
+        "Type": node.get("productType") or "",
+        "Status": (node.get("status") or "").lower(),
+        "Variant SKU": variant.get("sku") or "",
+        "Variant Price": variant.get("price") or "",
+        "Variant Compare At Price": variant.get("compareAtPrice") or "",
+        "Variant Barcode": variant.get("barcode") or "",
+        "Image Src": image.get("url") or "",
+        "SEO Title": seo.get("title") or "",
+        "SEO Description": seo.get("description") or "",
+        "Shopify ID": node["id"],
+    }
+    for mf in node["metafields"]["nodes"]:
+        label = mf["key"].replace("_", " ").replace("-", " ").capitalize()
+        column = f"{label} (product.metafields.{mf['namespace']}.{mf['key']})"
+        if column not in columns:
+            columns.append(column)
+        row[column] = _metafield_text(mf["value"], mf.get("type") or "")
+    return row
+
+
 def catalog_rows(shop: Shopify, progress: Callable[[int], None] | None = None) -> tuple[list[str], list[dict]]:
     """Every product of the store except archived ones, as rows with the columns of a Shopify CSV export
     (Handle, Title, Body (HTML), Variant SKU…, metafields as „Label (product.metafields.ns.key)“)."""
-    columns = [
-        "Handle", "Title", "Body (HTML)", "Vendor", "Type", "Status", "Variant SKU", "Variant Price",
-        "Variant Compare At Price", "Variant Barcode", "Image Src", "SEO Title", "SEO Description", "Shopify ID",
-    ]  # fmt: skip
+    columns = list(BASE_COLUMNS)
     rows: list[dict] = []
     after = None
     while True:
         page = shop.graphql(CATALOG_QUERY, {"after": after, "first": CATALOG_PAGE})["products"]
-        for node in page["nodes"]:
-            variant = (node["variants"]["nodes"] or [{}])[0]
-            image = ((node.get("featuredMedia") or {}).get("preview") or {}).get("image") or {}
-            seo = node.get("seo") or {}
-            row = {
-                "Handle": node["handle"],
-                "Title": node["title"],
-                "Body (HTML)": node.get("descriptionHtml") or "",
-                "Vendor": node.get("vendor") or "",
-                "Type": node.get("productType") or "",
-                "Status": (node.get("status") or "").lower(),
-                "Variant SKU": variant.get("sku") or "",
-                "Variant Price": variant.get("price") or "",
-                "Variant Compare At Price": variant.get("compareAtPrice") or "",
-                "Variant Barcode": variant.get("barcode") or "",
-                "Image Src": image.get("url") or "",
-                "SEO Title": seo.get("title") or "",
-                "SEO Description": seo.get("description") or "",
-                "Shopify ID": node["id"],
-            }
-            for mf in node["metafields"]["nodes"]:
-                label = mf["key"].replace("_", " ").replace("-", " ").capitalize()
-                column = f"{label} (product.metafields.{mf['namespace']}.{mf['key']})"
-                if column not in columns:
-                    columns.append(column)
-                row[column] = _metafield_text(mf["value"], mf.get("type") or "")
-            rows.append(row)
+        rows += [_node_row(node, columns) for node in page["nodes"]]
         if progress:
             progress(len(rows))
         if not page["pageInfo"]["hasNextPage"]:
@@ -661,3 +671,20 @@ def catalog_rows(shop: Shopify, progress: Callable[[int], None] | None = None) -
         for column in columns:
             row.setdefault(column, "")
     return columns, rows
+
+
+def product_row(shop: Shopify, product_id: str | None, handle: str) -> tuple[list[str], dict] | None:
+    """One product as it is in the store now (by its Shopify id, else its handle), as a CSV export row."""
+    if product_id:
+        node = shop.graphql(f"query($id: ID!) {{ product(id: $id) {{ {PRODUCT_FIELDS} }} }}", {"id": product_id})
+        node = node["product"]
+    else:
+        node = shop.graphql(
+            f"query($h: String!) {{ productByIdentifier(identifier: {{handle: $h}}) {{ {PRODUCT_FIELDS} }} }}",
+            {"h": handle},
+        )["productByIdentifier"]
+    if not node:
+        return None
+    columns = list(BASE_COLUMNS)
+    row = _node_row(node, columns)
+    return columns, {c: row.get(c, "") for c in columns}

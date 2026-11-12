@@ -942,6 +942,7 @@ function LiveChangesSection({ batchId, productId }: { batchId: number; productId
   const client = useQueryClient()
   const live = useQuery({ queryKey: ['live', productId, batchId], queryFn: () => api.liveChanges(productId) })
   const [busy, setBusy] = useState(false)
+  const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   if (live.isPending) return <Loading what="поправките" />
   if (live.isError) return <Failure error={live.error} />
@@ -958,10 +959,31 @@ function LiveChangesSection({ batchId, productId }: { batchId: number; productId
       setBusy(false)
     }
   }
+  const check = async () => {
+    setChecking(true)
+    setError(null)
+    try {
+      client.setQueryData(['live', productId, batchId], await api.refreshLive(productId))
+      void client.invalidateQueries({ queryKey: ['batch', batchId] })
+      void client.invalidateQueries({ queryKey: ['catalog'] })
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setChecking(false)
+    }
+  }
   return (
     <section className="flex flex-col gap-2 rounded-lg border border-line p-4" aria-label="Промени за качване">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="m-0 grow text-base font-semibold">Промени за качване в магазина</h2>
+        <Button
+          size="sm"
+          disabled={checking || busy}
+          onClick={() => void check()}
+          title="Чете продукта наново от Shopify и показва какво още не е в магазина"
+        >
+          {checking ? 'Проверявам…' : 'Провери в магазина'}
+        </Button>
         <Button variant="primary" size="sm" disabled={!d.changes.length || busy} onClick={() => void push()}>
           {busy ? 'Обновявам…' : d.live_status === 'uploaded' ? 'Обнови отново' : 'Обнови в магазина (на живо)'}
         </Button>
@@ -997,8 +1019,8 @@ function LiveChangesSection({ batchId, productId }: { batchId: number; productId
       )}
       {error && <span className="text-xs text-blocked-text">{error}</span>}
       <span className="text-xs leading-normal text-ink-2">
-        Обновява се съществуващият продукт в Shopify (намерен по handle, проверен по SKU), само показаните полета.
-        Снимки, наличности и канали не се пипат.
+        Обновява се съществуващият продукт в Shopify (по неговия Shopify ID), само показаните полета. Наличности и
+        канали не се пипат. „Провери в магазина“ чете продукта наново и показва какво още не е стигнало.
       </span>
     </section>
   )

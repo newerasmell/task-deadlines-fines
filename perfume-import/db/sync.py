@@ -222,3 +222,63 @@ def auto_loop(every_hours: float, first_after: float = 600) -> None:
             time.sleep(every_hours * 3600)
 
     threading.Thread(target=loop, daemon=True, name="sync-auto").start()
+
+
+def refresh_product(product_id: int, actor: str | None, shop=None) -> dict:
+    """„Провери в магазина“: one product of a store's catalog read again from Shopify. The store's values become
+    the reference (`previous`); what a person or the AI set here and the store does not show yet stays, so it
+    shows again as a change to send; everything else takes the store's value. Returns db.live.changes()."""
+    from db import live
+    from db.review import _product_rows
+    from pipeline.shopify import product_row
+
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        batch = session.get(Batch, product.batch_id)
+        if batch.kind != "audit":
+            raise SyncError("Това е нов продукт, подготвен тук; в магазина го качваш с „Качи в магазините“.")
+        sp = session.execute(select(StoreProduct).where(StoreProduct.product_id == product_id)).scalars().first()
+        fields = _product_rows(session, product_id)[sp.store_key]
+        handle = fields.get("handle")
+        handle_text = str((handle.previous if handle is not None and handle.previous else None) or "")
+        handle_text = handle_text or str(handle.value if handle is not None else "")
+        group = load_group(batch.group_key)
+        store_key, shopify_id = sp.store_key, sp.shopify_product_id
+    shop = shop or store_client(group, store_key)
+    found = product_row(shop, shopify_id, handle_text)
+    if found is None:
+        raise SyncError("Продуктът не е намерен в магазина (изтрит или с друг handle).")
+    columns, row = found
+    fresh = run_audit(Export(Path("Shopify"), columns, [row]), group, store_key).products[0].fields
+
+    with Session(_engine()) as session, session.begin():
+        sp = session.get(
+            StoreProduct,
+            session.execute(select(StoreProduct.id).where(StoreProduct.product_id == product_id)).scalar_one(),
+        )
+        rows = {r.key: r for r in session.execute(select(FieldRow).where(FieldRow.store_product_id == sp.id)).scalars()}
+        for key, f in fresh.items():
+            target = rows.get(key)
+            if target is None:
+                continue
+            live_value = f.previous if f.previous is not None else f.value  # an automatic fix keeps the store's
+            made_here = target.decided_by is not None or target.origin in MADE_HERE
+            if made_here and not same(target.value, live_value):
+                target.previous = live_value if live_value is not None else ""  # still waiting to go live
+                continue
+            target.value, target.origin, target.status = f.value, f.origin, f.status
+            target.confidence, target.sources, target.alternatives = f.confidence, f.sources, f.alternatives
+            target.previous, target.value_en, target.message, target.issues = (
+                f.previous,
+                f.value_en,
+                f.message,
+                f.issues,
+            )
+            if not made_here:
+                target.decided_by = target.decided_at = None
+        sp.shopify_product_id = row.get("Shopify ID") or sp.shopify_product_id
+        sp.upload_status, sp.upload_message = None, None
+        session.add(Event(actor=actor, kind="product_refreshed", batch_id=batch.id, store_product_id=sp.id, payload={}))
+    return live.changes(product_id)

@@ -116,3 +116,37 @@ def test_a_store_read_and_an_ai_job_run_side_by_side(monkeypatch):
     newbatch.busy(sync=True)  # and the other way round
     with pytest.raises(newbatch.NewBatchError, match="Чета страницата"):
         newbatch.busy()
+
+
+def test_checking_one_product_in_the_store_shows_what_did_not_reach_it(monkeypatch):
+    """The app thought an edit was live (previous == value) but the store still has the old value: „Провери в
+    магазина“ reads the product again and the edit waits to go live once more; what the store changed is taken."""
+    from sqlalchemy.orm import Session as S
+
+    from db import live
+    from db.models import FieldRow
+
+    monkeypatch.setattr(sync, "_group_of", lambda key: "group-1")
+    products = _products(3)
+    fake = FakeShopify(products)
+    shop = Shopify("gr.myshopify.com", "tok", http=fake.client(), sleep=lambda s: None)
+    result = sync.run(STORE, "Мария", shop)
+    try:
+        product = review.get_batch(result["batch_id"])["products"][0]
+        vendor = product["stores"][STORE]["fields"]["vendor"]
+        review.decide(vendor["id"], "edit", "Мария", "Нова марка")
+        with S(engine()) as session, session.begin():  # as if it had been sent
+            session.get(FieldRow, vendor["id"]).previous = "Нова марка"
+        assert not [c for c in live.changes(product["id"])["changes"] if c["key"] == "vendor"]
+        fake.products[products[0]["id"]]["body"] = "<p>Нов текст в магазина.</p>"
+
+        after = sync.refresh_product(product["id"], "Мария", shop)
+        change = next(c for c in after["changes"] if c["key"] == "vendor")
+        assert change["after"] == "Нова марка" and change["before"] == products[0]["vendor"]
+        body = review.get_product(product["id"])["stores"][STORE]["fields"]["body_html"]
+        assert body["value"] == "<p>Нов текст в магазина.</p>"
+    finally:
+        with Session(engine()) as session, session.begin():
+            ids = list(session.execute(select(Batch.id).where(Batch.store_key == STORE)).scalars())
+            session.execute(delete(Event).where(Event.batch_id.in_(ids)))
+            session.execute(delete(Batch).where(Batch.id.in_(ids)))

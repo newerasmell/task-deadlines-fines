@@ -211,3 +211,11 @@ EAN, by the same title. Two copies of one store are never joined.
 Opening a product of a store's catalog loaded the whole catalog with every field (hundreds of products), which
 ran the 512 MB server out of memory: now only the open product comes with its fields, the list beside it with
 titles and status counts.
+
+
+## 37. „Провери в магазина“: one product read again from Shopify
+
+A store's product can be read again from Shopify alone (by its Shopify id, else its handle) and checked by the
+store's rules. The store's values become the reference; what a person or the AI set here that the store does not
+show is kept and shows again as a change to send; every other field takes the store's value. This is the answer
+when the app says a change is live and the store disagrees (an earlier push that did not land, an edit in Shopify).
