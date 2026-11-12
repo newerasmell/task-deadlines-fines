@@ -126,7 +126,11 @@ def push(product_id: int, actor: str | None, shop=None) -> dict:
                 raise ShopifyError("Продуктът не е намерен в магазина по handle (изтрит или преименуван?).")
             known = {_text(sku.previous), _text(sku.value)} if sku else set()
             live_sku = _text((found.get("variant") or {}).get("sku"))
-            if sku and live_sku and live_sku not in known:
+            if sp.shopify_product_id and found["id"] != sp.shopify_product_id:
+                raise ShopifyError("В магазина този handle е друг продукт (различен Shopify ID): не е същият продукт.")
+            # The product read from Shopify is known by its id, so a new SKU (the team's own code) is just a change
+            # to send; without the id (an uploaded export) the SKU still tells it is the same product.
+            if not sp.shopify_product_id and sku and live_sku and live_sku not in known:
                 raise ShopifyError(
                     f"В магазина този handle е с SKU {live_sku}, а не {sku.previous}: не е същият продукт."
                 )

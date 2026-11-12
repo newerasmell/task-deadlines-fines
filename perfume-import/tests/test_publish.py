@@ -128,3 +128,34 @@ def test_markup_and_number_format_are_not_a_change():
     assert same("124", "124.00") and same("124,5", "124.50")
     assert not same("<p>Нов текст.</p>", "<p>Стар текст.</p>") and not same("124", "125")
     assert same("Tom &amp; Ford", "Tom & Ford")
+
+
+def test_a_new_sku_is_sent_to_the_product_known_by_its_shopify_id(batch, monkeypatch):  # noqa: F811
+    """The SKU is the team's code: changed here (even twice), it is sent to the product the store read gave."""
+    from sqlalchemy import update
+    from sqlalchemy.orm import Session
+
+    from db.models import StoreProduct
+    from db.repo import engine
+
+    batch_id, _ = batch
+    product = _fixed(batch_id)
+    fields = product["stores"]["premierparfums"]["fields"]
+    live_sku, handle = fields["sku"]["value"], fields["handle"]["value"]
+    with Session(engine()) as session, session.begin():
+        session.execute(
+            update(StoreProduct)
+            .where(StoreProduct.product_id == product["id"])
+            .values(shopify_product_id="gid://shopify/Product/9")
+        )
+    review.decide(fields["sku"]["id"], "edit", "Мария", "CH-0001")
+    after = review.decide(fields["sku"]["id"], "edit", "Мария", "CH-0002")
+    assert after["stores"]["premierparfums"]["fields"]["sku"]["previous"] == live_sku  # still the store's value
+
+    fake = FakeShopify([{"id": "gid://shopify/Product/9", "handle": handle, "title": "x", "sku": live_sku}])
+    monkeypatch.setattr(
+        "db.live.store_client", lambda group, key: Shopify("p.myshopify.com", "tok", http=fake.client())
+    )
+    result = publish.run(product["id"], ["premierparfums"], "active", "Мария")
+    assert "SKU" in result["done"]["premierparfums"], result
+    assert fake.variant_updates and fake.variant_updates[0][0]["inventoryItem"]["sku"] == "CH-0002"

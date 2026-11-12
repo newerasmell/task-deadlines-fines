@@ -441,7 +441,9 @@ def _set_value(batch: Batch, store_key: str, rows: dict[str, FieldRow], key: str
         status="ok",
         sources=old.sources,
         alternatives=[a for a in old.alternatives if a != value] + ([old.value] if old.value else []),
-        previous=old.value,
+        # A store's own product keeps the store's value as `previous` through any number of edits: it is what
+        # the store shows until the change goes live (db.live), and how the product is recognised there.
+        previous=old.previous if batch.kind == "audit" and old.previous is not None else old.value,
         value_en=old.value_en,  # the English reference still says what the field means
         decided_by=actor,
         decided_at=now().isoformat(),

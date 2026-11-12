@@ -191,3 +191,11 @@ family and ingredients are copied to every other store as decided, the notes are
 language (their English names come from the source, read from its own language when it has none), and every other
 store's description and SEO text is written again from these facts in its own template, as suggestions (a wrong
 language or a too short text included). The source store is not changed. ≈ $0.01 per store.
+
+
+## 35. A new SKU goes live; the store's value stays the reference
+
+A product read from Shopify is known by its Shopify id, so a live update now checks that id instead of the SKU,
+and a new SKU (the team's own code) is simply sent. Without an id (a product from an uploaded export) the SKU
+still tells that the handle is the same product. Edits on a store's own product keep the store's value as
+`previous` however many times a field is changed, so the change and the product's identity stay right.

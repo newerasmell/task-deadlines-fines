@@ -47,7 +47,7 @@ class FakeShopify:
         if self.throttle:
             self.throttle -= 1
             return httpx.Response(200, json={"errors": [{"message": "Throttled", "extensions": {"code": "THROTTLED"}}]})
-        if "productVariants" in query:
+        if "productVariants(" in query:  # a lookup by SKU (not productVariantsBulkUpdate)
             sku = variables["q"].split('"')[1]
             nodes = [
                 {"sku": p["sku"], "product": {"id": p["id"], "handle": p["handle"], "title": p["title"]}}
