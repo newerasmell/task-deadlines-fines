@@ -178,3 +178,15 @@ def test_opening_a_product_of_a_store_catalog_loads_only_it(audits):
     assert by_id[second["id"]]["stores"]["premierparfums"]["fields"]
     assert by_id[first["id"]]["brief"] and by_id[first["id"]]["stores"]["premierparfums"]["fields"] == {}
     assert sum(by_id[first["id"]]["counts"].values()) > 0
+
+
+def test_a_new_ean_keeps_the_link_through_the_old_one(audits):
+    """The EAN changed in one store (the store still shows the old): the product stays linked, not by its name."""
+    (_, hr), (shared, _) = audits
+    fields = _hr_rows(hr, shared)
+    _set(fields["sku"]["id"], value="OWN-CODE-1", previous=None)  # no shared SKU either
+    _set(fields["ean"]["id"], value="4006000000000", previous=shared)
+    with Session(engine()) as session, session.begin():
+        session.get(Product, next(p for p in review.get_batch(hr)["products"] if p["ean"] == shared)["id"]).ean = None
+    entry = next(e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared)
+    assert set(entry["stores"]) == {"premierparfums", "parfemija"}

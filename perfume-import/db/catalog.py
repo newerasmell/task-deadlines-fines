@@ -76,6 +76,7 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
     )
     values: dict[int, dict[str, object]] = {}
     skus: dict[int, set[str]] = {}
+    eans: dict[int, set[str]] = {}
     for sp_id, key, value, previous in session.execute(
         select(FieldRow.store_product_id, FieldRow.key, FieldRow.value, FieldRow.previous).where(
             FieldRow.store_product_id.in_(sp_ids),
@@ -85,6 +86,8 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
         values.setdefault(sp_id, {})[key] = value
         if key == "sku":  # the code here and the one the store still shows: both keep the link (decisions #36)
             skus[sp_id] = {c for c in (_code(value), _code(previous)) if c}
+        if key == "ean":  # likewise the EAN: a new one set here does not cut the product off its stores
+            eans[sp_id] = {c for c in (_text(value), _text(previous)) if c}
     # Only the columns the comparison needs, and only rows that differ at all (db.live._changes decides).
     # A change a person or the AI made waits to go live (diff); a fix the store's rules made by themselves is
     # counted apart, so the list is not all orange after every catalog check.
@@ -105,7 +108,7 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
         if previous is not None and not same(value, previous):
             (fixes if origin == "auto_fix" and not decided_by else changed).add(sp_id)
 
-    groups = _link(sps, products, values, skus)
+    groups = _link(sps, products, values, skus, eans)
     entries: dict[str, dict] = {}
     order: list[str] = []
     for sp in sps:
@@ -208,22 +211,21 @@ def _ml(title: str, value) -> str:
     return ""
 
 
-def _link(sps, products, values, skus) -> _Groups:
-    """Which store copies are the same product (decisions #36). The SKU is the team's own code and links first,
-    the store's current SKU as well as a new one set here, so a product stays linked while its new SKU reaches
-    the stores one by one. Without a shared SKU: the same EAN with the same volume, then the same title for a
-    copy with no EAN. Two copies of one store are never joined."""
+def _link(sps, products, values, skus, eans) -> _Groups:
+    """Which store copies are the same product (decisions #36). The SKU is the team's own code and links first;
+    then the EAN with the same volume. For both the value set here and the one the store still shows count, so a
+    product stays linked while a new SKU or EAN reaches the stores one by one. The title only for a copy with no
+    EAN at all. Two copies of one store are never joined."""
     groups = _Groups()
     by_key: dict[str, list[int]] = {}
     for sp in sps:
         own = values.get(sp.id, {})
         p = products[sp.product_id]
         title = _text(own.get("title")) or _text(p.input.get("name")) or _text(p.input.get("title"))
-        ean = _text(p.ean) or _text(own.get("ean"))
-        keys = [f"sku:{c}" for c in skus.get(sp.id, ())]
-        if ean:
-            keys.append(f"ean:{ean}|{_ml(title, own.get('product_milliliters'))}")
-        elif title:
+        codes = ({_text(p.ean)} | eans.get(sp.id, set())) - {""}
+        ml = _ml(title, own.get("product_milliliters"))
+        keys = [f"sku:{c}" for c in skus.get(sp.id, ())] + [f"ean:{c}|{ml}" for c in sorted(codes)]
+        if not codes and title:  # the name only when there is no EAN at all, old or new
             keys.append(f"t:{_norm(title)}")
         groups.find(sp.id)
         for k in keys:
