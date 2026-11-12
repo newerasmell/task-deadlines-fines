@@ -256,3 +256,13 @@ translated, description and SEO written again in each store's template, and the 
 differs (a finished picture as it is, else its original composed for the store's layout). It runs as a job; each
 store's value stays as `previous`, then the stores are sent as before (their suggestions accepted). Stores without
 the product are then made from the live copies.
+
+
+## 42. A store's catalog is one batch, updated in place
+
+Each Shopify read saved the catalog as a new batch and removed the old one, so every read (every 6 hours and after
+each deploy) gave every product a new id and broke open pages and links („Няма партида 141“). Now a store's
+catalog is one batch kept for good: a read matches each product by its Shopify id (else its handle) and updates it
+in place, with the same rules as before (what was set here and is not in the store stays waiting; the rest takes
+the store's value), adds new products and removes those the store no longer has. Older extra batches of the store
+are removed on the next read. A link from before this change says it is stale and leads to the product list.

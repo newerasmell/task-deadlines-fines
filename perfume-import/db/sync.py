@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from db import newbatch
 from db.live import same
-from db.models import Batch, Event, FieldRow, Media, Product, StoreProduct
+from db.models import Batch, Event, FieldRow, Product, StoreProduct
 from db.repo import save_audit_in
 from pipeline.config import load_group
 from pipeline.export import Export
@@ -72,34 +72,110 @@ def run(store_key: str, actor: str | None, shop=None, job: dict | None = None) -
     stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
     report = run_audit(Export(Path(f"Shopify {stamp}"), columns, rows), group, store_key)
 
-    ids = {r["Handle"]: r["Shopify ID"] for r in rows}
-    # One transaction: the new read, what is carried onto it and the removal of the older reads happen
-    # together, so a restart in the middle (a deploy) leaves the store as it was.
+    gids = [r["Shopify ID"] for r in rows]  # in the order of report.products
+    # One transaction, so a restart in the middle (a deploy) leaves the store as it was. The store's catalog is
+    # one batch kept for good: its products are updated in place (same ids, so open pages and links keep
+    # working), new ones are added, ones the store no longer has are removed (decisions #42).
     with Session(_engine()) as session, session.begin():
-        older = list(
+        batches = list(
             session.execute(
                 select(Batch.id).where(Batch.kind == "audit", Batch.store_key == store_key).order_by(Batch.id)
             ).scalars()
         )
-        batch_id = save_audit_in(session, report, actor)
-        new = _by_handle(session, batch_id)
-        for handle, (_, sp_id) in new.items():
-            if handle in ids:
-                session.execute(
-                    update(StoreProduct).where(StoreProduct.id == sp_id).values(shopify_product_id=ids[handle])
-                )
-        carried = _carry_over(session, older[-1], new) if older else 0
-        if older:
-            session.execute(delete(Batch).where(Batch.id.in_(older)))
+        if not batches:
+            batch_id = save_audit_in(session, report, actor)
+            for handle, (_, sp_id) in _by_handle(session, batch_id).items():
+                gid = next((g for p, g in zip(report.products, gids, strict=True) if p.handle == handle), None)
+                session.execute(update(StoreProduct).where(StoreProduct.id == sp_id).values(shopify_product_id=gid))
+            carried = added = removed = 0
+        else:
+            batch_id = batches[-1]
+            carried, added, removed = _update_in_place(session, batch_id, store_key, report, gids)
+            if batches[:-1]:  # reads kept by an older version of the app
+                session.execute(delete(Batch).where(Batch.id.in_(batches[:-1])))
         session.add(
             Event(
                 actor=actor,
                 kind="catalog_synced",
                 batch_id=batch_id,
-                payload={"store": store_key, "products": len(rows), "carried": carried},
+                payload={
+                    "store": store_key,
+                    "products": len(rows),
+                    "carried": carried,
+                    "added": added,
+                    "removed": removed,
+                },
             )
         )
     return {"store": store_key, "batch_id": batch_id, "products": len(rows), "carried": carried}
+
+
+def _apply(session: Session, sp_id: int, rows: dict[str, FieldRow], fresh: dict) -> int:
+    """The store's current fields onto one product. What a person or the AI set here stays: if the store shows
+    something else it waits to go live again (the store's value as `previous`), if the store shows the same it is
+    kept as decided. Everything else takes the store's value and its checks. Returns how many were kept waiting."""
+    from db.repo import _field_rows
+
+    waiting = 0
+    for key, f in fresh.items():
+        target = rows.get(key)
+        if target is None:
+            session.add(FieldRow(**_field_rows(sp_id, {key: f})[0]))
+            continue
+        live_value = f.previous if f.previous is not None else f.value  # an automatic fix keeps the store's
+        if target.decided_by is not None or target.origin in MADE_HERE:
+            if not same(target.value, live_value):
+                waiting += 1
+            target.previous = live_value if live_value is not None else ""
+            continue
+        target.value, target.origin, target.status = f.value, f.origin, f.status
+        target.confidence, target.sources, target.alternatives = f.confidence, f.sources, f.alternatives
+        target.previous, target.value_en, target.message, target.issues = f.previous, f.value_en, f.message, f.issues
+    return waiting
+
+
+def _update_in_place(session: Session, batch_id: int, store_key: str, report, gids: list[str]) -> tuple[int, int, int]:
+    from db.repo import _ean, _field_rows
+
+    existing = session.execute(
+        select(Product, StoreProduct)
+        .join(StoreProduct, StoreProduct.product_id == Product.id)
+        .where(Product.batch_id == batch_id)
+    ).all()
+    by_gid = {sp.shopify_product_id: (p, sp) for p, sp in existing if sp.shopify_product_id}
+    by_handle = {p.input.get("handle"): (p, sp) for p, sp in existing}
+    fields: dict[int, dict[str, FieldRow]] = {}
+    for row in session.execute(
+        select(FieldRow).where(FieldRow.store_product_id.in_([sp.id for _, sp in existing]))
+    ).scalars():
+        fields.setdefault(row.store_product_id, {})[row.key] = row
+    matched: set[int] = set()
+    carried = added = 0
+    for fresh, gid in zip(report.products, gids, strict=True):
+        found = by_gid.get(gid) or by_handle.get(fresh.handle)
+        if found is not None and found[0].id not in matched:
+            product, sp = found
+            matched.add(product.id)
+            carried += _apply(session, sp.id, fields.get(sp.id, {}), fresh.fields)
+            product.input = {**(product.input or {}), "handle": fresh.handle, "title": fresh.title}
+            product.ean = _ean(fresh) or product.ean
+            sp.shopify_product_id = gid
+            continue
+        product = Product(
+            batch_id=batch_id, ean=_ean(fresh) or None, input={"handle": fresh.handle, "title": fresh.title}
+        )
+        session.add(product)
+        session.flush()
+        sp = StoreProduct(product_id=product.id, store_key=store_key, shopify_product_id=gid)
+        session.add(sp)
+        session.flush()
+        for values in _field_rows(sp.id, fresh.fields):
+            session.add(FieldRow(**values))
+        added += 1
+    gone = [p.id for p, _ in existing if p.id not in matched]
+    if gone:  # no longer in the store (deleted or archived there)
+        session.execute(delete(Product).where(Product.id.in_(gone)))
+    return carried, added, len(gone)
 
 
 def _by_handle(session: Session, batch_id: int) -> dict[str, tuple[int, int]]:
@@ -112,47 +188,6 @@ def _by_handle(session: Session, batch_id: int) -> dict[str, tuple[int, int]]:
             .where(Product.batch_id == batch_id)
         ).all()
     }
-
-
-def _carry_over(session: Session, old_batch: int, new: dict[str, tuple[int, int]]) -> int:
-    """Copy what was made here onto the same product of the new check; the store's value becomes `previous`,
-    so the product shows the change as waiting for the store. Pictures move with the product."""
-    old = _by_handle(session, old_batch)
-    pairs = {old_sp: new[h] for h, (_, old_sp) in old.items() if h in new}
-    if not pairs:
-        return 0
-    for h, (old_product, _) in old.items():
-        if h in new:
-            session.execute(update(Media).where(Media.product_id == old_product).values(product_id=new[h][0]))
-    made = session.execute(
-        select(FieldRow).where(
-            FieldRow.store_product_id.in_(list(pairs)),
-            (FieldRow.decided_by.is_not(None)) | (FieldRow.origin.in_(MADE_HERE)),
-        )
-    ).scalars()
-    by_new_sp: dict[int, list[FieldRow]] = {}
-    for row in made:
-        by_new_sp.setdefault(pairs[row.store_product_id][1], []).append(row)
-    if not by_new_sp:
-        return 0
-    targets = {
-        (r.store_product_id, r.key): r
-        for r in session.execute(select(FieldRow).where(FieldRow.store_product_id.in_(list(by_new_sp)))).scalars()
-    }
-    carried = 0
-    for sp_id, rows in by_new_sp.items():
-        for row in rows:
-            target = targets.get((sp_id, row.key))
-            if target is None or same(target.value, row.value):
-                continue  # live already, or a field the store no longer has
-            live = target.value
-            for attr in ("value", "origin", "status", "confidence", "sources", "alternatives", "value_en"):
-                setattr(target, attr, getattr(row, attr))
-            for attr in ("message", "issues", "decided_by", "decided_at"):
-                setattr(target, attr, getattr(row, attr))
-            target.previous = live if live is not None else ""
-            carried += 1
-    return carried
 
 
 # ---- background jobs ------------------------------------------------------------------------------------
@@ -259,25 +294,7 @@ def refresh_product(product_id: int, actor: str | None, shop=None) -> dict:
             session.execute(select(StoreProduct.id).where(StoreProduct.product_id == product_id)).scalar_one(),
         )
         rows = {r.key: r for r in session.execute(select(FieldRow).where(FieldRow.store_product_id == sp.id)).scalars()}
-        for key, f in fresh.items():
-            target = rows.get(key)
-            if target is None:
-                continue
-            live_value = f.previous if f.previous is not None else f.value  # an automatic fix keeps the store's
-            made_here = target.decided_by is not None or target.origin in MADE_HERE
-            if made_here and not same(target.value, live_value):
-                target.previous = live_value if live_value is not None else ""  # still waiting to go live
-                continue
-            target.value, target.origin, target.status = f.value, f.origin, f.status
-            target.confidence, target.sources, target.alternatives = f.confidence, f.sources, f.alternatives
-            target.previous, target.value_en, target.message, target.issues = (
-                f.previous,
-                f.value_en,
-                f.message,
-                f.issues,
-            )
-            if not made_here:
-                target.decided_by = target.decided_at = None
+        _apply(session, sp.id, rows, fresh)
         sp.shopify_product_id = row.get("Shopify ID") or sp.shopify_product_id
         sp.upload_status, sp.upload_message = None, None
         session.add(Event(actor=actor, kind="product_refreshed", batch_id=batch.id, store_product_id=sp.id, payload={}))

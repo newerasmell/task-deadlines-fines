@@ -83,10 +83,9 @@ def test_an_edit_not_yet_in_the_store_survives_the_next_read(shop):
 
     second = sync.run(STORE, "Мария", shop)
     assert second["carried"] == 1
-    with Session(engine()) as session:
-        assert session.get(Batch, first["batch_id"]) is None  # the older read is replaced
-    again = next(p for p in review.get_batch(second["batch_id"])["products"] if p["ean"] == product["ean"])
-    field = again["stores"][STORE]["fields"]["vendor"]
+    assert second["batch_id"] == first["batch_id"]  # the same catalog, updated in place
+    again = review.get_product(product["id"])["stores"][STORE]  # the same product, the same address
+    field = again["fields"]["vendor"]
     assert field["value"] == "Нова марка" and field["previous"] == vendor["value"] and field["decided_by"] == "Мария"
     entry = next(e for e in catalog.catalog(q=product["ean"])["items"] if e["ean"] == product["ean"])
     assert entry["stores"][STORE]["state"] == "diff"
@@ -150,3 +149,21 @@ def test_checking_one_product_in_the_store_shows_what_did_not_reach_it(monkeypat
             ids = list(session.execute(select(Batch.id).where(Batch.store_key == STORE)).scalars())
             session.execute(delete(Event).where(Event.batch_id.in_(ids)))
             session.execute(delete(Batch).where(Batch.id.in_(ids)))
+
+
+def test_a_read_keeps_ids_adds_new_products_and_removes_gone_ones(shop):
+    first = sync.run(STORE, "Мария", shop)
+    ids = {p["id"] for p in review.get_batch(first["batch_id"])["products"]}
+    fake = shop.http._transport.handler.__self__  # the FakeShopify behind the client
+    gone = next(iter(fake.products))
+    del fake.products[gone]
+    fake.products["gid://shopify/Product/999"] = {
+        "id": "gid://shopify/Product/999",
+        "handle": "brand-new-15-ml",
+        "title": "Brand New EDP 15 ml",
+        "sku": "SKNEW",
+    }
+    second = sync.run(STORE, "Мария", shop)
+    after = {p["id"] for p in review.get_batch(second["batch_id"])["products"]}
+    assert second["batch_id"] == first["batch_id"]
+    assert len(ids - after) == 1 and len(after - ids) == 1 and len(ids & after) == len(ids) - 1

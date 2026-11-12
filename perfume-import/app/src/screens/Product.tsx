@@ -54,10 +54,22 @@ export function ProductScreen() {
   const batch = useBatch(batchId, productId)
   const [open, setOpen] = useState<Open>(null)
 
-  if (batch.isPending) return <Loading what="вноса" />
-  if (batch.isError) return <Failure error={batch.error} retry={() => batch.refetch()} />
-  const product = batch.data.products.find((p) => p.id === productId)
-  if (!product) return <Failure error={new Error(`Продукт ${productId} не е в този внос.`)} />
+  if (batch.isPending) return <Loading what="продукта" />
+  const gone = batch.isError && /^Няма партида/.test((batch.error as Error).message)
+  const product = batch.data?.products.find((p) => p.id === productId)
+  if (gone || (batch.data && !product))
+    return (
+      <div className="flex flex-col items-start gap-3 p-7 text-sm">
+        <span>
+          Този линк е към продукт от по-старо изтегляне на каталога и вече не съществува. Отвори продукта отново от
+          списъка: оттук нататък адресите остават същите.
+        </span>
+        <Button asChild>
+          <Link to="/">Към продуктите</Link>
+        </Button>
+      </div>
+    )
+  if (batch.isError || !product) return <Failure error={batch.error} retry={() => batch.refetch()} />
 
   return (
     <div className="flex h-screen min-w-[1024px] bg-canvas">
