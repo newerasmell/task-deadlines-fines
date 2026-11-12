@@ -2,7 +2,9 @@
 has. A store's copy comes from its latest catalog audit (it is live there) or from a new-products batch
 (prepared here, uploaded or not). An audit wins over a batch for the same store: it is what the store shows."""
 
-from sqlalchemy import func, select
+import threading
+
+from sqlalchemy import func, literal_column, select
 from sqlalchemy.orm import Session
 
 from db.live import LABELS, same
@@ -42,14 +44,23 @@ def _version(session: Session) -> tuple:
     )
 
 
+_building = threading.Lock()
+
+
 def _entries() -> tuple[list[dict], list[str]]:
     with Session(_engine()) as session:
         version = _version(session)
         if _cache.get("version") == version:
             return _cache["value"]
-        _cache["value"] = _build(session)
-        _cache["version"] = version
-        return _cache["value"]
+    # One build at a time: requests that come meanwhile (typing in the search) wait and take its result instead
+    # of each building the whole list again (10 stores at once ran the 512 MB server out of memory).
+    with _building:
+        with Session(_engine()) as session:
+            version = _version(session)
+            if _cache.get("version") != version:
+                _cache["value"] = _build(session)
+                _cache["version"] = version
+            return _cache["value"]
 
 
 def _build(session: Session) -> tuple[list[dict], list[str]]:
@@ -93,18 +104,33 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
     # counted apart, so the list is not all orange after every catalog check.
     changed: set[int] = set()
     fixes: set[int] = set()
+    # Long texts are compared in the database as the shopper sees them (tags and spacing out), so the list never
+    # loads every description; short values come back and are compared by db.live.same.
+    long_keys = ("body_html", "seo_description")
+
+    def plain(col):
+        text = func.regexp_replace(col.op("#>>")(literal_column("'{}'")), "<[^>]+>", " ", "g")
+        return func.btrim(func.regexp_replace(text, r"\s+", " ", "g"))
+
+    base = (
+        FieldRow.store_product_id.in_(sp_ids),
+        FieldRow.previous.is_not(None),
+        func.jsonb_typeof(FieldRow.previous) != "null",
+        FieldRow.key.in_(list(LABELS)),
+        FieldRow.status != "blocked",
+        FieldRow.value.is_distinct_from(FieldRow.previous),
+    )
+    for sp_id, origin, decided_by in session.execute(
+        select(FieldRow.store_product_id, FieldRow.origin, FieldRow.decided_by).where(
+            *base, FieldRow.key.in_(long_keys), plain(FieldRow.value).is_distinct_from(plain(FieldRow.previous))
+        )
+    ):
+        (fixes if origin == "auto_fix" and not decided_by else changed).add(sp_id)
     for sp_id, value, previous, origin, decided_by in session.execute(
         select(
             FieldRow.store_product_id, FieldRow.value, FieldRow.previous, FieldRow.origin, FieldRow.decided_by
-        ).where(
-            FieldRow.store_product_id.in_(sp_ids),
-            FieldRow.previous.is_not(None),
-            FieldRow.key.in_(list(LABELS)),
-            FieldRow.status != "blocked",
-            FieldRow.value.is_distinct_from(FieldRow.previous),
-        )
+        ).where(*base, FieldRow.key.not_in(long_keys))
     ):
-        # previous is JSON null (not SQL NULL) on fields the store had and nothing changed: not a change.
         if previous is not None and not same(value, previous):
             (fixes if origin == "auto_fix" and not decided_by else changed).add(sp_id)
 
@@ -211,46 +237,56 @@ def _ml(title: str, value) -> str:
     return ""
 
 
+def _identity(title: str, ml_value) -> tuple[str, str, bool]:
+    """What a code can never override: the brand (the title's first word), the volume and whether it is a
+    tester. Codes are reused on several decants (5901234000002), titles are not."""
+    words = _norm(title).split()
+    return (words[0] if words else "", _ml(title, ml_value), "tester" in words)
+
+
+def _fits(a: tuple[str, str, bool], b: tuple[str, str, bool]) -> bool:
+    """Two identities can be one product: equal wherever both are known."""
+    return all(x == y for x, y in zip(a[:2], b[:2], strict=True) if x and y) and a[2] == b[2]
+
+
 def _link(sps, products, values, skus, eans) -> _Groups:
-    """Which store copies are the same product (decisions #36). The SKU is the team's own code and links first;
-    then the EAN with the same volume. For both the value set here and the one the store still shows count, so a
-    product stays linked while a new SKU or EAN reaches the stores one by one. The title only for a copy with no
-    EAN at all. Two products both live in one store are never joined."""
+    """Which store copies are the same product (decisions #40). A copy links to another through any code they
+    share: the SKU (the team's own code), the EAN or the exact title; for SKU and EAN both the value set here
+    and the one the store still shows count, so a product stays linked while a new code reaches the stores one
+    by one. No code ever joins two copies whose brand, volume or tester differ (codes are reused on several
+    decants), and two products both live in one store are never joined."""
     groups = _Groups()
     by_key: dict[str, list[int]] = {}
-    brand: dict[int, str] = {}
+    who: dict[int, tuple[str, str, bool]] = {}
     for sp in sps:
         own = values.get(sp.id, {})
         p = products[sp.product_id]
         title = _text(own.get("title")) or _text(p.input.get("name")) or _text(p.input.get("title"))
-        brand[sp.id] = (_norm(title).split() or [""])[0]
+        who[sp.id] = _identity(title, own.get("product_milliliters"))
         codes = ({_text(p.ean)} | eans.get(sp.id, set())) - {""}
-        ml = _ml(title, own.get("product_milliliters"))
-        keys = [f"sku:{c}" for c in skus.get(sp.id, ())] + [f"ean:{c}|{ml}" for c in sorted(codes)]
-        if not codes and title:  # the name only when there is no EAN at all, old or new
+        keys = [f"sku:{c}" for c in skus.get(sp.id, ())] + [f"ean:{c}" for c in sorted(codes)]
+        if title:  # a store may keep no EAN and its own SKU (TvojaParfum): the same title still links
             keys.append(f"t:{_norm(title)}")
         groups.find(sp.id)
         for k in keys:
             by_key.setdefault(k, []).append(sp.id)
-    # Only two products that are both live in one store are surely different products; a copy prepared here and
-    # the store's own copy of it are the same product (the store's wins in the entry).
-    members: dict[int, set[str]] = {
+    # Only two products both live in one store are surely different; a copy prepared here and the store's own
+    # copy of it are the same product (the store's wins in the entry).
+    live_in: dict[int, set[str]] = {
         sp.id: ({sp.store_key} if products[sp.product_id].kind == "audit" else set()) for sp in sps
     }
-    for k in sorted(by_key, key=lambda k: (not k.startswith("sku:"), k)):  # SKU links first
+    identity = dict(who)  # per group: the most complete identity of its members
+    for k in sorted(by_key, key=lambda k: (k.split(":", 1)[0] != "sku", k)):  # SKU links first
         ids = by_key[k]
-        for other in ids[1:]:
-            a, b = groups.find(ids[0]), groups.find(other)
-            if a == b:
-                continue
-            # A placeholder code (5901234000002) can sit on several decants: an EAN or a title links only the
-            # same brand. The SKU is the team's own code and is trusted as it is.
-            if not k.startswith("sku:") and brand[ids[0]] and brand[other] and brand[ids[0]] != brand[other]:
-                continue
-            if members[a] & members[b]:  # two products live in one store: not the same product
-                continue
-            groups.union(a, b)
-            members[groups.find(a)] = members[a] | members[b]
+        for i, first in enumerate(ids):
+            for other in ids[i + 1 :]:
+                a, b = groups.find(first), groups.find(other)
+                if a == b or live_in[a] & live_in[b] or not _fits(identity[a], identity[b]):
+                    continue
+                groups.union(a, b)
+                root = groups.find(a)
+                live_in[root] = live_in[a] | live_in[b]
+                identity[root] = tuple(x or y for x, y in zip(identity[a], identity[b], strict=True))
     return groups
 
 

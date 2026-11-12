@@ -236,3 +236,13 @@ Sending a new picture to a product already in a store added it at the end, so th
 and every send added another copy. Now the new picture is put first, and the main picture it replaces, plus any
 earlier picture this app put there (marked by its alt text), is taken off the product; the files stay in Shopify →
 Content → Files, and the gallery pictures behind the main one are kept. A step Shopify refuses is reported.
+
+
+## 40. One linking rule: codes link, identity decides
+
+Replaces the linking rules of #36 and #38. Store copies link through any code they share: the SKU (here and as the
+store still shows it), the EAN (likewise) or the exact title. But no code ever joins two copies whose brand (the
+title's first word), volume or tester marker differ: placeholder codes such as 5901234000002 sit as SKU and EAN on
+several decants, and a shared SKU had folded a Carolina Herrera decant into a Chanel one. Two products both live in
+one store stay apart (a store can hold duplicates); a copy prepared here joins its live copy. On the two full
+group-1 catalogs: 844 products linked across both stores, 28 in one, no wrong joins.

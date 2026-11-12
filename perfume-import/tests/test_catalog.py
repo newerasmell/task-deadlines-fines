@@ -208,6 +208,11 @@ def test_a_product_prepared_here_and_its_live_copy_are_one_row(audits, monkeypat
     rows = read_names_text(f"{title} {shared}", G, ["premierparfums", "parfemija"])
     batch_id = save_batch(run_batch(FakeClient(responder=responder), rows, G, ["premierparfums", "parfemija"], "x"))
     try:
+        # the fake research names another perfume: give the prepared copy the live product's title, as the
+        # real one would have
+        prepared = review.get_batch(batch_id)["products"][0]
+        for store in ("premierparfums", "parfemija"):
+            _set(prepared["stores"][store]["fields"]["title"]["id"], value=title)
         found = [e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared]
         assert len(found) == 1, [list(e["stores"]) for e in found]
         assert found[0]["stores"]["premierparfums"]["kind"] == "audit"  # what the store shows wins
@@ -224,3 +229,26 @@ def test_one_placeholder_ean_on_two_brands_is_two_products(audits):
     _set(fields["sku"]["id"], value="OTHER-1", previous=None)
     found = [e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared]
     assert len(found) == 2
+
+
+def test_descriptions_are_compared_in_the_database_as_the_shopper_sees_them(audits):
+    (_, hr), (shared, _) = audits
+    fields = _hr_rows(hr, shared)
+    _set(fields["body_html"]["id"], value="<p>Isti   tekst.</p>", previous='<p class="x">Isti tekst.</p>\n')
+    entry = next(e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared)
+    assert entry["stores"]["parfemija"]["state"] != "diff"
+    _set(fields["body_html"]["id"], value="<p>Novi tekst.</p>")
+    entry = next(e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared)
+    assert entry["stores"]["parfemija"]["state"] == "diff"
+
+
+def test_one_sku_on_two_perfumes_is_two_products(audits):
+    """5901234000002 was the SKU of a Chanel and a Carolina Herrera decant: a shared code never joins brands."""
+    (_, hr), (shared, _) = audits
+    fields = _hr_rows(hr, shared)
+    _set(fields["title"]["id"], value="Carolina Herrera Good Girl EDP 15 ml")
+    _set(fields["ean"]["id"], value="5901234000002", previous=None)
+    with Session(engine()) as session, session.begin():
+        session.get(Product, next(p for p in review.get_batch(hr)["products"] if p["ean"] == shared)["id"]).ean = None
+    rows = catalog.catalog(q="good girl 15")["items"]
+    assert len(rows) == 1 and set(rows[0]["stores"]) == {"parfemija"}
