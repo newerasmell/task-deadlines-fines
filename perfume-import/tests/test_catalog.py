@@ -130,3 +130,51 @@ def test_fixes_the_rules_made_are_not_changes_waiting(audits):
     assert catalog.catalog(q=fixed, filter="fixes")["counts"]["fixes"] >= (
         1 if entry["stores"]["premierparfums"]["state"] == "live" else 0
     )
+
+
+def _hr_rows(hr: int, ean: str) -> dict:
+    product = next(p for p in review.get_batch(hr)["products"] if p["ean"] == ean)
+    return product["stores"]["parfemija"]["fields"]
+
+
+def _set(field_id: int, **values) -> None:
+    with Session(engine()) as session, session.begin():
+        row = session.get(FieldRow, field_id)
+        for k, v in values.items():
+            setattr(row, k, v)
+
+
+def test_a_decant_with_the_bottles_ean_is_another_product(audits):
+    """15 ml decants often carry the full bottle's EAN: another volume and another SKU are another product."""
+    (_, hr), (shared, _) = audits
+    fields = _hr_rows(hr, shared)
+    title = fields["title"]["value"]
+    _set(fields["title"]["id"], value=title.rsplit(" ", 2)[0] + " 15 ml")
+    _set(fields["sku"]["id"], value="DEC-15", previous=None)
+    if "product_milliliters" in fields:
+        _set(fields["product_milliliters"]["id"], value="15 ml")
+    found = [e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared]
+    assert len(found) == 2 and all(len(e["stores"]) == 1 for e in found)
+
+
+def test_a_new_sku_keeps_the_link_while_the_stores_still_show_the_old(audits):
+    """The SKU links first; the store's old SKU (previous) and the new one both count until it is everywhere."""
+    (gr, hr), (shared, _) = audits
+    fields = _hr_rows(hr, shared)
+    old = fields["sku"]["value"]
+    _set(fields["sku"]["id"], value="CH-NEW-1", previous=old)  # changed here, the store still shows the old
+    with Session(engine()) as session, session.begin():  # and its EAN no longer says it is the same product
+        session.get(Product, next(p for p in review.get_batch(hr)["products"] if p["ean"] == shared)["id"]).ean = None
+        session.query(FieldRow).filter(FieldRow.id == fields["ean"]["id"]).update({"value": "4006000000000"})
+    entry = next(e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared)
+    assert set(entry["stores"]) == {"premierparfums", "parfemija"}
+
+
+def test_opening_a_product_of_a_store_catalog_loads_only_it(audits):
+    (gr, _), _ = audits
+    first, second = review.get_batch(gr)["products"][:2]
+    batch = review.get_batch(gr, focus=second["id"])
+    by_id = {p["id"]: p for p in batch["products"]}
+    assert by_id[second["id"]]["stores"]["premierparfums"]["fields"]
+    assert by_id[first["id"]]["brief"] and by_id[first["id"]]["stores"]["premierparfums"]["fields"] == {}
+    assert sum(by_id[first["id"]]["counts"].values()) > 0

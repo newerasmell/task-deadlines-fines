@@ -199,3 +199,15 @@ A product read from Shopify is known by its Shopify id, so a live update now che
 and a new SKU (the team's own code) is simply sent. Without an id (a product from an uploaded export) the SKU
 still tells that the handle is the same product. Edits on a store's own product keep the store's value as
 `previous` however many times a field is changed, so the change and the product's identity stay right.
+
+
+## 36. Products are linked by the team's SKU; a store catalog opens one product at a time
+
+The product list linked store copies by EAN, but a 15 ml decant often carries the full bottle's EAN, so a decant
+showed the 80 ml bottle of other stores as the same product. Copies are now linked by the SKU first (the team's
+own code), counting both the SKU set here and the one the store still shows, so a product stays linked while a
+new SKU reaches the stores one by one; then by the same EAN with the same volume; then, for a copy without an
+EAN, by the same title. Two copies of one store are never joined.
+Opening a product of a store's catalog loaded the whole catalog with every field (hundreds of products), which
+ran the 512 MB server out of memory: now only the open product comes with its fields, the list beside it with
+titles and status counts.

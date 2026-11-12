@@ -165,7 +165,8 @@ export function worst(statuses: Status[]): Status {
 /** One line under the product name in the list: what still needs a person, or "готов". */
 export function productNote(product: Product): { text: string; status: Status } {
   const fields = allFields(product)
-  const count = (s: Status) => fields.filter((f) => f.status === s).length
+  // A store catalog's list entry has no fields, only its counts (Product.brief).
+  const count = (s: Status) => (product.brief ? (product.counts[s] ?? 0) : fields.filter((f) => f.status === s).length)
   const blocked = count('blocked')
   const suggested = count('suggested')
   const warning = count('warning')

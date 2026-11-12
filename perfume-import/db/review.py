@@ -205,7 +205,9 @@ def _readiness(group_key: str | None, keys: list[str], with_template: set[str]) 
     return out
 
 
-def get_batch(batch_id: int) -> dict:
+def get_batch(batch_id: int, focus: int | None = None) -> dict:
+    """focus: one product of a store's catalog (hundreds of products): only it comes with its fields, the others
+    with their title and status counts, so opening a product does not load the whole catalog (512 MB server)."""
     with Session(_engine()) as session:
         batch = session.get(Batch, batch_id)
         if batch is None:
@@ -214,6 +216,8 @@ def get_batch(batch_id: int) -> dict:
             session.execute(select(Product).where(Product.batch_id == batch_id).order_by(Product.id)).scalars().all()
         )
         ids = [p.id for p in products]
+        lite = focus is not None and batch.kind == "audit"
+        loaded = [focus] if lite else ids
         sps = (
             session.execute(select(StoreProduct).where(StoreProduct.product_id.in_(ids)).order_by(StoreProduct.id))
             .scalars()
@@ -221,12 +225,22 @@ def get_batch(batch_id: int) -> dict:
         )
         fields = (
             session.execute(
-                select(FieldRow).where(FieldRow.store_product_id.in_([sp.id for sp in sps])).order_by(FieldRow.id)
+                select(FieldRow)
+                .where(FieldRow.store_product_id.in_([sp.id for sp in sps if sp.product_id in loaded]))
+                .order_by(FieldRow.id)
             )
             .scalars()
             .all()
         )
-        media = session.execute(select(Media).where(Media.product_id.in_(ids)).order_by(Media.id)).scalars().all()
+        counts: dict[int, dict[str, int]] = {}
+        if lite:
+            for sp_id, status, n in session.execute(
+                select(FieldRow.store_product_id, FieldRow.status, func.count())
+                .where(FieldRow.store_product_id.in_([sp.id for sp in sps if sp.product_id != focus]))
+                .group_by(FieldRow.store_product_id, FieldRow.status)
+            ):
+                counts.setdefault(sp_id, {})[status] = n
+        media = session.execute(select(Media).where(Media.product_id.in_(loaded)).order_by(Media.id)).scalars().all()
         store_rows = {s.key: s for s in session.execute(select(Store)).scalars()}
 
         by_sp: dict[int, list[FieldRow]] = {}
@@ -242,7 +256,12 @@ def get_batch(batch_id: int) -> dict:
         for m in media:
             pictures.setdefault(m.product_id, []).append(m)
 
-        out_products = [_product_dict(p, by_product.get(p.id, []), by_sp, pictures.get(p.id, [])) for p in products]
+        out_products = [
+            _product_dict(p, by_product.get(p.id, []), by_sp, pictures.get(p.id, []))
+            if p.id in loaded
+            else _product_brief(p, by_product.get(p.id, []), counts)
+            for p in products
+        ]
         with_template = set(
             session.execute(
                 select(StoreProfile.store_key).where(
@@ -292,6 +311,36 @@ def _product_dict(p: Product, sps: list[StoreProduct], by_sp: dict[int, list[Fie
         "counts": dict(Counter(statuses)),
         "stores": stores,
         "media": [_media_json(m) for m in media],
+    }
+
+
+def _product_brief(p: Product, sps: list[StoreProduct], counts: dict[int, dict[str, int]]) -> dict:
+    """A product in a catalog's list: no fields, only what the list shows (title, status counts)."""
+    total: Counter = Counter()
+    stores = {}
+    for sp in sps:
+        own = counts.get(sp.id, {})
+        total.update(own)
+        stores[sp.store_key] = {
+            "store_product_id": sp.id,
+            "approved_by": sp.approved_by,
+            "approved_at": sp.approved_at.isoformat() if sp.approved_at else None,
+            "upload_status": sp.upload_status,
+            "upload_message": sp.upload_message,
+            "status": max(own or {"ok": 1}, key=SEVERITY.__getitem__),
+            "fields": {},
+        }
+    statuses = [s for s, n in total.items() for _ in range(min(n, 1))]
+    return {
+        "id": p.id,
+        "ean": p.ean,
+        "input": p.input,
+        "title": p.input.get("title") or p.input.get("name") or "",
+        "state": product_state(statuses),
+        "counts": dict(total),
+        "stores": stores,
+        "media": [],
+        "brief": True,
     }
 
 

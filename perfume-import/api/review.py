@@ -50,8 +50,8 @@ def batches():
 
 
 @router.get("/batches/{batch_id}")
-def batch(batch_id: int):
-    return _call(review.get_batch, batch_id)
+def batch(batch_id: int, focus: int | None = None):
+    return _call(review.get_batch, batch_id, focus)
 
 
 @router.get("/catalog")

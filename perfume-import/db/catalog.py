@@ -75,12 +75,16 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
         ).all()
     )
     values: dict[int, dict[str, object]] = {}
-    for sp_id, key, value in session.execute(
-        select(FieldRow.store_product_id, FieldRow.key, FieldRow.value).where(
-            FieldRow.store_product_id.in_(sp_ids), FieldRow.key.in_(["title", "ean", "image"])
+    skus: dict[int, set[str]] = {}
+    for sp_id, key, value, previous in session.execute(
+        select(FieldRow.store_product_id, FieldRow.key, FieldRow.value, FieldRow.previous).where(
+            FieldRow.store_product_id.in_(sp_ids),
+            FieldRow.key.in_(["title", "ean", "image", "sku", "product_milliliters"]),
         )
     ):
         values.setdefault(sp_id, {})[key] = value
+        if key == "sku":  # the code here and the one the store still shows: both keep the link (decisions #36)
+            skus[sp_id] = {c for c in (_code(value), _code(previous)) if c}
     # Only the columns the comparison needs, and only rows that differ at all (db.live._changes decides).
     # A change a person or the AI made waits to go live (diff); a fix the store's rules made by themselves is
     # counted apart, so the list is not all orange after every catalog check.
@@ -101,6 +105,7 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
         if previous is not None and not same(value, previous):
             (fixes if origin == "auto_fix" and not decided_by else changed).add(sp_id)
 
+    groups = _link(sps, products, values, skus)
     entries: dict[str, dict] = {}
     order: list[str] = []
     for sp in sps:
@@ -108,10 +113,7 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
         own = values.get(sp.id, {})
         ean = _text(p.ean) or _text(own.get("ean"))
         title = _text(own.get("title")) or _text(p.input.get("name")) or _text(p.input.get("title"))
-        # Without an EAN the same title in two stores is taken as the same product; else it stands alone.
-        key = ean or (f"t:{_norm(title)}" if title else f"p{p.id}")
-        if not ean and sp.store_key in entries.get(key, {}).get("stores", {}):
-            key = f"p{p.id}"
+        key = f"g{groups.find(sp.id)}"
         entry_fix = False
         if p.kind == "audit":
             # A push to the store makes the pushed values the new reference (db.live.push), so what still
@@ -139,10 +141,8 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
                 "batch_id": p.batch_id,
                 "created_at": p.created_at.isoformat(),
                 "fixes": 0,
-                "_titles": set(),
             }
-        if title:
-            entry["_titles"].add(_norm(title))
+        entry["ean"] = entry["ean"] or ean or None
         image = _text(own.get("image"))
         # The newest new-products batch is the place to work on a product: every store side by side.
         if p.kind == "new":
@@ -164,10 +164,8 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
                 "kind": p.kind,
                 "fixes": entry_fix,
             }
-    _merge_by_title(entries)
     out = []
     for entry in entries.values():
-        entry.pop("_titles", None)
         entry["fixes"] = sum(1 for s in entry["stores"].values() if s.pop("fixes", False))
         entry["missing"] = sum(1 for k in order if k not in entry["stores"])
         out.append(entry)
@@ -179,23 +177,69 @@ def _norm(title: str) -> str:
     return " ".join(title.casefold().split())
 
 
-def _merge_by_title(entries: dict[str, dict]) -> None:
-    """A store that keeps no EAN (or another code) still lists the product under the same title: such a row
-    joins the product with an EAN and that title, when the store is not in it yet."""
-    by_title: dict[str, dict] = {}
-    for entry in entries.values():
-        if entry["ean"]:
-            for t in entry["_titles"]:
-                by_title.setdefault(t, entry)
-    for key in [k for k, e in entries.items() if not e["ean"]]:
-        entry = entries[key]
-        target = next((by_title[t] for t in entry["_titles"] if t in by_title), None)
-        if target is None or set(entry["stores"]) & set(target["stores"]):
-            continue
-        target["stores"].update(entry["stores"])
-        target["_titles"] |= entry["_titles"]
-        target["image"] = target["image"] or entry["image"]
-        del entries[key]
+class _Groups:
+    """Union-find over store copies: copies that share a key are one product."""
+
+    def __init__(self):
+        self.parent: dict[int, int] = {}
+
+    def find(self, x: int) -> int:
+        self.parent.setdefault(x, x)
+        while self.parent[x] != x:
+            self.parent[x] = self.parent[self.parent[x]]
+            x = self.parent[x]
+        return x
+
+    def union(self, a: int, b: int) -> None:
+        self.parent[self.find(a)] = self.find(b)
+
+
+def _code(value) -> str:
+    return " ".join(str(value or "").split()).upper()
+
+
+def _ml(title: str, value) -> str:
+    """The volume („15“ for 15 ml): a decant and the full bottle share an EAN but are not the same product."""
+    import re
+
+    for text in (str(value or ""), title):
+        if m := re.search(r"(\d+(?:[.,]\d+)?)\s*ml", text, re.IGNORECASE):
+            return m.group(1).replace(",", ".").rstrip("0").rstrip(".")
+    return ""
+
+
+def _link(sps, products, values, skus) -> _Groups:
+    """Which store copies are the same product (decisions #36). The SKU is the team's own code and links first,
+    the store's current SKU as well as a new one set here, so a product stays linked while its new SKU reaches
+    the stores one by one. Without a shared SKU: the same EAN with the same volume, then the same title for a
+    copy with no EAN. Two copies of one store are never joined."""
+    groups = _Groups()
+    by_key: dict[str, list[int]] = {}
+    for sp in sps:
+        own = values.get(sp.id, {})
+        p = products[sp.product_id]
+        title = _text(own.get("title")) or _text(p.input.get("name")) or _text(p.input.get("title"))
+        ean = _text(p.ean) or _text(own.get("ean"))
+        keys = [f"sku:{c}" for c in skus.get(sp.id, ())]
+        if ean:
+            keys.append(f"ean:{ean}|{_ml(title, own.get('product_milliliters'))}")
+        elif title:
+            keys.append(f"t:{_norm(title)}")
+        groups.find(sp.id)
+        for k in keys:
+            by_key.setdefault(k, []).append(sp.id)
+    members: dict[int, set[str]] = {sp.id: {sp.store_key} for sp in sps}
+    for k in sorted(by_key, key=lambda k: (not k.startswith("sku:"), k)):  # SKU links first
+        ids = by_key[k]
+        for other in ids[1:]:
+            a, b = groups.find(ids[0]), groups.find(other)
+            if a == b:
+                continue
+            if members[a] & members[b]:  # would put two copies of one store together: not the same product
+                continue
+            groups.union(a, b)
+            members[groups.find(a)] = members[a] | members[b]
+    return groups
 
 
 def _matches(entry: dict, words: list[str]) -> bool:

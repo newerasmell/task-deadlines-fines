@@ -53,6 +53,7 @@ export type Product = {
   counts: Partial<Record<Status, number>>
   stores: Record<string, StoreProduct>
   media: MediaRecord[]
+  brief?: boolean // a store catalog's list entry: no fields, only counts (GET /api/batches/{id}?focus=)
 }
 
 export type StoreInfo = {
@@ -463,7 +464,7 @@ export const api = {
   clearAccess: (store: string) => del<{ ok: boolean }>(`/api/stores/${store}/access`),
   checkAccess: (store: string) => post<{ ok: boolean; message: string }>(`/api/stores/${store}/access/check`, {}),
   batches: () => request<BatchSummary[]>('/api/batches'),
-  batch: (id: number) => request<Batch>(`/api/batches/${id}`),
+  batch: (id: number, focus?: number) => request<Batch>(`/api/batches/${id}${focus ? `?focus=${focus}` : ''}`),
   catalog: (q: string, filter: CatalogFilter, limit: number) =>
     request<Catalog>(`/api/catalog?${new URLSearchParams({ q, filter, limit: String(limit) })}`),
   syncStores: (stores?: string[]) => post<{ job_id: string }>('/api/stores/sync', { stores: stores ?? null }),

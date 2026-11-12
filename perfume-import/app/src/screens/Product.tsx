@@ -51,7 +51,7 @@ export function ProductScreen() {
   const params = useParams()
   const batchId = Number(params.batchId)
   const productId = Number(params.productId)
-  const batch = useBatch(batchId)
+  const batch = useBatch(batchId, productId)
   const [open, setOpen] = useState<Open>(null)
 
   if (batch.isPending) return <Loading what="вноса" />
@@ -877,7 +877,7 @@ function EuroPrices({
           .map(([k, v]) => [k, { price: v.price ?? '', compare_at: v.compare_at ?? '' }]),
       )
       const updated = await api.setPrices(productId, stores)
-      client.setQueryData<Batch>(['batch', batchId], (old) =>
+      client.setQueriesData<Batch>({ queryKey: ['batch', batchId] }, (old) =>
         old
           ? {
               ...old,
@@ -1018,7 +1018,7 @@ function FromOtherStores({ batchId, productId }: { batchId: number; productId: n
     setNote(null)
     try {
       const r = await api.takeFromStores(productId, kinds)
-      client.setQueryData<Batch>(['batch', batchId], (old) =>
+      client.setQueriesData<Batch>({ queryKey: ['batch', batchId] }, (old) =>
         old ? { ...old, products: old.products.map((p) => (p.id === r.product.id ? r.product : p)) } : old,
       )
       setNote(

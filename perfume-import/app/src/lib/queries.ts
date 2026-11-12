@@ -14,7 +14,13 @@ export const useCatalog = (q: string, filter: CatalogFilter, limit: number) =>
 export const useProductCatalog = (id: number) =>
   useQuery({ queryKey: ['product-catalog', id], queryFn: () => api.productCatalog(id) })
 
-export const useBatch = (id: number) => useQuery({ queryKey: ['batch', id], queryFn: () => api.batch(id) })
+/** focus: the product being looked at; a store catalog then comes without the other products' fields. */
+export const useBatch = (id: number, focus?: number) =>
+  useQuery({
+    queryKey: focus ? ['batch', id, 'focus', focus] : ['batch', id],
+    queryFn: () => api.batch(id, focus),
+    placeholderData: (previous) => previous,
+  })
 
 export const useProduct = (id: number | null) =>
   useQuery({ queryKey: ['product', id], queryFn: () => api.product(id!), enabled: id !== null })
@@ -32,7 +38,7 @@ export function useProductMutation<A>(batchId: number, fn: (args: A) => Promise<
       return fn(args)
     },
     onSuccess: (product) => {
-      client.setQueryData<Batch>(['batch', batchId], (old) =>
+      client.setQueriesData<Batch>({ queryKey: ['batch', batchId] }, (old) =>
         old ? { ...old, products: old.products.map((p) => (p.id === product.id ? product : p)) } : old,
       )
       client.setQueryData(['product', product.id], { ...product, batch_id: batchId })
@@ -53,8 +59,9 @@ export const useAcceptAll = (batchId: number) =>
   )
 
 export const useReplaceImage = (batchId: number) =>
-  useProductMutation<{ productId: number; url?: string; file?: File; ready?: boolean }>(batchId, ({ productId, ...source }) =>
-    api.replaceImage(productId, source),
+  useProductMutation<{ productId: number; url?: string; file?: File; ready?: boolean }>(
+    batchId,
+    ({ productId, ...source }) => api.replaceImage(productId, source),
   )
 
 export const useSyncNotes = (batchId: number) =>
