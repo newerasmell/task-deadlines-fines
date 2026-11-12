@@ -62,6 +62,7 @@ def products_catalog(q: str = "", filter: str = "all", offset: int = 0, limit: i
 class Send(BaseModel):
     stores: list[str]
     status: str = "active"  # for products created in a store; live products keep theirs
+    align: bool = False  # first make the other stores' copies like this one (translated), as a background job
 
 
 @router.post("/products/{product_id}/refresh")
@@ -92,6 +93,13 @@ def send_plan(product_id: int):
 
 @router.post("/products/{product_id}/send")
 def send(product_id: int, body: Send, x_actor: str | None = Header(default=None)):
+    if body.align:
+        from db import newbatch
+
+        try:
+            return {"job_id": sending.start_align(product_id, body.stores, body.status, actor_name(x_actor))}
+        except newbatch.NewBatchError as exc:
+            raise HTTPException(409, str(exc)) from exc
     return _call(sending.run, product_id, body.stores, body.status, actor_name(x_actor))
 
 

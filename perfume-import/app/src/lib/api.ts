@@ -472,10 +472,11 @@ export const api = {
   spread: (productId: number, store: string) =>
     post<{ job_id: string }>(`/api/products/${productId}/spread`, { store }),
   sendPlan: (id: number) => request<SendPlan>(`/api/products/${id}/send`),
-  send: (id: number, stores: string[], status: 'draft' | 'active') =>
-    post<{ done: Record<string, string>; plan: SendPlan; job_id?: string }>(`/api/products/${id}/send`, {
+  send: (id: number, stores: string[], status: 'draft' | 'active', align = false) =>
+    post<{ done?: Record<string, string>; plan?: SendPlan; job_id?: string }>(`/api/products/${id}/send`, {
       stores,
       status,
+      align,
     }),
   productCatalog: (id: number) => request<CatalogEntry>(`/api/products/${id}/catalog`),
   product: (id: number) => request<Product & { batch_id: number }>(`/api/products/${id}`),

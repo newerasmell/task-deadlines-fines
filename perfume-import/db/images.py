@@ -100,7 +100,7 @@ def replace(product_id: int, data: bytes, source: str, actor: str | None, ready:
             session.flush()
             return row
 
-        original = add(data, "original", None, {"source": source, "replaced_by": actor})
+        original = add(data, "original", None, {"source": source, "replaced_by": actor, "ready": ready})
         by_layout: dict[str, Media] = {}
         min_height = group.spec.rules.image_min_height
         when = now()

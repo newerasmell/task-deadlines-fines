@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db import newbatch
@@ -245,7 +246,12 @@ def _facts(fields: dict[str, FieldRow]) -> dict:
 
 
 def write_texts(
-    product_id: int, client, force: bool = False, source: str | None = None, only: list[str] | None = None
+    product_id: int,
+    client,
+    force: bool = False,
+    source: str | None = None,
+    only: list[str] | None = None,
+    facts: dict | None = None,
 ) -> tuple[str, float]:
     """English master + every store's text (its own style, or its language's translation) from the current
     facts; written as suggestions into the stores whose description is empty, blocked or flagged (every store
@@ -267,7 +273,7 @@ def write_texts(
             and (only is None or s in only)
         ]
         first = rows[source] if source in rows else next(iter(rows.values()))
-        facts = _facts(first)
+        facts = facts or _facts(first)  # given: the facts of another store's copy (spread_entry)
         title = str((first.get("title") or FieldRow()).value or "")
         tester = bool(product.input.get("tester")) or bool(re.search(r"\btester\b", title, re.IGNORECASE))
     if not targets:
@@ -497,3 +503,120 @@ def start_spread(product_id: int, source: str, actor: str | None, client=None) -
 
     threading.Thread(target=work, daemon=True, name=f"spread-{job_id}").start()
     return job_id
+
+
+def _copy_image(source_product: int, source_value, target_product: int, actor: str | None) -> str | None:
+    """The source copy's picture onto another store's copy: a finished picture as it is, else its original
+    composed for the target store's layout. Returns a note when it could not be done."""
+    from db import images
+    from db.models import Media
+    from pipeline import media as files
+
+    text = str(source_value or "")
+    try:
+        if text.startswith("/api/media/"):
+            with Session(_engine()) as session:
+                shown = session.get(Media, int(text.rsplit("/", 1)[1]))
+                if shown is None:
+                    return "снимката не е намерена"
+                original = shown
+                if shown.kind == "composed":  # compose again from its original for the other layout
+                    original = (
+                        session.execute(
+                            select(Media)
+                            .where(Media.product_id == shown.product_id, Media.kind == "original")
+                            .order_by(Media.id.desc())
+                        )
+                        .scalars()
+                        .first()
+                        or shown
+                    )
+                data = files.resolve(original.path).read_bytes()
+                ready = shown.kind == "original"  # used as it is in its store: a finished picture
+        elif text.startswith("http"):
+            data, ready = images.from_url(text), False
+        else:
+            return None
+        images.replace(target_product, data, f"от продукта {source_product}", actor, ready)
+    except Exception as exc:  # the facts and texts still go; the picture is reported
+        return f"снимката не се пренесе: {exc}"
+    return None
+
+
+def spread_entry(product_id: int, stores: list[str], actor: str | None, client) -> tuple[dict, float]:
+    """„Качи в магазините“ with „изравни“: the open copy (its store) is the truth for the same product's copies in
+    these other stores (each its own product when read from the store). Brand, name, concentration, gender,
+    family and ingredients are copied, the notes translated, description and SEO written again in each store's
+    template, and the picture copied when it differs. Values are set as decided (the person chose to send them);
+    each copy's store value stays as `previous`, so they show and go as changes."""
+    from db import catalog
+    from db.live import same
+    from db.review import _withdraw_approval, now
+    from pipeline.fill import normalize_notes
+
+    entry = catalog.entry_for(product_id)
+    source = next((s for s, at in entry["stores"].items() if at["product_id"] == product_id), None)
+    if source is None:
+        raise KeyError(f"Няма продукт {product_id}.")
+    targets = {s: at["product_id"] for s, at in entry["stores"].items() if s in stores and s != source}
+    if not targets:
+        return {}, 0.0
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        group = load_group(session.get(Batch, product.batch_id).group_key)
+        src = _rows(session, product_id)[source]
+        copied = {
+            k: src[k].value for k in SPREAD_KEYS if k in src and not _empty(src[k].value) and src[k].status != "blocked"
+        }
+        local_notes = {
+            k: (src[k].value_en, src[k].value)
+            for k in NOTES
+            if k in src and not _empty(src[k].value) and src[k].status != "blocked"
+        }
+        image = src["image"].value if "image" in src and not _empty(src["image"].value) else None
+        facts = _facts(src)
+
+    cost = 0.0
+    english: dict[str, list[str]] = {}
+    for key, (value_en, value) in local_notes.items():
+        if value_en:
+            english[key] = [t.strip() for t in str(value_en).split(",") if t.strip()]
+        else:
+            english[key], usage = normalize_notes(client, str(value))
+            cost += usage.cost
+    for key, notes in english.items():
+        facts[key] = notes
+    terms = sorted({t for notes in english.values() for t in notes})
+    translations: dict[str, dict[str, str]] = {}
+    for language in {group.store(s).language for s in targets if s in group.stores}:
+        translations[language], usage = translate_terms(client, terms, language) if terms else ({}, None)
+        cost += usage.cost if usage else 0
+
+    done: dict[str, str] = {}
+    for store, target in targets.items():
+        language = group.store(store).language if store in group.stores else "en"
+        with Session(_engine()) as session, session.begin():
+            rows = _rows(session, target).get(store, {})
+            when = now()
+            values = dict(copied)
+            values_en = {}
+            for key, notes in english.items():
+                values[key] = ", ".join(translations.get(language, {}).get(t, t) for t in notes)
+                values_en[key] = ", ".join(notes)
+            for key, value in values.items():
+                row = rows.get(key)
+                if row is None or (same(row.value, value) and row.status == "ok"):
+                    continue
+                if row.previous is None:  # the store's value stays the reference until it goes live
+                    row.previous = row.value
+                row.value, row.value_en = value, values_en.get(key, row.value_en)
+                row.origin, row.status = "input", "ok"
+                row.message, row.issues = f"От {source}, изравнено от {actor or 'екипа'}.", []
+                row.decided_by, row.decided_at = actor, when
+            image_differs = image is not None and "image" in rows and not same(rows["image"].value, image)
+            _withdraw_approval(session, target)
+        summary, text_cost = write_texts(target, client, force=True, only=[store], facts=facts)
+        cost += text_cost
+        note = _copy_image(product_id, image, target, actor) if image_differs else None
+        done[store] = "изравнен" + (f"; {note}" if note else "")
+    return done, round(cost, 4)

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { api, type SendStore } from '../lib/api'
 import { cn } from '../lib/cn'
@@ -12,6 +12,8 @@ import { Dialog } from './ui/dialog'
 // made; what waits on a person is said with a link to that store's copy.
 
 const ACTIONABLE = new Set(['update', 'create', 'missing'])
+// With „изравни“ a copy that waits on a fix or has nothing new gets this product's data, so it can go too.
+const ALIGNABLE = new Set(['update', 'create', 'missing', 'wait', 'none'])
 
 export function SendButton({ productId }: { productId: number }) {
   const [open, setOpen] = useState(false)
@@ -34,10 +36,33 @@ function SendDialog({ productId, onClose }: { productId: number; onClose: () => 
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<Record<string, string> | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [align, setAlign] = useState(true)
+  const [jobId, setJobId] = useState<string | null>(null)
+  const job = useQuery({
+    queryKey: ['job', jobId],
+    queryFn: () => api.job(jobId!),
+    enabled: !!jobId,
+    refetchInterval: (q) => (q.state.data && !q.state.data.running ? false : 2000),
+  })
+  const aligning = !!job.data?.running
+  const finished = job.data && !job.data.running ? job.data.id : null
+  useEffect(() => {
+    if (!finished) return
+    for (const key of [['batch'], ['catalog'], ['product-catalog'], ['live'], ['send', productId]])
+      void client.invalidateQueries({ queryKey: key })
+  }, [finished, client, productId])
 
   const rows = plan.data?.stores ?? []
+  const self = rows.find((s) => s.product_id === productId)?.store
+  const others = rows.some((s) => s.store !== self && s.action !== 'missing')
+  const usable = align && others ? ALIGNABLE : ACTIONABLE
   const chosen =
-    picked ?? new Set(rows.filter((s) => s.action === 'update' || s.action === 'create').map((s) => s.store))
+    picked ??
+    new Set(
+      rows
+        .filter((s) => (align && others ? s.action !== 'missing' : s.action === 'update' || s.action === 'create'))
+        .map((s) => s.store),
+    )
   const label = (key: string) => stores.data?.find((s) => s.key === key)?.label.split(' (')[0] ?? key
   const code = (key: string) => stores.data?.find((s) => s.key === key)?.country ?? key.slice(0, 2).toUpperCase()
   const toggle = (key: string) => {
@@ -53,10 +78,11 @@ function SendDialog({ productId, onClose }: { productId: number; onClose: () => 
     setBusy(true)
     setError(null)
     try {
-      const r = await api.send(productId, [...chosen], status)
-      setDone(r.done)
+      const r = await api.send(productId, [...chosen], status, align && others)
+      if (r.job_id) setJobId(r.job_id)
+      if (r.done) setDone(r.done)
       setPicked(new Set())
-      client.setQueryData(['send', productId], r.plan)
+      if (r.plan) client.setQueryData(['send', productId], r.plan)
       for (const key of [['batch'], ['catalog'], ['product-catalog'], ['live'], ['job', 'latest']])
         void client.invalidateQueries({ queryKey: key })
     } catch (e) {
@@ -85,13 +111,40 @@ function SendDialog({ productId, onClose }: { productId: number; onClose: () => 
               ))}
             </span>
           )}
-          <Button onClick={onClose}>{done ? 'Затвори' : 'Откажи'}</Button>
-          <Button variant="primary" disabled={!chosen.size || busy} onClick={() => void send()}>
-            {busy ? 'Качвам…' : chosen.size === 1 ? 'Качи в 1 магазин' : `Качи в ${chosen.size} магазина`}
+          <Button onClick={onClose}>{done || job.data ? 'Затвори' : 'Откажи'}</Button>
+          <Button variant="primary" disabled={!chosen.size || busy || aligning} onClick={() => void send()}>
+            {busy || aligning
+              ? 'Качвам…'
+              : align && others
+                ? `Изравни и качи в ${chosen.size === 1 ? '1 магазин' : `${chosen.size} магазина`}`
+                : chosen.size === 1
+                  ? 'Качи в 1 магазин'
+                  : `Качи в ${chosen.size} магазина`}
           </Button>
         </>
       }
     >
+      {others && (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5" checked={align} onChange={(e) => setAlign(e.target.checked)} />
+          <span>
+            Изравни другите магазини с този
+            <span className="block text-xs text-ink-2">
+              Марка, име, пол, семейство и съставки се копират, нотките се превеждат, описанието се пише наново по
+              шаблона на всеки магазин и по-новата снимка се пренася; после всичко се качва (≈ $0.02 на магазин).
+            </span>
+          </span>
+        </label>
+      )}
+      {job.data && (
+        <div className={cn('flex flex-col gap-1 text-sm', job.data.error ? 'text-blocked-text' : 'text-ink-2')}>
+          {job.data.running
+            ? `${job.data.stage_label}… (около минута)`
+            : job.data.error
+              ? `Спря: ${job.data.error}`
+              : 'Готово.'}
+        </div>
+      )}
       {plan.isPending ? (
         <span className="text-sm text-ink-2">Проверявам магазините…</span>
       ) : plan.isError ? (
@@ -106,7 +159,8 @@ function SendDialog({ productId, onClose }: { productId: number; onClose: () => 
               label={label(s.store)}
               checked={chosen.has(s.store)}
               onToggle={() => toggle(s.store)}
-              result={done?.[s.store]}
+              can={usable.has(s.action)}
+              result={done?.[s.store] ?? (job.data?.result as Record<string, string> | undefined)?.[s.store]}
               onOpen={onClose}
             />
           ))}
@@ -131,6 +185,7 @@ function Row({
   label,
   checked,
   onToggle,
+  can,
   result,
   onOpen,
 }: {
@@ -139,10 +194,10 @@ function Row({
   label: string
   checked: boolean
   onToggle: () => void
+  can: boolean
   result?: string
   onOpen: () => void
 }) {
-  const can = ACTIONABLE.has(s.action)
   const text =
     s.action === 'update'
       ? `Обновява: ${s.changes.join(', ')}`

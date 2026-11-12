@@ -246,3 +246,13 @@ title's first word), volume or tester marker differ: placeholder codes such as 5
 several decants, and a shared SKU had folded a Carolina Herrera decant into a Chanel one. Two products both live in
 one store stay apart (a store can hold duplicates); a copy prepared here joins its live copy. On the two full
 group-1 catalogs: 844 products linked across both stores, 28 in one, no wrong joins.
+
+
+## 41. „Изравни и качи“: the open store's copy to every chosen store
+
+„Качи в магазините“ now offers (ticked by default when the product is in other stores) to make the chosen stores'
+copies like the open one before sending: brand, name, concentration, gender, family and ingredients copied, notes
+translated, description and SEO written again in each store's template, and the open copy's picture copied when it
+differs (a finished picture as it is, else its original composed for the store's layout). It runs as a job; each
+store's value stays as `previous`, then the stores are sent as before (their suggestions accepted). Stores without
+the product are then made from the live copies.

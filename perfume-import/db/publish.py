@@ -216,3 +216,68 @@ def _from_live(product_id: int, client=None) -> dict | None:
         return None
     raw, _ = unify_facts(client or default_client(), copies, group)
     return raw
+
+
+def start_align(product_id: int, stores: list[str], status: str, actor: str | None, client=None) -> str:
+    """„Изравни и качи“ as a background job: the open copy's facts, translated notes, texts in each store's
+    template and picture go to the chosen stores' copies (db.fill.spread_entry), then everything is sent
+    (run). Stores without the product are made afterwards from the live copies, as „Създай го“ does."""
+    import threading
+    import time
+    import uuid
+
+    from db import newbatch
+    from pipeline.ai import api_key
+
+    if not api_key() and client is None:
+        raise newbatch.NewBatchError("Няма ключ за Claude (ANTHROPIC_API_KEY в Render → Environment).")
+    current = {s["store"]: s for s in plan(product_id)["stores"]}
+    existing = [s for s in stores if s in current and current[s]["action"] != "missing"]
+    missing = [s for s in stores if s in current and current[s]["action"] == "missing"]
+    with newbatch._lock:
+        newbatch.busy()
+        job_id = uuid.uuid4().hex[:12]
+        newbatch._jobs[job_id] = {
+            "id": job_id,
+            "kind": "fill",
+            "running": True,
+            "stage": "texts",
+            "stage_label": f"Изравнявам {len(existing)} магазина (превод, описания, снимка)",
+            "done": 0,
+            "total": len(stores),
+            "error": None,
+            "batch_id": None,
+            "product_id": product_id,
+            "result": None,
+            "cost_usd": None,
+            "started_at": time.time(),
+            "finished_at": None,
+        }
+    job = newbatch._jobs[job_id]
+
+    def work() -> None:
+        from db import fill
+        from pipeline.ai import default_client
+
+        result: dict[str, str] = {}
+        try:
+            ai = client or default_client()
+            aligned, cost = fill.spread_entry(product_id, existing, actor, ai)
+            job.update(stage="saving", stage_label="Качвам в магазините", cost_usd=cost)
+            sent = run(product_id, existing, status, actor)["done"]
+            for store in existing:
+                parts = [p for p in (aligned.get(store), sent.get(store)) if p]
+                result[store] = " · ".join(parts) or "няма какво да се качи"
+        except Exception as exc:
+            job["error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            job.update(result=result, running=False, finished_at=time.time(), done=len(stores))
+        if missing and not job["error"]:
+            try:  # its own job, once this one has finished
+                made = run(product_id, missing, status, actor, client)["done"]
+                job["result"] = {**result, **made}
+            except Exception as exc:
+                job["result"] = {**result, **{s: str(exc) for s in missing}}
+
+    threading.Thread(target=work, daemon=True, name=f"align-{job_id}").start()
+    return job_id

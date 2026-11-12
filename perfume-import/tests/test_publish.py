@@ -8,6 +8,7 @@ from pipeline.shopify import Shopify
 from tests.fake_ai import FakeClient, message
 from tests.fake_shopify import FakeShopify
 from tests.test_audit import batch  # noqa: F401  (the fixture)
+from tests.test_catalog import audits  # noqa: F401  (the fixture)
 
 pytestmark = pytest.mark.db
 
@@ -159,3 +160,42 @@ def test_a_new_sku_is_sent_to_the_product_known_by_its_shopify_id(batch, monkeyp
     result = publish.run(product["id"], ["premierparfums"], "active", "Мария")
     assert "SKU" in result["done"]["premierparfums"], result
     assert fake.variant_updates and fake.variant_updates[0][0]["inventoryItem"]["sku"] == "CH-0002"
+
+
+def test_align_entry(audits, monkeypatch):  # noqa: F811
+    """„Качи в магазините“ + изравни: the open GR copy's family and notes (translated) and a new description
+    reach the HR copy of the same product, as decided changes waiting to go live there."""
+    from db import catalog, fill
+    from tests.test_catalog import _hr_rows, _set
+
+    words = {"el": {"amber": "κεχριμπάρι"}, "hr": {"amber": "jantar", "musk": "mošus"}}
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: words.get(lang, {}))
+    monkeypatch.setattr("pipeline.fill.load_glossary", lambda lang: words.get(lang, {}))
+    (gr, hr), (shared, _) = audits
+    gr_product = next(p for p in review.get_batch(gr)["products"] if p["ean"] == shared)
+    g = gr_product["stores"]["premierparfums"]["fields"]
+    _set(g["fragrance_family"]["id"], value="Woody", status="ok")
+    _set(g["base_note"]["id"], value="κεχριμπάρι, μόσχος", value_en="amber, musk", status="ok")
+    before = _hr_rows(hr, shared)
+
+    def answers(kwargs):
+        system = str(kwargs.get("system", ""))
+        if "Translate perfume note names" in system:
+            return message({"notes": [{"en": "musk", "local": "mošus"}]})
+        if "Extract the perfume notes" in system:  # the GR notes kept only in Greek
+            return message({"notes": ["bergamot"]})
+        from tests.test_batch import responder
+
+        return responder(kwargs)
+
+    done, _ = fill.spread_entry(gr_product["id"], ["parfemija"], "Мария", FakeClient(responder=answers))
+    assert done["parfemija"].startswith("изравнен")
+    after = _hr_rows(hr, shared)
+    assert after["fragrance_family"]["value"] == "Woody" and after["fragrance_family"]["decided_by"] == "Мария"
+    assert (
+        after["base_note"]["value"] == "jantar, mošus"
+        and after["base_note"]["previous"] == before["base_note"]["value"]
+    )
+    assert after["body_html"]["origin"] == "ai_generated"
+    entry = next(e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared)
+    assert entry["stores"]["parfemija"]["state"] == "diff"  # waiting to go live in HR
