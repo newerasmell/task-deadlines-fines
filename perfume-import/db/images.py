@@ -52,8 +52,9 @@ def from_url(url: str) -> bytes:
         raise ImageError(f"Снимката не се свали: {exc}.") from exc
 
 
-def replace(product_id: int, data: bytes, source: str, actor: str | None) -> dict:
-    """New original from these bytes, composed for every store of the product; returns the product."""
+def replace(product_id: int, data: bytes, source: str, actor: str | None, ready: bool = False) -> dict:
+    """New original from these bytes, composed for every store of the product; returns the product.
+    ready: a finished picture (background, badges): used as it is in every store, nothing cut out."""
     from PIL import Image, UnidentifiedImageError
 
     from db.repo import media_url
@@ -75,7 +76,7 @@ def replace(product_id: int, data: bytes, source: str, actor: str | None) -> dic
         group = load_group(batch.group_key)
         sps = session.execute(select(StoreProduct).where(StoreProduct.product_id == product_id)).scalars().all()
         try:
-            composed = compose_for_stores(data, group, [sp.store_key for sp in sps])
+            composed = {} if ready else compose_for_stores(data, group, [sp.store_key for sp in sps])
             compose_error = None
         except Exception as exc:  # no layout yet, or a picture the cut-out cannot handle: keep the original
             composed, compose_error = {}, f"{type(exc).__name__}: {exc}"
@@ -119,8 +120,14 @@ def replace(product_id: int, data: bytes, source: str, actor: str | None) -> dic
                 warnings.append(f"Снимката е {width}×{height} px, под минимума {min_height} px.")
             if compose_error:
                 warnings.append(f"Не е сглобена ({compose_error}); остава оригиналът.")
-            message = f"Сменена от {actor or 'екипа'}: {width}×{height} px от {source}." + (
-                f" Сглобена върху фона на магазина: {c.width}×{c.height} px." if finished is not None else ""
+            if ready:
+                message_tail = " Готова снимка: качва се както е, без сглобяване."
+            else:
+                message_tail = ""
+            message = (
+                f"Сменена от {actor or 'екипа'}: {width}×{height} px от {source}."
+                + (f" Сглобена върху фона на магазина: {c.width}×{c.height} px." if finished is not None else "")
+                + message_tail
             )
             row.previous = row.value
             row.value = media_url((finished or original).id)

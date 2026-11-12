@@ -72,6 +72,21 @@ def load_layout(group: Group, store_key: str | None = None) -> Layout:
     )
 
 
+REMBG_MAX_SIDE = 1600  # the model sees 320 px anyway; a 4000 px photo only costs memory (512 MB server)
+
+
+def _smaller(data: bytes) -> bytes:
+    """The picture at most REMBG_MAX_SIDE on its long side before the cut-out (layouts are about 1080 px)."""
+    with Image.open(BytesIO(data)) as im:
+        if max(im.size) <= REMBG_MAX_SIDE:
+            return data
+        im = im.convert("RGBA")
+        im.thumbnail((REMBG_MAX_SIDE, REMBG_MAX_SIDE))
+        buf = BytesIO()
+        im.save(buf, "PNG")
+        return buf.getvalue()
+
+
 def _rembg(data: bytes) -> Image.Image:
     global _session
     from rembg import new_session, remove
@@ -79,7 +94,7 @@ def _rembg(data: bytes) -> Image.Image:
     with _lock:
         if _session is None:
             _session = new_session("u2net")
-        out = remove(data, session=_session)
+        out = remove(_smaller(data), session=_session)
     return Image.open(BytesIO(out)).convert("RGBA")
 
 

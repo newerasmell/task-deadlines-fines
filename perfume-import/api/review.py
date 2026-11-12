@@ -218,9 +218,11 @@ async def replace_image(
     product_id: int,
     url: Annotated[str, Form()] = "",
     file: Annotated[UploadFile | None, File()] = None,
+    ready: Annotated[bool, Form()] = False,
     x_actor: str | None = Header(default=None),
 ):
-    """A correct picture by link or upload: the new original, composed for every store by its layout."""
+    """A correct picture by link or upload: the new original, composed for every store by its layout (or used as
+    it is when it is a finished picture)."""
     from starlette.concurrency import run_in_threadpool
 
     from db import images
@@ -235,7 +237,7 @@ async def replace_image(
             source = url.strip()
         else:
             raise HTTPException(422, "Постави линк към снимката или качи файл.")
-        return await run_in_threadpool(images.replace, product_id, data, source, actor)
+        return await run_in_threadpool(images.replace, product_id, data, source, actor, ready)
     except images.ImageError as exc:
         raise HTTPException(422, str(exc)) from exc
     except KeyError as exc:

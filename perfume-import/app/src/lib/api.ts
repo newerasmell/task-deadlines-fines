@@ -481,10 +481,11 @@ export const api = {
     post<Product>(`/api/fields/${fieldId}/decision`, { action, value }),
   acceptAll: (productId: number, store?: string) => post<Product>(`/api/products/${productId}/accept-all`, { store }),
   approve: (productId: number) => post<Product>(`/api/products/${productId}/approve`, {}),
-  replaceImage: (productId: number, source: { url?: string; file?: File }) => {
+  replaceImage: (productId: number, source: { url?: string; file?: File; ready?: boolean }) => {
     const form = new FormData()
     if (source.file) form.append('file', source.file)
     else form.append('url', source.url ?? '')
+    if (source.ready) form.append('ready', 'true')
     return upload<Product>(`/api/products/${productId}/image`, form)
   },
   fx: () => request<{ date: string | null; rates: Record<string, number> }>('/api/fx'),

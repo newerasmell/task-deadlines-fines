@@ -149,6 +149,28 @@ def test_a_picture_is_replaced_by_upload_and_composed_for_every_store(batch):
     assert bad.status_code == 422 and "публичен" in bad.json()["detail"]
 
 
+def test_a_finished_picture_goes_as_it_is(batch, monkeypatch):
+    """A picture with its own background and badges: nothing is cut out or composed, every store gets it."""
+    from tests.conftest import png
+
+    def never(*args, **kwargs):
+        raise AssertionError("a finished picture is not composed")
+
+    monkeypatch.setattr("db.images.compose_for_stores", never)
+    product = batch["products"][0]
+    r = TestClient(app).post(
+        f"/api/products/{product['id']}/image",
+        files={"file": ("ready.png", png(1080, 1080), "image/png")},
+        data={"ready": "true"},
+        headers={"X-Actor": quote("Мария")},
+    )
+    assert r.status_code == 200, r.text
+    values = {r.json()["stores"][k]["fields"]["image"]["value"] for k in STORES}
+    assert len(values) == 1 and next(iter(values)).startswith("/api/media/")
+    image = r.json()["stores"][STORES[0]]["fields"]["image"]
+    assert "без сглобяване" in image["message"] and image["status"] == "ok"
+
+
 def test_prices_from_one_euro_price_and_wrong_currency_is_not_published(batch, shops, monkeypatch):
     import threading
 

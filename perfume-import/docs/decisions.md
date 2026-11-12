@@ -174,3 +174,11 @@ and nothing judges it against the EAN (the „SKU не съвпада с EAN“ 
 group's formula (SK{ean}) as its first value; a product without an SKU gets that code offered as a choice, never
 written by itself. The EAN is still checked (check digit, length), and a product without an EAN of its own has
 it read from an SKU that follows the formula, as older exports do.
+
+
+## 33. A finished picture goes as it is; smaller pictures for the cut-out
+
+A picture uploaded with „Готова снимка: качи я както е“ (its own background, badges such as „15 ML“) is stored
+and used in every store as it is: nothing is cut out or composed, which also keeps the background-removal model
+out of memory. Pictures that are cut out are first shrunk to 1600 px on the long side (the model works at
+320 px; a 4000 px photo only cost memory and restarted the 512 MB server).

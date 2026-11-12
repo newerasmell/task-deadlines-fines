@@ -340,8 +340,10 @@ export function FieldPanel({
 /** A correct picture by link or file: it becomes the new original and is composed for every store. */
 function ReplaceImage({ batchId, productId }: { batchId: number; productId: number }) {
   const [url, setUrl] = useState('')
+  const [ready, setReady] = useState(false)
   const replace = useReplaceImage(batchId)
-  const run = (source: { url?: string; file?: File }) => replace.mutate({ productId, ...source }, { onSuccess: () => setUrl('') })
+  const run = (source: { url?: string; file?: File }) =>
+    replace.mutate({ productId, ready, ...source }, { onSuccess: () => setUrl('') })
   return (
     <div className="flex flex-col gap-2">
       <h3 className="m-0 text-sm font-semibold">Смени снимката</h3>
@@ -376,7 +378,18 @@ function ReplaceImage({ batchId, productId }: { batchId: number; productId: numb
         />
         или качи файл от компютъра
       </label>
-      {replace.isPending && <span className="text-xs text-ink-2">Сглобявам за всички магазини… (до половин минута)</span>}
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-0.5" checked={ready} onChange={(e) => setReady(e.target.checked)} />
+        <span>
+          Готова снимка (с фон, надписи): качи я както е
+          <span className="block text-xs text-ink-2">Без изрязване и сглобяване; еднаква във всички магазини.</span>
+        </span>
+      </label>
+      {replace.isPending && (
+        <span className="text-xs text-ink-2">
+          {ready ? 'Качвам…' : 'Сглобявам за всички магазини… (до половин минута)'}
+        </span>
+      )}
       {replace.isError && <span className="text-xs text-blocked-text">{(replace.error as Error).message}</span>}
       <span className="text-xs leading-normal text-ink-2">
         Снимката се изрязва и се поставя върху фона и размерите на всеки магазин, както при проучването. Важи за
