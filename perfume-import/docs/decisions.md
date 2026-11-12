@@ -228,3 +228,11 @@ read back from the store, so a decant fell apart into a row per store. Now only 
 store are kept apart; a prepared copy joins its live copy (the store's wins in the row). Placeholder EANs
 (5901234000002) are used for several decants, so an EAN or a title links only copies of the same brand (the
 title's first word); the SKU, the team's own code, links as it is.
+
+
+## 39. A picture sent to a live product replaces its main picture
+
+Sending a new picture to a product already in a store added it at the end, so the old main picture stayed first
+and every send added another copy. Now the new picture is put first, and the main picture it replaces, plus any
+earlier picture this app put there (marked by its alt text), is taken off the product; the files stay in Shopify →
+Content → Files, and the gallery pictures behind the main one are kept. A step Shopify refuses is reported.

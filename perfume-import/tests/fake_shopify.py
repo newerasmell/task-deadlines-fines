@@ -61,10 +61,33 @@ class FakeShopify:
             if node and "variants(" in query:
                 node["variants"] = {"nodes": [{"id": found["id"] + "/v", "sku": found["sku"]}]}
             return self.ok({"productByIdentifier": node})
+        if "media(first: 50)" in query:  # the product's pictures in order
+            found = self.products.get(variables["id"]) or {}
+            return self.ok({"product": {"media": {"nodes": found.setdefault("media", [])}}})
+        if "productReorderMedia" in query:
+            found = self.products[variables["id"]]
+            for move in variables["moves"]:
+                item = next(m for m in found["media"] if m["id"] == move["id"])
+                found["media"].remove(item)
+                found["media"].insert(int(move["newPosition"]), item)
+            return self.ok({"productReorderMedia": {"userErrors": []}})
+        if "fileUpdate" in query:
+            for f in variables["files"]:
+                for pid in f["referencesToRemove"]:
+                    p = self.products[pid]
+                    p["media"] = [m for m in p.get("media", []) if m["id"] != f["id"]]
+            return self.ok({"fileUpdate": {"userErrors": []}})
         if "productUpdate" in query:
             self.updates.append(variables["product"])
             if variables.get("media"):
                 self.media_added.append(variables["media"])
+                found = self.products.get(variables["product"]["id"])
+                if found is not None:
+                    for m in variables["media"]:
+                        self.next_id += 1
+                        found.setdefault("media", []).append(
+                            {"id": f"gid://shopify/MediaImage/{self.next_id}", "alt": m.get("alt")}
+                        )
             return self.ok({"productUpdate": {"product": {"id": variables["product"]["id"]}, "userErrors": []}})
         if "productVariantsBulkUpdate" in query:
             self.variant_updates.append(variables["variants"])

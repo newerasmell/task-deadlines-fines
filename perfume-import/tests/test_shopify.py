@@ -161,3 +161,31 @@ def test_every_upload_is_published_to_every_channel(fields):
     assert "Публикуван в 3 канала" in result.notes[-1]
     denied = upload_product(shop(FakeShopify(publish_denied=True)), fields, "draft", None, None)
     assert denied.action == "created" and "write_publications" in denied.notes[-1]  # uploaded, says what to add
+
+
+def test_a_new_main_picture_replaces_the_old_one():
+    """Sent to a live product, a picture becomes the first one; the main picture it replaces and an earlier one
+    of this app are taken off, the gallery behind them stays."""
+    from pipeline.shopify import MEDIA_ALT, Shopify, update_live
+    from tests.fake_shopify import FakeShopify
+
+    product = {
+        "id": "gid://shopify/Product/5",
+        "handle": "good-girl-15",
+        "title": "Good Girl 15 ml",
+        "sku": "SK1",
+        "media": [
+            {"id": "gid://shopify/MediaImage/1", "alt": "store main"},
+            {"id": "gid://shopify/MediaImage/2", "alt": "gallery"},
+            {"id": "gid://shopify/MediaImage/3", "alt": MEDIA_ALT},  # pushed here before
+        ],
+    }
+    fake = FakeShopify([product])
+    shop = Shopify("gr.myshopify.com", "tok", http=fake.client(), sleep=lambda s: None)
+    notes = update_live(shop, {"id": product["id"], "title": "Good Girl 15 ml"}, {"image": "https://cdn/x.png"})
+    assert notes == []
+    media = fake.products[product["id"]]["media"]
+    assert [m["alt"] for m in media] == [MEDIA_ALT, "gallery"] and media[0]["id"] not in {
+        "gid://shopify/MediaImage/1",
+        "gid://shopify/MediaImage/3",
+    }

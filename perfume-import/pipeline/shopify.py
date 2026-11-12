@@ -506,6 +506,51 @@ def live_product(shop: Shopify, handle: str) -> dict | None:
     return {**{k: found[k] for k in ("id", "handle", "title")}, "variant": variants[0] if variants else None}
 
 
+MEDIA_ALT = "perfume-import"  # marks the pictures the app put on a product, so a later one replaces them
+
+
+def _media(shop: Shopify, product_id: str) -> list[dict]:
+    """The product's media in their order: [{id, alt}]."""
+    data = shop.graphql(
+        "query($id: ID!) { product(id: $id) { media(first: 50) { nodes { id alt } } } }", {"id": product_id}
+    )
+    return ((data.get("product") or {}).get("media") or {}).get("nodes") or []
+
+
+def _replace_main_picture(shop: Shopify, product_id: str, before: list[dict]) -> list[str]:
+    """The picture just added becomes the first (main) one; the main picture it replaces and any earlier
+    picture of this app are taken off the product (the files stay in Shopify → Content → Files). The gallery
+    pictures behind them are kept. Returns notes; a step Shopify refuses does not undo the update."""
+    after = _media(shop, product_id)
+    known = {m["id"] for m in before}
+    added = [m for m in after if m["id"] not in known]
+    if not added:
+        return ["Снимката е добавена, но не се вижда още в продукта: провери я в Shopify."]
+    new = added[-1]["id"]
+    old = [m["id"] for m in before[:1]] + [m["id"] for m in before[1:] if m.get("alt") == MEDIA_ALT]
+    old += [m["id"] for m in added[:-1]]
+    notes = []
+    moved = shop.graphql(
+        """mutation($id: ID!, $moves: [MoveInput!]!) {
+             productReorderMedia(id: $id, moves: $moves) { userErrors { field message } } }""",
+        {"id": product_id, "moves": [{"id": new, "newPosition": "0"}]},
+    )["productReorderMedia"]
+    if moved["userErrors"]:
+        notes.append("Новата снимка не стана първа: " + "; ".join(e["message"] for e in moved["userErrors"]))
+    if old:
+        removed = shop.graphql(
+            """mutation($files: [FileUpdateInput!]!) {
+                 fileUpdate(files: $files) { userErrors { field message } } }""",
+            {"files": [{"id": m, "referencesToRemove": [product_id]} for m in old]},
+        )["fileUpdate"]
+        if removed["userErrors"]:
+            notes.append(
+                "Старата снимка не се махна (махни я ръчно в Shopify): "
+                + "; ".join(e["message"] for e in removed["userErrors"])
+            )
+    return notes
+
+
 def update_live(shop: Shopify, product: dict, changes: dict[str, Any]) -> list[str]:
     """Write only these fields of an existing product (field key -> new value). Returns notes; raises
     ShopifyError when Shopify refuses. Fields it cannot write here are reported, not guessed."""
@@ -517,10 +562,10 @@ def update_live(shop: Shopify, product: dict, changes: dict[str, Any]) -> list[s
     variant: dict[str, Any] = {}
     media: list[dict] = []
     for key, value in changes.items():
-        if key == "image":  # a picture the product did not have: added, never replacing what it has
+        if key == "image":  # the new main picture: added, then put first and the old main one taken off
             source = shop.stage_image(*value) if isinstance(value, tuple) else _text(value)
             if source:
-                media.append({"originalSource": source, "mediaContentType": "IMAGE", "alt": product.get("title", "")})
+                media.append({"originalSource": source, "mediaContentType": "IMAGE", "alt": MEDIA_ALT})
             continue
         text = _text(value)
         if key == "title":
@@ -556,6 +601,7 @@ def update_live(shop: Shopify, product: dict, changes: dict[str, Any]) -> list[s
         update["seo"] = seo
     if metafields:
         update["metafields"] = metafields
+    before = _media(shop, product["id"]) if media else []
     if len(update) > 1 or media:
         data = shop.graphql(
             """mutation($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
@@ -564,6 +610,8 @@ def update_live(shop: Shopify, product: dict, changes: dict[str, Any]) -> list[s
         )["productUpdate"]
         if data["userErrors"]:
             raise ShopifyError("Shopify не прие промяната: " + "; ".join(e["message"] for e in data["userErrors"]))
+    if media:
+        notes += _replace_main_picture(shop, product["id"], before)
     if variant:
         if not product.get("variant"):
             raise ShopifyError("Продуктът няма вариант в Shopify; цената и SKU не се обновяват.")
