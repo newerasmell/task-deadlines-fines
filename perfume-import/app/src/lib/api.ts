@@ -468,6 +468,8 @@ export const api = {
     request<Catalog>(`/api/catalog?${new URLSearchParams({ q, filter, limit: String(limit) })}`),
   syncStores: (stores?: string[]) => post<{ job_id: string }>('/api/stores/sync', { stores: stores ?? null }),
   deleteProduct: (id: number) => del<{ deleted: number; batch_deleted: boolean }>(`/api/products/${id}`),
+  spread: (productId: number, store: string) =>
+    post<{ job_id: string }>(`/api/products/${productId}/spread`, { store }),
   sendPlan: (id: number) => request<SendPlan>(`/api/products/${id}/send`),
   send: (id: number, stores: string[], status: 'draft' | 'active') =>
     post<{ done: Record<string, string>; plan: SendPlan; job_id?: string }>(`/api/products/${id}/send`, {

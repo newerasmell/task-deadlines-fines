@@ -204,6 +204,18 @@ def fill_missing(product_id: int, body: Fill, x_actor: str | None = Header(defau
     return {"job_id": _call(fill.start, product_id, url, actor_name(x_actor), only=body.keys)}
 
 
+class Spread(BaseModel):
+    store: str  # the store whose data is right
+
+
+@router.post("/products/{product_id}/spread", status_code=202)
+def spread(product_id: int, body: Spread, x_actor: str | None = Header(default=None)):
+    """„Пренеси към всички“: one store's facts to every other store, notes translated, texts written again."""
+    from db import fill
+
+    return {"job_id": _call(fill.start_spread, product_id, body.store, actor_name(x_actor))}
+
+
 class Notes(BaseModel):
     text: str
 

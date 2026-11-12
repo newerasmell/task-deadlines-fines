@@ -5,6 +5,7 @@ import { FieldPanel } from '../components/FieldPanel'
 import { DeleteProduct } from '../components/DeleteProduct'
 import { FillMissing } from '../components/FillMissing'
 import { SendButton } from '../components/SendDialog'
+import { SpreadButton } from '../components/SpreadButton'
 import { Failure, Loading } from '../components/States'
 import { StatusMark } from '../components/StatusMark'
 import { StoreChips } from '../components/StoreChips'
@@ -172,6 +173,7 @@ function ProductHeader({ batch, product }: { batch: Batch; product: Product }) {
           </Link>
         )}
         <FillMissing batch={batch} product={product} />
+        <SpreadButton batch={batch} product={product} />
         {suggested > 0 && (
           <Button size="lg" disabled={acceptAll.isPending} onClick={() => acceptAll.mutate({ productId: product.id })}>
             {`Приеми ${suggested === 1 ? 'предложението' : `всички ${suggested} предложения`}`}

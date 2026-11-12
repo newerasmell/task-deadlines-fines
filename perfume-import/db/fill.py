@@ -244,10 +244,12 @@ def _facts(fields: dict[str, FieldRow]) -> dict:
     return facts
 
 
-def write_texts(product_id: int, client, force: bool = False) -> tuple[str, float]:
+def write_texts(
+    product_id: int, client, force: bool = False, source: str | None = None, only: list[str] | None = None
+) -> tuple[str, float]:
     """English master + every store's text (its own style, or its language's translation) from the current
     facts; written as suggestions into the stores whose description is empty, blocked or flagged (every store
-    with force)."""
+    with force). source: the store whose facts the texts are written from (else the first); only: these stores."""
     from db.stores import accepted_profiles
     from pipeline.generate import generate_texts, store_style, style_key, text_fields
     from pipeline.validate import Context, validate_product
@@ -262,8 +264,9 @@ def write_texts(product_id: int, client, force: bool = False) -> tuple[str, floa
             if s in group.stores
             and "body_html" in f
             and (force or (_weak(f["body_html"]) and not (f["body_html"].decided_by and f["body_html"].status == "ok")))
+            and (only is None or s in only)
         ]
-        first = next(iter(rows.values()))
+        first = rows[source] if source in rows else next(iter(rows.values()))
         facts = _facts(first)
         title = str((first.get("title") or FieldRow()).value or "")
         tester = bool(product.input.get("tester")) or bool(re.search(r"\btester\b", title, re.IGNORECASE))
@@ -368,3 +371,129 @@ def sync_notes(field_id: int, text: str, actor: str | None, client=None) -> dict
         )
         session.flush()
         return _product_json(session, product_id)
+
+
+SPREAD_KEYS = ("vendor", "name", "concentration", "gender", "fragrance_family", "ingredients")
+
+
+def spread(product_id: int, source: str, actor: str | None, client) -> tuple[dict, float]:
+    """„Пренеси към всички“: the store a person got right becomes every other store's truth. Brand, name,
+    concentration, gender, family and ingredients are copied, the notes are translated into each store's language
+    (English names from the source, read from its own language when it has none), and every other store's
+    description and SEO text is written again from these facts in its own template, as suggestions."""
+    from db.review import _withdraw_approval, now
+    from pipeline.fill import normalize_notes
+
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        group = load_group(session.get(Batch, product.batch_id).group_key)
+        rows = _rows(session, product_id)
+        if source not in rows:
+            raise KeyError(f"Продуктът не е в {source}.")
+        src = rows[source]
+        others = [s for s in rows if s != source]
+        copied = {
+            k: src[k].value for k in SPREAD_KEYS if k in src and not _empty(src[k].value) and src[k].status != "blocked"
+        }
+        local_notes = {
+            k: (src[k].value_en, src[k].value)
+            for k in NOTES
+            if k in src and not _empty(src[k].value) and src[k].status != "blocked"
+        }
+    if not others:
+        raise newbatch.NewBatchError("Продуктът е само в този магазин.")
+
+    cost = 0.0
+    english: dict[str, list[str]] = {}
+    for key, (value_en, value) in local_notes.items():
+        if value_en:
+            english[key] = [t.strip() for t in str(value_en).split(",") if t.strip()]
+        else:  # notes kept only in the store's language: their English names first
+            english[key], usage = normalize_notes(client, str(value))
+            cost += usage.cost
+    terms = sorted({t for notes in english.values() for t in notes})
+    translations: dict[str, dict[str, str]] = {}
+    for language in {group.store(s).language for s in others if s in group.stores}:
+        translations[language], usage = translate_terms(client, terms, language) if terms else ({}, None)
+        cost += usage.cost if usage else 0
+
+    with Session(_engine()) as session, session.begin():
+        rows = _rows(session, product_id)
+        when = now()
+        note = f"От {source}, пренесено от {actor or 'екипа'}."
+        for store in others:
+            language = group.store(store).language if store in group.stores else "en"
+            values = dict(copied)
+            values_en = {}
+            for key, notes in english.items():
+                values[key] = ", ".join(translations.get(language, {}).get(t, t) for t in notes)
+                values_en[key] = ", ".join(notes)
+            for key, value in values.items():
+                row = rows[store].get(key)
+                if row is None:
+                    continue
+                if row.previous is None:  # the store's value stays the reference until it goes live
+                    row.previous = row.value
+                row.value, row.value_en = value, values_en.get(key, row.value_en)
+                row.origin, row.status, row.message, row.issues = "input", "ok", note, []
+                row.decided_by, row.decided_at = actor, when
+        product = session.get(Product, product_id)
+        raw = dict(product.research or {})
+        for key, notes in english.items():
+            raw[key] = {"value": notes, "sources": [{"url": "", "says": f"от {source}", "supports": True}]}
+        product.research = raw
+        _withdraw_approval(session, product_id)
+    summary, text_cost = write_texts(product_id, client, force=True, source=source, only=others)
+    cost += text_cost
+    with Session(_engine()) as session, session.begin():
+        product = session.get(Product, product_id)
+        session.add(
+            Event(
+                actor=actor,
+                kind="spread",
+                batch_id=product.batch_id,
+                payload={"product": product_id, "from": source, "to": others, "cost_usd": round(cost, 4)},
+            )
+        )
+    return {"Пренесено": f"от {source} към {len(others)} магазина", "Описания": summary}, round(cost, 4)
+
+
+def start_spread(product_id: int, source: str, actor: str | None, client=None) -> str:
+    if not api_key() and client is None:
+        raise newbatch.NewBatchError("Няма ключ за Claude (ANTHROPIC_API_KEY в Render → Environment).")
+    with newbatch._lock:
+        newbatch.busy()
+        job_id = uuid.uuid4().hex[:12]
+        newbatch._jobs[job_id] = {
+            "id": job_id,
+            "kind": "fill",
+            "running": True,
+            "stage": "texts",
+            "stage_label": f"Пренасям от {source} и пиша описанията",
+            "done": 0,
+            "total": 1,
+            "error": None,
+            "batch_id": None,
+            "product_id": product_id,
+            "result": None,
+            "cost_usd": None,
+            "started_at": time.time(),
+            "finished_at": None,
+        }
+    job = newbatch._jobs[job_id]
+
+    def work() -> None:
+        from pipeline.ai import default_client
+
+        try:
+            result, cost = spread(product_id, source, actor, client or default_client())
+            job.update({"result": result, "cost_usd": cost, "done": 1})
+        except Exception as exc:
+            job["error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            job.update({"running": False, "finished_at": time.time()})
+
+    threading.Thread(target=work, daemon=True, name=f"spread-{job_id}").start()
+    return job_id

@@ -182,3 +182,12 @@ A picture uploaded with „Готова снимка: качи я както е�
 and used in every store as it is: nothing is cut out or composed, which also keeps the background-removal model
 out of memory. Pictures that are cut out are first shrunk to 1600 px on the long side (the model works at
 320 px; a 4000 px photo only cost memory and restarted the 512 MB server).
+
+
+## 34. „Пренеси към всички“: one right store to every other
+
+On a product with several stores, a person picks the store that is right. Brand, name, concentration, gender,
+family and ingredients are copied to every other store as decided, the notes are translated into each store's
+language (their English names come from the source, read from its own language when it has none), and every other
+store's description and SEO text is written again from these facts in its own template, as suggestions (a wrong
+language or a too short text included). The source store is not changed. ≈ $0.01 per store.

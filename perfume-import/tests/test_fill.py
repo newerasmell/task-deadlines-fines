@@ -176,3 +176,39 @@ def test_a_store_catalog_product_gets_its_name_from_the_title():
     facts = _facts(fields)
     assert facts["name"] == "Fucking Fabulous" and facts["concentration"] == "Eau de Parfum"
     assert facts["brand"] == "Tom Ford" and facts["top_note"] == ["λεβάντα", "λουίζα"]
+
+
+def test_one_right_store_is_spread_to_the_others(product, monkeypatch):
+    """„Пренеси към всички“: the family, notes (translated) and a new description reach the other store."""
+    from db.models import FieldRow, StoreProduct
+
+    words = {"el": {"amber": "κεχριμπάρι", "musk": "μόσχος"}, "hr": {"amber": "jantar", "musk": "mošus"}}
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: words.get(lang, {}))
+
+    with Session(engine()) as session, session.begin():
+        sp = (
+            session.query(StoreProduct)
+            .filter(StoreProduct.product_id == product["id"], StoreProduct.store_key == "parfemija")
+            .one()
+        )
+        for row in session.query(FieldRow).filter(FieldRow.store_product_id == sp.id):
+            if row.key == "fragrance_family":
+                row.value, row.status = "Woody", "ok"
+            if row.key == "base_note":
+                row.value, row.value_en, row.status = "jantar, mošus", "amber, musk", "ok"
+    before = review.get_product(product["id"])["stores"]["premierparfums"]["fields"]["body_html"]["value"]
+
+    def answers(kwargs):
+        if "Translate perfume note names" in str(kwargs.get("system", "")):
+            return message({"notes": [{"en": "musk", "local": "μόσχος"}]})
+        return responder(kwargs)
+
+    summary, _ = fill.spread(product["id"], "parfemija", "Мария", FakeClient(responder=answers))
+    assert summary["Пренесено"] == "от parfemija към 1 магазина"
+    gr = review.get_product(product["id"])["stores"]["premierparfums"]["fields"]
+    assert gr["fragrance_family"]["value"] == "Woody" and gr["fragrance_family"]["decided_by"] == "Мария"
+    assert gr["base_note"]["value"] == "κεχριμπάρι, μόσχος" and gr["base_note"]["value_en"] == "amber, musk"
+    body = gr["body_html"]  # written again (the fake writes the same words), as a suggestion
+    assert body["origin"] == "ai_generated" and body["status"] in ("suggested", "warning"), body["issues"]
+    hr = review.get_product(product["id"])["stores"]["parfemija"]["fields"]
+    assert hr["base_note"]["value"] == "jantar, mošus"  # the source is left as it is
