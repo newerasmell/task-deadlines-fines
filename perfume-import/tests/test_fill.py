@@ -196,7 +196,6 @@ def test_one_right_store_is_spread_to_the_others(product, monkeypatch):
                 row.value, row.status = "Woody", "ok"
             if row.key == "base_note":
                 row.value, row.value_en, row.status = "jantar, mošus", "amber, musk", "ok"
-    before = review.get_product(product["id"])["stores"]["premierparfums"]["fields"]["body_html"]["value"]
 
     def answers(kwargs):
         if "Translate perfume note names" in str(kwargs.get("system", "")):
