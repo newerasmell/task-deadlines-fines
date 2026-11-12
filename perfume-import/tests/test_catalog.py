@@ -190,3 +190,37 @@ def test_a_new_ean_keeps_the_link_through_the_old_one(audits):
         session.get(Product, next(p for p in review.get_batch(hr)["products"] if p["ean"] == shared)["id"]).ean = None
     entry = next(e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared)
     assert set(entry["stores"]) == {"premierparfums", "parfemija"}
+
+
+def test_a_product_prepared_here_and_its_live_copy_are_one_row(audits, monkeypatch):
+    """A new product sent to a store comes back in the store's catalog: both copies are one product."""
+    from db.repo import save_batch
+    from pipeline.batch import run_batch
+    from pipeline.input import read_names_text
+    from tests.fake_ai import FakeClient
+    from tests.test_batch import GROUP as G
+    from tests.test_batch import responder
+
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    (gr, _), (shared, _) = audits
+    live = next(p for p in review.get_batch(gr)["products"] if p["ean"] == shared)
+    title = live["stores"]["premierparfums"]["fields"]["title"]["value"]
+    rows = read_names_text(f"{title} {shared}", G, ["premierparfums", "parfemija"])
+    batch_id = save_batch(run_batch(FakeClient(responder=responder), rows, G, ["premierparfums", "parfemija"], "x"))
+    try:
+        found = [e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared]
+        assert len(found) == 1, [list(e["stores"]) for e in found]
+        assert found[0]["stores"]["premierparfums"]["kind"] == "audit"  # what the store shows wins
+    finally:
+        with Session(engine()) as session, session.begin():
+            session.execute(delete(Event).where(Event.batch_id == batch_id))
+            session.execute(delete(Batch).where(Batch.id == batch_id))
+
+
+def test_one_placeholder_ean_on_two_brands_is_two_products(audits):
+    (_, hr), (shared, _) = audits
+    fields = _hr_rows(hr, shared)
+    _set(fields["title"]["id"], value="Carolina Herrera Good Girl EDP " + fields["title"]["value"].split()[-2] + " ml")
+    _set(fields["sku"]["id"], value="OTHER-1", previous=None)
+    found = [e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared]
+    assert len(found) == 2

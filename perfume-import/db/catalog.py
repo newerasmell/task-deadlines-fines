@@ -215,13 +215,15 @@ def _link(sps, products, values, skus, eans) -> _Groups:
     """Which store copies are the same product (decisions #36). The SKU is the team's own code and links first;
     then the EAN with the same volume. For both the value set here and the one the store still shows count, so a
     product stays linked while a new SKU or EAN reaches the stores one by one. The title only for a copy with no
-    EAN at all. Two copies of one store are never joined."""
+    EAN at all. Two products both live in one store are never joined."""
     groups = _Groups()
     by_key: dict[str, list[int]] = {}
+    brand: dict[int, str] = {}
     for sp in sps:
         own = values.get(sp.id, {})
         p = products[sp.product_id]
         title = _text(own.get("title")) or _text(p.input.get("name")) or _text(p.input.get("title"))
+        brand[sp.id] = (_norm(title).split() or [""])[0]
         codes = ({_text(p.ean)} | eans.get(sp.id, set())) - {""}
         ml = _ml(title, own.get("product_milliliters"))
         keys = [f"sku:{c}" for c in skus.get(sp.id, ())] + [f"ean:{c}|{ml}" for c in sorted(codes)]
@@ -230,14 +232,22 @@ def _link(sps, products, values, skus, eans) -> _Groups:
         groups.find(sp.id)
         for k in keys:
             by_key.setdefault(k, []).append(sp.id)
-    members: dict[int, set[str]] = {sp.id: {sp.store_key} for sp in sps}
+    # Only two products that are both live in one store are surely different products; a copy prepared here and
+    # the store's own copy of it are the same product (the store's wins in the entry).
+    members: dict[int, set[str]] = {
+        sp.id: ({sp.store_key} if products[sp.product_id].kind == "audit" else set()) for sp in sps
+    }
     for k in sorted(by_key, key=lambda k: (not k.startswith("sku:"), k)):  # SKU links first
         ids = by_key[k]
         for other in ids[1:]:
             a, b = groups.find(ids[0]), groups.find(other)
             if a == b:
                 continue
-            if members[a] & members[b]:  # would put two copies of one store together: not the same product
+            # A placeholder code (5901234000002) can sit on several decants: an EAN or a title links only the
+            # same brand. The SKU is the team's own code and is trusted as it is.
+            if not k.startswith("sku:") and brand[ids[0]] and brand[other] and brand[ids[0]] != brand[other]:
+                continue
+            if members[a] & members[b]:  # two products live in one store: not the same product
                 continue
             groups.union(a, b)
             members[groups.find(a)] = members[a] | members[b]

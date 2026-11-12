@@ -219,3 +219,12 @@ A store's product can be read again from Shopify alone (by its Shopify id, else 
 store's rules. The store's values become the reference; what a person or the AI set here that the store does not
 show is kept and shows again as a change to send; every other field takes the store's value. This is the answer
 when the app says a change is live and the store disagrees (an earlier push that did not land, an edit in Shopify).
+
+
+## 38. A prepared copy and its live copy are one row; one placeholder EAN, several brands
+
+The rule that never joins two copies of one store also kept a product prepared here apart from the same product
+read back from the store, so a decant fell apart into a row per store. Now only two products both live in one
+store are kept apart; a prepared copy joins its live copy (the store's wins in the row). Placeholder EANs
+(5901234000002) are used for several decants, so an EAN or a title links only copies of the same brand (the
+title's first word); the SKU, the team's own code, links as it is.
