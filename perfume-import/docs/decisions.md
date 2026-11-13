@@ -266,3 +266,12 @@ catalog is one batch kept for good: a read matches each product by its Shopify i
 in place, with the same rules as before (what was set here and is not in the store stays waiting; the rest takes
 the store's value), adds new products and removes those the store no longer has. Older extra batches of the store
 are removed on the next read. A link from before this change says it is stale and leads to the product list.
+
+
+## 43. No background-removal model on the 512 MB server
+
+Measured: importing rembg takes ~210 MB and cutting one 1600 px picture peaks at ~830 MB (u2net or u2netp alike;
+~480 MB with a lean onnxruntime setup). On the 512 MB Render plan every scene picture that needed the model
+restarted the server (502). The model is now off by default (`REMBG_ENABLED`): flat and transparent backgrounds
+are still cut out without it (most packshots), a scene is placed whole on the store's background. With a 2 GB plan
+set REMBG_ENABLED=1; it then runs the small u2netp model with the lean settings.

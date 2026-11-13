@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     app_dist: Path = ROOT / "app" / "dist"
     # Finished and original pictures (SPEC §6). On Render: the persistent disk at /var/data/media.
     media_dir: Path = ROOT / "output" / "media"
+    # Background removal model: u2netp (4.7 MB) fits the 512 MB server; u2net (176 MB, a bit finer edges) needs
+    # about 400 MB more memory.
+    rembg_model: str = "u2netp"
+    # Cutting a bottle out of a scene with the model needs ~500-800 MB: off on the 512 MB plan (such pictures are
+    # placed whole on the store's background; flat backgrounds are still cut out). REMBG_ENABLED=1 on 2 GB.
+    rembg_enabled: bool = False
     # Every store's products are read from Shopify this often (hours); 0 turns it off.
     sync_hours: float = 6
 

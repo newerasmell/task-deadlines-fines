@@ -8,7 +8,7 @@ RUN npm run build
 
 # Stage 2: Python API that also serves the built app.
 FROM python:3.12-slim
-# REMBG_HOME: the background-removal model (u2net, ~176 MB) is fetched once at build, not on every start.
+# REMBG_HOME: the background-removal model (u2netp, ~5 MB; REMBG_MODEL) is fetched once at build, not on every start.
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 REMBG_HOME=/opt/rembg
 WORKDIR /srv
 COPY pyproject.toml ./
@@ -16,7 +16,7 @@ COPY pipeline/ pipeline/
 COPY api/ api/
 COPY db/ db/
 RUN pip install --no-cache-dir .
-RUN python -c "from rembg import new_session; new_session('u2net')"
+RUN python -c "from rembg import new_session; new_session('u2netp')"
 COPY alembic.ini ./
 COPY config/ config/
 COPY --from=app /app/dist app/dist

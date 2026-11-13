@@ -13,6 +13,7 @@ import yaml
 from PIL import Image
 
 from pipeline.config import Group
+from pipeline.settings import get_settings
 
 ALPHA_CUT = 8  # alpha below this is background when cropping
 _session = None
@@ -93,7 +94,17 @@ def _rembg(data: bytes) -> Image.Image:
 
     with _lock:
         if _session is None:
-            _session = new_session("u2net")
+            import onnxruntime as ort
+
+            # Lean settings: no memory arena, one thread (measured ~480 MB peak at 1600 px instead of ~830 MB).
+            opts = ort.SessionOptions()
+            opts.enable_cpu_mem_arena = False
+            opts.enable_mem_pattern = False
+            opts.intra_op_num_threads = opts.inter_op_num_threads = 1
+            try:
+                _session = new_session(get_settings().rembg_model, sess_opts=opts)
+            except TypeError:  # an older rembg without sess_opts
+                _session = new_session(get_settings().rembg_model)
         out = remove(_smaller(data), session=_session)
     return Image.open(BytesIO(out)).convert("RGBA")
 
@@ -165,6 +176,9 @@ def cut_out(data: bytes, remover=None) -> Image.Image:
     base = _flat_background(im)
     if base is not None:
         return _flood_cut(im, base)
+    if remover is None and not get_settings().rembg_enabled:
+        # The model needs ~500-800 MB, more than the 512 MB server has: the picture is placed whole instead.
+        return im
     return (remover or _rembg)(data)
 
 
