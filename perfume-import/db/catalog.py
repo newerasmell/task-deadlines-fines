@@ -47,11 +47,28 @@ def _version(session: Session) -> tuple:
 _building = threading.Lock()
 
 
-def _entries() -> tuple[list[dict], list[str]]:
+def _refresh_in_background() -> None:
+    def work():
+        try:
+            _entries()
+        except Exception:  # the next request builds it again
+            pass
+
+    if not _building.locked():
+        threading.Thread(target=work, daemon=True, name="catalog-build").start()
+
+
+def _entries(fresh: bool = True) -> tuple[list[dict], list[str]]:
+    """fresh=False (the app's list and the stores of a product): when the data changed since the last build,
+    the last list is returned at once and a new one is built in the background, so a page never waits for the
+    whole list of every store to be built again after each edit."""
     with Session(_engine()) as session:
         version = _version(session)
         if _cache.get("version") == version:
             return _cache["value"]
+    if not fresh and "value" in _cache:
+        _refresh_in_background()
+        return _cache["value"]
     # One build at a time: requests that come meanwhile (typing in the search) wait and take its result instead
     # of each building the whole list again (10 stores at once ran the 512 MB server out of memory).
     with _building:
@@ -295,10 +312,10 @@ def _matches(entry: dict, words: list[str]) -> bool:
     return all(w in text for w in words)
 
 
-def catalog(q: str = "", filter: str = "all", offset: int = 0, limit: int = 100) -> dict:
+def catalog(q: str = "", filter: str = "all", offset: int = 0, limit: int = 100, fresh: bool = True) -> dict:
     from db.stores import list_stores
 
-    entries, present = _entries()
+    entries, present = _entries(fresh)
     words = q.casefold().split()
     found = [e for e in entries if _matches(e, words)] if words else entries
     counts = {name: sum(1 for e in found if test(e)) for name, test in FILTERS.items()}
@@ -322,10 +339,12 @@ def catalog(q: str = "", filter: str = "all", offset: int = 0, limit: int = 100)
     }
 
 
-def entry_for(product_id: int) -> dict:
-    """The catalog entry a product belongs to: the same product in the other stores."""
-    entries, _ = _entries()
-    for e in entries:
-        if e["product_id"] == product_id or any(s["product_id"] == product_id for s in e["stores"].values()):
-            return e
+def entry_for(product_id: int, fresh: bool = True) -> dict:
+    """The catalog entry a product belongs to: the same product in the other stores. With fresh=False the last
+    built list is used when it has the product (else it is built now)."""
+    for attempt in (fresh, True) if not fresh else (True,):
+        entries, _ = _entries(attempt)
+        for e in entries:
+            if e["product_id"] == product_id or any(s["product_id"] == product_id for s in e["stores"].values()):
+                return e
     raise KeyError(f"Няма продукт {product_id}.")

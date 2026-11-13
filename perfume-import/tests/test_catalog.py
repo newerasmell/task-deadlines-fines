@@ -252,3 +252,23 @@ def test_one_sku_on_two_perfumes_is_two_products(audits):
         session.get(Product, next(p for p in review.get_batch(hr)["products"] if p["ean"] == shared)["id"]).ean = None
     rows = catalog.catalog(q="good girl 15")["items"]
     assert len(rows) == 1 and set(rows[0]["stores"]) == {"parfemija"}
+
+
+def test_the_app_gets_the_last_list_at_once_and_a_new_one_is_built_behind(audits):
+    """After an edit the list the app asks for comes back at once (the last one built) while a new one is built in
+    the background; the product's own stores are still found when the old list does not have it."""
+    import threading
+
+    (_, hr), (shared, _) = audits
+    catalog.catalog(q=shared)  # built
+    fields = _hr_rows(hr, shared)
+    _set(fields["vendor"]["id"], value="Друга марка", previous=fields["vendor"]["value"])
+    stale = catalog.catalog(q=shared, fresh=False)
+    assert stale["items"]  # answered from the last list
+    for t in threading.enumerate():
+        if t.name == "catalog-build":
+            t.join(timeout=30)
+    entry = next(e for e in catalog.catalog(q=shared, fresh=False)["items"] if e["ean"] == shared)
+    assert entry["stores"]["parfemija"]["state"] == "diff"
+    pid = entry["stores"]["parfemija"]["product_id"]
+    assert catalog.entry_for(pid, fresh=False)["ean"] == shared

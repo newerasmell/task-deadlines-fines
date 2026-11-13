@@ -275,3 +275,12 @@ Measured: importing rembg takes ~210 MB and cutting one 1600 px picture peaks at
 restarted the server (502). The model is now off by default (`REMBG_ENABLED`): flat and transparent backgrounds
 are still cut out without it (most packshots), a scene is placed whole on the store's background. With a 2 GB plan
 set REMBG_ENABLED=1; it then runs the small u2netp model with the lean settings.
+
+
+## 44. The app never waits for the whole list again
+
+Every edit changes the data the product list is built from, and the next page then waited while the list of
+every store (about 9000 products) was built again: slow pages, the stores of a product missing at the top for a
+while. The app now gets the last built list at once and a new one is built in the background; a product the last
+list does not have yet is looked up in a fresh build. Code (send, publish) still uses a fresh list. Moving from one
+product to another no longer shows the new product with empty fields while its data loads.

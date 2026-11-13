@@ -56,7 +56,7 @@ def batch(batch_id: int, focus: int | None = None):
 
 @router.get("/catalog")
 def products_catalog(q: str = "", filter: str = "all", offset: int = 0, limit: int = 100):
-    return catalog.catalog(q, filter, max(offset, 0), min(max(limit, 1), 500))
+    return catalog.catalog(q, filter, max(offset, 0), min(max(limit, 1), 500), fresh=False)
 
 
 class Send(BaseModel):
@@ -105,7 +105,7 @@ def send(product_id: int, body: Send, x_actor: str | None = Header(default=None)
 
 @router.get("/products/{product_id}/catalog")
 def product_catalog(product_id: int):
-    return _call(catalog.entry_for, product_id)
+    return _call(catalog.entry_for, product_id, False)
 
 
 @router.get("/products/{product_id}")

@@ -70,6 +70,8 @@ export function ProductScreen() {
       </div>
     )
   if (batch.isError || !product) return <Failure error={batch.error} retry={() => batch.refetch()} />
+  // The list kept from the previous product has this one without its fields: wait for its own data.
+  if (product.brief) return <Loading what="продукта" />
 
   return (
     <div className="flex h-screen min-w-[1024px] bg-canvas">
