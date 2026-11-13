@@ -379,7 +379,8 @@ def sync_notes(field_id: int, text: str, actor: str | None, client=None) -> dict
         return _product_json(session, product_id)
 
 
-SPREAD_KEYS = ("vendor", "name", "concentration", "gender", "fragrance_family", "ingredients")
+# The SKU and EAN too: pouring one store into the others is the person saying these codes are right (decisions #45).
+SPREAD_KEYS = ("vendor", "name", "concentration", "gender", "fragrance_family", "ingredients", "sku", "ean")
 
 
 def spread(product_id: int, source: str, actor: str | None, client) -> tuple[dict, float]:

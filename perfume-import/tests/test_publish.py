@@ -176,6 +176,7 @@ def test_align_entry(audits, monkeypatch):  # noqa: F811
     g = gr_product["stores"]["premierparfums"]["fields"]
     _set(g["fragrance_family"]["id"], value="Woody", status="ok")
     _set(g["base_note"]["id"], value="κεχριμπάρι, μόσχος", value_en="amber, musk", status="ok")
+    _set(g["sku"]["id"], value="CH-NEW-15", status="ok")  # a new SKU set in GR goes to HR too
     before = _hr_rows(hr, shared)
 
     def answers(kwargs):
@@ -197,5 +198,6 @@ def test_align_entry(audits, monkeypatch):  # noqa: F811
         and after["base_note"]["previous"] == before["base_note"]["value"]
     )
     assert after["body_html"]["origin"] == "ai_generated"
+    assert after["sku"]["value"] == "CH-NEW-15" and after["sku"]["previous"] == before["sku"]["value"]
     entry = next(e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared)
     assert entry["stores"]["parfemija"]["state"] == "diff"  # waiting to go live in HR

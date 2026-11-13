@@ -284,3 +284,11 @@ every store (about 9000 products) was built again: slow pages, the stores of a p
 while. The app now gets the last built list at once and a new one is built in the background; a product the last
 list does not have yet is looked up in a fresh build. Code (send, publish) still uses a fresh list. Moving from one
 product to another no longer shows the new product with empty fields while its data loads.
+
+
+## 45. Pouring one store into the others carries the SKU and EAN
+
+„Изравни“ and „Пренеси към всички“ copied brand, name, concentration, gender, family, ingredients, notes and texts
+but not the codes, so a new SKU set in one store did not reach the others. Pouring one store into the others is
+the person saying that store is right, codes included: the SKU and EAN now go too, with each store's old code as
+`previous` (so the product stays linked until the new code is live everywhere, #40).
