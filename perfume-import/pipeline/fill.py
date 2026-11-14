@@ -26,9 +26,12 @@ FILLABLE = {
     "ean": "ean_for_volume",
 }
 
-FROM_PAGE = """You complete a perfume shop's product data from one web page. Open the given URL with web_fetch and
-take the requested facts from it; if the page does not show a fact, leave it empty with no sources (never take
-it from memory). If the page lists the notes without top/middle/base, put them all in middle_note."""
+FROM_PAGE = """You complete a perfume shop's product data, starting from the web page a person gave. Open it with
+web_fetch and take the requested facts from it. Many perfume sites (Fragrantica among them) refuse automated
+visits: if the page does not open or does not show a fact, search the web for that perfume by the name in the page
+address (at most 3 searches, e.g. "<brand> <name> notes fragrantica", Parfumo, Notino) and take the fact from what
+the results show, citing them. Never take a fact from memory; leave it empty with no sources if nothing shows it.
+If sources list the notes without top/middle/base, put them all in middle_note."""
 
 FROM_SEARCH = """You complete a perfume shop's product data. Search the web (at most 3 searches, then open at most
 one page with web_fetch, the Fragrantica page or the brand's product page) for only the requested facts.
@@ -47,18 +50,32 @@ def _schema(group: Group, keys: list[str]) -> dict:
     }
 
 
+def _slug_name(url: str) -> str:
+    """„Tom Ford Tobacco Vanille“ from …/perfume/Tom-Ford/Tobacco-Vanille-1825.html: what to search for."""
+    import re
+    from urllib.parse import unquote, urlparse
+
+    parts = [p for p in unquote(urlparse(url).path).split("/") if p]
+    words = " ".join(parts[-2:]) if len(parts) >= 2 else " ".join(parts)
+    words = re.sub(r"\.\w+$", "", words)
+    words = re.sub(r"-\d+$", "", words)
+    return " ".join(re.sub(r"[-_]+", " ", words).split())
+
+
 def find_missing(
     client, product: str, ml: float | None, keys: list[str], group: Group, url: str | None = None
 ) -> tuple[dict, Result]:
     """{research key: Field} for the asked research keys, with the AI result (usage, sources seen)."""
-    tools = [{"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 2, "max_content_tokens": 8000}]
-    if not url:
-        tools.insert(0, {"type": "web_search_20260209", "name": "web_search", "max_uses": 3})
+    # Search too when a page is given: the page may refuse to open (Fragrantica blocks automated visits).
+    tools = [
+        {"type": "web_search_20260209", "name": "web_search", "max_uses": 3},
+        {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 2, "max_content_tokens": 8000},
+    ]
     prompt = (
         f"Product: {product}"
         + (f"\nVolume: {ml:g} ml" if ml else "")
         + f"\nFill only: {', '.join(keys)}"
-        + (f"\nPage: {url}" if url else "")
+        + (f"\nPage: {url}\nPerfume named in the page address: {_slug_name(url)}" if url else "")
     )
     result = ask(
         client,

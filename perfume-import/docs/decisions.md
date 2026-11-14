@@ -292,3 +292,11 @@ product to another no longer shows the new product with empty fields while its d
 but not the codes, so a new SKU set in one store did not reach the others. Pouring one store into the others is
 the person saying that store is right, codes included: the SKU and EAN now go too, with each store's old code as
 `previous` (so the product stays linked until the new code is live everywhere, #40).
+
+
+## 46. A linked page that refuses to open: the same perfume is searched
+
+Fragrantica (and other perfume sites) refuse automated visits, so „Попълни с AI“ with a Fragrantica link found
+no notes. With a link the AI now also has web search: when the page does not open or does not show a fact, it
+searches that perfume by the name in the page address (Fragrantica in the results, Parfumo, Notino) and takes the
+fact from the results with them as sources; still nothing from memory.
