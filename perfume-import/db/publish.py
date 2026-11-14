@@ -241,7 +241,10 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
     for group_key, keys in by_group.items():
         job.update(stage="research", stage_label=f"Създавам продукта в {len(keys)} магазина ({group_key})")
         try:
-            research = _from_live(product_id, client, group_key or None)
+            try:
+                research = _from_live(product_id, client, group_key or None)
+            except AIError:  # the live copies could not be read together: researched like a new product
+                research = None
             made = newbatch.quick_start([item], keys, actor, client=client, research=research, besides=job["id"])
             while newbatch.job(made)["running"]:
                 time.sleep(1)

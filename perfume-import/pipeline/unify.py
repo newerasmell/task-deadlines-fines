@@ -57,7 +57,7 @@ def unify_facts(client, copies: list[dict], group: Group) -> tuple[dict, Usage]:
         effort="low",
         model=SONNET,
         thinking=NO_THINKING,
-        max_tokens=4000,
+        max_tokens=16000,  # seven copies with their sources outgrew 4000 (decisions #50)
     )
     raw = dict(result.data)
     images = [c["image"] for c in copies if str(c.get("image") or "").startswith("http")]
