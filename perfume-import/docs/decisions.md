@@ -331,3 +331,12 @@ group without a structure (group 2, a new group) learns it from its connected st
 1's and group 1's picture layout to begin with), the same derivation as scripts/new_group.py
 (pipeline.newgroup). A group.yaml in the repository still wins over a learned one. Then the stores' templates are
 accepted as usual.
+
+
+## 50. A product made in another group's stores
+
+„Качи в магазините“ offers every store that does not have the product and whose group has a structure, not only
+stores of the product's own group. They are made like „Създай го“ (decisions #46): the facts come from the live
+copies (no new web research when there are any), read into the target group's vocabulary (its genders and
+families), the texts and title by each store's own template, the price from the euro price. One quick product
+job per group; the next group's job starts when the previous one ends, so only one AI job runs at a time.

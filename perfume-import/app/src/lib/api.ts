@@ -1,577 +1,771 @@
 // Types and calls for the review API (api/review.py). The reviewer's name goes in X-Actor (URL-encoded).
 
-export type Status = 'ok' | 'suggested' | 'fixed' | 'warning' | 'blocked'
-export type ProductState = 'ready' | 'review' | 'blocked'
+export type Status = "ok" | "suggested" | "fixed" | "warning" | "blocked";
+export type ProductState = "ready" | "review" | "blocked";
 
-export type Source = { url?: string; title?: string; says?: string; width?: number; height?: number; error?: string }
-export type Issue = { status: Status; rule: string; message: string }
+export type Source = {
+  url?: string;
+  title?: string;
+  says?: string;
+  width?: number;
+  height?: number;
+  error?: string;
+};
+export type Issue = { status: Status; rule: string; message: string };
 
 export type FieldRecord = {
-  id: number
-  key: string
-  value: unknown
-  origin: 'input' | 'template' | 'vocab' | 'ai_research' | 'ai_generated' | 'auto_fix'
-  status: Status
-  confidence: number | null
-  sources: Source[]
-  alternatives: unknown[]
-  previous: unknown
-  value_en: string | null
-  message: string | null
-  issues: Issue[]
-  decided_by: string | null
-  decided_at: string | null
-}
+  id: number;
+  key: string;
+  value: unknown;
+  origin:
+    | "input"
+    | "template"
+    | "vocab"
+    | "ai_research"
+    | "ai_generated"
+    | "auto_fix";
+  status: Status;
+  confidence: number | null;
+  sources: Source[];
+  alternatives: unknown[];
+  previous: unknown;
+  value_en: string | null;
+  message: string | null;
+  issues: Issue[];
+  decided_by: string | null;
+  decided_at: string | null;
+};
 
 export type StoreProduct = {
-  store_product_id: number
-  approved_by: string | null
-  approved_at: string | null
-  upload_status?: 'uploaded' | 'failed' | null
-  upload_message?: string | null
-  status: Status
-  fields: Record<string, FieldRecord>
-}
+  store_product_id: number;
+  approved_by: string | null;
+  approved_at: string | null;
+  upload_status?: "uploaded" | "failed" | null;
+  upload_message?: string | null;
+  status: Status;
+  fields: Record<string, FieldRecord>;
+};
 
 export type MediaRecord = {
-  id: number
-  url: string
-  kind: 'original' | 'composed'
-  layout: string | null
-  source_url: string | null
-  width: number
-  height: number
-  info: { bottle?: [number, number]; scaled?: number; warnings?: string[]; source?: string }
-}
+  id: number;
+  url: string;
+  kind: "original" | "composed";
+  layout: string | null;
+  source_url: string | null;
+  width: number;
+  height: number;
+  info: {
+    bottle?: [number, number];
+    scaled?: number;
+    warnings?: string[];
+    source?: string;
+  };
+};
 
 export type Product = {
-  id: number
-  ean: string | null
-  input: Record<string, unknown>
-  title: string
-  state: ProductState
-  counts: Partial<Record<Status, number>>
-  stores: Record<string, StoreProduct>
-  media: MediaRecord[]
-  brief?: boolean // a store catalog's list entry: no fields, only counts (GET /api/batches/{id}?focus=)
-}
+  id: number;
+  ean: string | null;
+  input: Record<string, unknown>;
+  title: string;
+  state: ProductState;
+  counts: Partial<Record<Status, number>>;
+  stores: Record<string, StoreProduct>;
+  media: MediaRecord[];
+  brief?: boolean; // a store catalog's list entry: no fields, only counts (GET /api/batches/{id}?focus=)
+};
 
 export type StoreInfo = {
-  key: string
-  label: string
-  country: string | null
-  language: string | null
-  currency: string | null
-  template?: boolean // an accepted store profile: products are built by its pattern
-  access?: string | null // what stops an upload to this store (domain or Shopify access); null = can publish
-  price_cents?: string | null // the store's usual price ending ("99", "00"), from its profile
-}
+  key: string;
+  label: string;
+  country: string | null;
+  language: string | null;
+  currency: string | null;
+  template?: boolean; // an accepted store profile: products are built by its pattern
+  access?: string | null; // what stops an upload to this store (domain or Shopify access); null = can publish
+  price_cents?: string | null; // the store's usual price ending ("99", "00"), from its profile
+};
 
 export type BatchSummary = {
-  id: number
-  kind: 'new' | 'audit'
-  name: string
-  group: string
-  created_at: string
-  author: string | null
-  publish_status: string
-  stores: StoreInfo[]
-  products: number
-  ready: number
-  review: number
-  blocked: number
-  approved: number
-  fixed: number
-}
+  id: number;
+  kind: "new" | "audit";
+  name: string;
+  group: string;
+  created_at: string;
+  author: string | null;
+  publish_status: string;
+  stores: StoreInfo[];
+  products: number;
+  ready: number;
+  review: number;
+  blocked: number;
+  approved: number;
+  fixed: number;
+};
 
 export type Batch = {
-  id: number
-  kind: 'new' | 'audit'
-  name: string
-  group: string
-  created_at: string
-  author: string | null
-  stores: StoreInfo[]
-  products: Product[]
-}
+  id: number;
+  kind: "new" | "audit";
+  name: string;
+  group: string;
+  created_at: string;
+  author: string | null;
+  stores: StoreInfo[];
+  products: Product[];
+};
 
 export type UploadItem = {
-  store_product_id: number
-  product_id: number
-  title: string
-  blocker: string | null
-  upload_status: 'uploaded' | 'failed' | null
-  upload_message: string | null
-  attempted_at: string | null
-  shopify_url: string | null
-}
+  store_product_id: number;
+  product_id: number;
+  title: string;
+  blocker: string | null;
+  upload_status: "uploaded" | "failed" | null;
+  upload_message: string | null;
+  attempted_at: string | null;
+  shopify_url: string | null;
+};
 
 export type UploadStore = {
-  key: string
-  label: string
-  language: string | null
-  country: string | null
-  configured: string | null
-  items: UploadItem[]
-}
+  key: string;
+  label: string;
+  language: string | null;
+  country: string | null;
+  configured: string | null;
+  items: UploadItem[];
+};
 
 export type UploadState = {
-  batch_id: number
-  kind: 'new' | 'audit'
-  publish_status: string
-  running: boolean
-  done: number
-  total: number
-  error: string | null
-  stores: UploadStore[]
-}
+  batch_id: number;
+  kind: "new" | "audit";
+  publish_status: string;
+  running: boolean;
+  done: number;
+  total: number;
+  error: string | null;
+  stores: UploadStore[];
+};
 
 export type StoreRow = {
-  key: string
-  label: string
-  group: string | null
-  country: string | null
-  language: string | null
-  currency: string | null
-  shop: string | null
-  access: string | null
-  access_set: AccessInfo | null
-  profile_accepted: boolean
-  state: 'active' | 'proposed' | 'waiting'
-  products: number | null
-  catalog_at: string | null
-  profile_id: number | null
-  audit_batch_id: number | null
-  checked_at: string | null // the products as last read from the store (Shopify or an uploaded export)
-}
+  key: string;
+  label: string;
+  group: string | null;
+  country: string | null;
+  language: string | null;
+  currency: string | null;
+  shop: string | null;
+  access: string | null;
+  access_set: AccessInfo | null;
+  profile_accepted: boolean;
+  state: "active" | "proposed" | "waiting";
+  products: number | null;
+  catalog_at: string | null;
+  profile_id: number | null;
+  audit_batch_id: number | null;
+  checked_at: string | null; // the products as last read from the store (Shopify or an uploaded export)
+};
 
 export type ProfileItem = {
-  value: unknown
-  match_rate?: number | null
-  status?: string
-  examples?: unknown[]
-  [k: string]: unknown
-}
+  value: unknown;
+  match_rate?: number | null;
+  status?: string;
+  examples?: unknown[];
+  [k: string]: unknown;
+};
 
 export type GroupScore = {
-  group: string | null
-  name: string
-  score: number | null
-  recommended: boolean
-  comparable: boolean
-  reasons: string[]
-}
+  group: string | null;
+  name: string;
+  score: number | null;
+  recommended: boolean;
+  comparable: boolean;
+  reasons: string[];
+};
 
 export type StoreProfile = {
-  id: number
-  store: string
-  label: string
-  group: string | null
-  shop: string | null
-  access_env: { client_id: string; client_secret: string; token: string | null }
-  access_set: AccessInfo | null
-  access: string | null
-  version: number
-  state: 'proposed' | 'accepted' | 'rejected'
-  created_at: string
-  decided_by: string | null
-  source: string | null
-  diff: { first: boolean; changed: { key: string; before: unknown; after: unknown }[] } | null
-  audit_batch_id: number | null
+  id: number;
+  store: string;
+  label: string;
+  group: string | null;
+  shop: string | null;
+  access_env: {
+    client_id: string;
+    client_secret: string;
+    token: string | null;
+  };
+  access_set: AccessInfo | null;
+  access: string | null;
+  version: number;
+  state: "proposed" | "accepted" | "rejected";
+  created_at: string;
+  decided_by: string | null;
+  source: string | null;
+  diff: {
+    first: boolean;
+    changed: { key: string; before: unknown; after: unknown }[];
+  } | null;
+  audit_batch_id: number | null;
   profile: {
-    products: number
-    columns: string[]
-    to_confirm: string[]
-    group_scores: GroupScore[]
-    items: Record<string, ProfileItem | Record<string, ProfileItem>>
-  }
-}
+    products: number;
+    columns: string[];
+    to_confirm: string[];
+    group_scores: GroupScore[];
+    items: Record<string, ProfileItem | Record<string, ProfileItem>>;
+  };
+};
 
 export type AuditIssue = {
-  rule: string
-  label: string
-  status: Status
-  action: string
-  fields: number
-  products: number
-}
+  rule: string;
+  label: string;
+  status: Status;
+  action: string;
+  fields: number;
+  products: number;
+};
 
 export type AuditSummary = {
-  batch_id: number
-  name: string
-  group: string
-  store: string | null
-  created_at: string
-  products: number
-  issues: AuditIssue[]
-  fix_products: number
-  fix_fields: number
-}
+  batch_id: number;
+  name: string;
+  group: string;
+  store: string | null;
+  created_at: string;
+  products: number;
+  issues: AuditIssue[];
+  fix_products: number;
+  fix_fields: number;
+};
 
 export type AuditItem = {
-  product_id: number
-  title: string
-  field_id: number
-  key: string
-  value: unknown
-  previous: unknown
-  status: Status
-  message: string
-  price: string | null
-  compare_at: string | null
-  decided_by: string | null
-}
+  product_id: number;
+  title: string;
+  field_id: number;
+  key: string;
+  value: unknown;
+  previous: unknown;
+  status: Status;
+  message: string;
+  price: string | null;
+  compare_at: string | null;
+  decided_by: string | null;
+};
 
 export type GroupInfo = {
-  key: string
-  name: string
-  ready: boolean
-  stores: { key: string; label: string; country: string | null; language: string | null; currency: string | null }[]
-}
+  key: string;
+  name: string;
+  ready: boolean;
+  stores: {
+    key: string;
+    label: string;
+    country: string | null;
+    language: string | null;
+    currency: string | null;
+  }[];
+};
 
 export type CheckedRow = {
-  line: number
-  name: string
-  ml: number | null
-  tester: boolean
-  ean: string
-  prices: Record<string, string | null>
-  tier: string | null
-  problems: string[]
-}
+  line: number;
+  name: string;
+  ml: number | null;
+  tester: boolean;
+  ean: string;
+  prices: Record<string, string | null>;
+  tier: string | null;
+  problems: string[];
+};
 
-export type QuickItem = { name: string; ean: string; price: string; compare: string }
+export type QuickItem = {
+  name: string;
+  ean: string;
+  price: string;
+  compare: string;
+};
 export type QuickRow = CheckedRow & {
-  price_eur: number | null
-  compare_eur: number | null
-  exists: string[] // stores that already have a product with this EAN
-  exists_at?: { batch_id: number; product_id: number }
-}
+  price_eur: number | null;
+  compare_eur: number | null;
+  exists: string[]; // stores that already have a product with this EAN
+  exists_at?: { batch_id: number; product_id: number };
+};
 
 export type CheckResult = {
-  rows: CheckedRow[]
-  ready: number
-  api_key: boolean
+  rows: CheckedRow[];
+  ready: number;
+  api_key: boolean;
   estimate: {
-    products: number
-    stores: number
-    languages: string[]
-    total: number
+    products: number;
+    stores: number;
+    languages: string[];
+    total: number;
     tiers: {
-      tier: string
-      label: string
-      products: number
-      per_product: number
-      limit: number
-      ceiling: number
-      measured: boolean
-    }[]
-  }
-}
+      tier: string;
+      label: string;
+      products: number;
+      per_product: number;
+      limit: number;
+      ceiling: number;
+      measured: boolean;
+    }[];
+  };
+};
 
 export type Job = {
-  id: string
-  running: boolean
-  stage: string
-  stage_label: string
-  done: number
-  total: number
-  error: string | null
-  batch_id: number | null
-  cost_usd: number | null
-  fast?: boolean
-  kind?: 'extend' | 'fill' | 'crosssync' | 'sync' // adding stores, filling a product, reading stores from Shopify
-  store?: string | null // sync: the store being read
-  product_id?: number
-  result?: unknown
-  target_batch_id?: number
-  started_at?: number // unix seconds
-  finished_at?: number | null
-}
+  id: string;
+  running: boolean;
+  stage: string;
+  stage_label: string;
+  done: number;
+  total: number;
+  error: string | null;
+  batch_id: number | null;
+  cost_usd: number | null;
+  fast?: boolean;
+  kind?: "extend" | "fill" | "crosssync" | "sync"; // adding stores, filling a product, reading stores from Shopify
+  store?: string | null; // sync: the store being read
+  product_id?: number;
+  result?: unknown;
+  target_batch_id?: number;
+  started_at?: number; // unix seconds
+  finished_at?: number | null;
+};
 
-export type AccessInfo = { kind: 'client' | 'token'; updated_by: string | null; updated_at: string | null }
+export type AccessInfo = {
+  kind: "client" | "token";
+  updated_by: string | null;
+  updated_at: string | null;
+};
 
 export type CrossSyncTaken = {
-  batch_id: number
-  pending: number
+  batch_id: number;
+  pending: number;
   items: {
-    product_id: number
-    title: string
-    kinds: string[]
-    image: unknown
-    live_status: 'uploaded' | 'failed' | null
-    live_message: string | null
-  }[]
-}
+    product_id: number;
+    title: string;
+    kinds: string[];
+    image: unknown;
+    live_status: "uploaded" | "failed" | null;
+    live_message: string | null;
+  }[];
+};
 
 export type CrossSyncOptions = {
-  batch_id: number
+  batch_id: number;
   kinds: {
-    kind: string
-    label: string
-    products: number
-    from: string[]
-    cost_usd: number
-    examples: { title: string; from: string; value: string }[]
-  }[]
-}
+    kind: string;
+    label: string;
+    products: number;
+    from: string[];
+    cost_usd: number;
+    examples: { title: string; from: string; value: string }[];
+  }[];
+};
 
 export type LiveChanges = {
-  product_id: number
-  store: string
-  changes: { key: string; label: string; before: unknown; after: unknown; status: Status }[]
-  blocked: string[]
-  live_status: 'uploaded' | 'failed' | null
-  live_message: string | null
-}
+  product_id: number;
+  store: string;
+  changes: {
+    key: string;
+    label: string;
+    before: unknown;
+    after: unknown;
+    status: Status;
+  }[];
+  blocked: string[];
+  live_status: "uploaded" | "failed" | null;
+  live_message: string | null;
+};
 
 export type LiveBatch = {
-  running: boolean
-  total?: number
-  done?: number
-  uploaded?: number
-  failed?: number
-  error?: string | null
-  pending: number
-}
+  running: boolean;
+  total?: number;
+  done?: number;
+  uploaded?: number;
+  failed?: number;
+  error?: string | null;
+  pending: number;
+};
 
 export type PricePlan = {
-  date: string | null
-  stores: Record<string, { currency: string; rate?: number; price?: string; compare_at?: string; error?: string }>
-}
+  date: string | null;
+  stores: Record<
+    string,
+    {
+      currency: string;
+      rate?: number;
+      price?: string;
+      compare_at?: string;
+      error?: string;
+    }
+  >;
+};
 
 export type StoreOptions = {
-  batch_id: number
-  products: number
-  present: string[]
-  stores: (StoreInfo & { template: boolean; access: string | null })[]
-  cost_per_text: number
-}
+  batch_id: number;
+  products: number;
+  present: string[];
+  stores: (StoreInfo & { template: boolean; access: string | null })[];
+  cost_per_text: number;
+};
 
-export type CatalogState = 'live' | 'diff' | 'ready' | 'bad' | 'none'
-export type CatalogFilter = 'all' | 'todo' | 'bad' | 'missing' | 'fixes'
-export type CatalogStoreState = { state: CatalogState; product_id: number; batch_id: number; kind: 'new' | 'audit' }
+export type CatalogState = "live" | "diff" | "ready" | "bad" | "none";
+export type CatalogFilter = "all" | "todo" | "bad" | "missing" | "fixes";
+export type CatalogStoreState = {
+  state: CatalogState;
+  product_id: number;
+  batch_id: number;
+  kind: "new" | "audit";
+};
 export type CatalogEntry = {
-  key: string
-  ean: string | null
-  title: string
-  image: string | null
-  product_id: number
-  batch_id: number
-  created_at: string
-  missing: number
-  fixes: number // stores where the store's rules fixed something that is not sent yet
-  stores: Record<string, CatalogStoreState>
-}
-export type CatalogStore = { key: string; label: string; country: string | null; language: string | null }
+  key: string;
+  ean: string | null;
+  title: string;
+  image: string | null;
+  product_id: number;
+  batch_id: number;
+  created_at: string;
+  missing: number;
+  fixes: number; // stores where the store's rules fixed something that is not sent yet
+  stores: Record<string, CatalogStoreState>;
+};
+export type CatalogStore = {
+  key: string;
+  label: string;
+  country: string | null;
+  language: string | null;
+};
 export type Catalog = {
-  stores: CatalogStore[]
-  total: number
-  found: number
-  counts: Record<CatalogFilter, number>
-  items: CatalogEntry[]
-}
+  stores: CatalogStore[];
+  total: number;
+  found: number;
+  counts: Record<CatalogFilter, number>;
+  items: CatalogEntry[];
+};
 
-export type SendAction = 'update' | 'create' | 'wait' | 'none' | 'missing'
+export type SendAction = "update" | "create" | "wait" | "none" | "missing";
 export type SendStore = {
-  store: string
-  product_id: number | null
-  batch_id: number | null
-  kind: 'new' | 'audit' | null
-  action: SendAction
-  changes: string[]
-  reason: string | null
-  message: string | null
-  accept: number // AI suggestions of this store, accepted when it is sent
-}
-export type SendPlan = { key: string; ean: string | null; title: string; stores: SendStore[] }
+  store: string;
+  product_id: number | null;
+  batch_id: number | null;
+  kind: "new" | "audit" | null;
+  action: SendAction;
+  changes: string[];
+  reason: string | null;
+  message: string | null;
+  accept: number; // AI suggestions of this store, accepted when it is sent
+  group?: string; // a store without the product: the group whose rules it is made by
+};
+export type SendPlan = {
+  key: string;
+  ean: string | null;
+  title: string;
+  stores: SendStore[];
+};
 
-export type User = { id: number; name: string; is_admin: boolean; disabled: boolean }
+export type User = {
+  id: number;
+  name: string;
+  is_admin: boolean;
+  disabled: boolean;
+};
 
 /** Any 401 means the session ended: the login screen takes over (lib/auth.tsx listens). */
-export const AUTH_EVENT = 'perfume-import:auth-required'
+export const AUTH_EVENT = "perfume-import:auth-required";
 
 function sessionEnded(response: Response) {
-  if (response.status === 401 && !response.url.includes('/api/auth/')) window.dispatchEvent(new Event(AUTH_EVENT))
+  if (response.status === 401 && !response.url.includes("/api/auth/"))
+    window.dispatchEvent(new Event(AUTH_EVENT));
 }
 
 export class ApiError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response
+  let response: Response;
   try {
     response = await fetch(path, {
       ...init,
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
-    })
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
   } catch {
-    throw new ApiError('Няма връзка с API-то. Провери, че сървърът работи, и опитай отново.')
+    throw new ApiError(
+      "Няма връзка с API-то. Провери, че сървърът работи, и опитай отново.",
+    );
   }
   if (!response.ok) {
-    sessionEnded(response)
-    let detail = ''
+    sessionEnded(response);
+    let detail = "";
     try {
-      detail = (await response.json()).detail ?? ''
+      detail = (await response.json()).detail ?? "";
     } catch {
       // Not JSON: keep the status text.
     }
-    throw new ApiError(detail || `API-то отговори с ${response.status} ${response.statusText}.`)
+    throw new ApiError(
+      detail || `API-то отговори с ${response.status} ${response.statusText}.`,
+    );
   }
-  return response.json() as Promise<T>
+  return response.json() as Promise<T>;
 }
 
 async function upload<T>(path: string, form: FormData): Promise<T> {
-  let response: Response
+  let response: Response;
   try {
-    response = await fetch(path, { method: 'POST', body: form })
+    response = await fetch(path, { method: "POST", body: form });
   } catch {
-    throw new ApiError('Няма връзка с API-то. Провери, че сървърът работи, и опитай отново.')
+    throw new ApiError(
+      "Няма връзка с API-то. Провери, че сървърът работи, и опитай отново.",
+    );
   }
   if (!response.ok) {
-    sessionEnded(response)
-    let detail = ''
+    sessionEnded(response);
+    let detail = "";
     try {
-      detail = (await response.json()).detail ?? ''
+      detail = (await response.json()).detail ?? "";
     } catch {
       // Not JSON.
     }
-    throw new ApiError(typeof detail === 'string' && detail ? detail : `API-то отговори с ${response.status}.`)
+    throw new ApiError(
+      typeof detail === "string" && detail
+        ? detail
+        : `API-то отговори с ${response.status}.`,
+    );
   }
-  return response.json() as Promise<T>
+  return response.json() as Promise<T>;
 }
 
-const put = <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) })
+const put = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: "PUT", body: JSON.stringify(body) });
 
-const post = <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) })
+const post = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: "POST", body: JSON.stringify(body) });
 
-const patch = <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body) })
+const patch = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 
-const del = <T>(path: string) => request<T>(path, { method: 'DELETE' })
+const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
 export const api = {
-  me: () => request<{ user: User | null; setup_needed: boolean }>('/api/auth/me'),
-  login: (name: string, password: string) => post<{ user: User }>('/api/auth/login', { name, password }),
-  setup: (name: string, password: string) => post<{ user: User }>('/api/auth/setup', { name, password }),
-  logout: () => post<{ ok: boolean }>('/api/auth/logout', {}),
-  changePassword: (current: string, next: string) => post<User>('/api/auth/password', { current, new: next }),
-  users: () => request<User[]>('/api/auth/users'),
+  me: () =>
+    request<{ user: User | null; setup_needed: boolean }>("/api/auth/me"),
+  login: (name: string, password: string) =>
+    post<{ user: User }>("/api/auth/login", { name, password }),
+  setup: (name: string, password: string) =>
+    post<{ user: User }>("/api/auth/setup", { name, password }),
+  logout: () => post<{ ok: boolean }>("/api/auth/logout", {}),
+  changePassword: (current: string, next: string) =>
+    post<User>("/api/auth/password", { current, new: next }),
+  users: () => request<User[]>("/api/auth/users"),
   createUser: (name: string, password: string, is_admin: boolean) =>
-    post<User>('/api/auth/users', { name, password, is_admin }),
-  updateUser: (id: number, change: { password?: string; is_admin?: boolean; disabled?: boolean }) =>
-    patch<User>(`/api/auth/users/${id}`, change),
-  setAccess: (store: string, access: { client_id?: string; client_secret?: string; token?: string }) =>
-    put<AccessInfo>(`/api/stores/${store}/access`, access),
-  clearAccess: (store: string) => del<{ ok: boolean }>(`/api/stores/${store}/access`),
-  checkAccess: (store: string) => post<{ ok: boolean; message: string }>(`/api/stores/${store}/access/check`, {}),
-  batches: () => request<BatchSummary[]>('/api/batches'),
-  batch: (id: number, focus?: number) => request<Batch>(`/api/batches/${id}${focus ? `?focus=${focus}` : ''}`),
+    post<User>("/api/auth/users", { name, password, is_admin }),
+  updateUser: (
+    id: number,
+    change: { password?: string; is_admin?: boolean; disabled?: boolean },
+  ) => patch<User>(`/api/auth/users/${id}`, change),
+  setAccess: (
+    store: string,
+    access: { client_id?: string; client_secret?: string; token?: string },
+  ) => put<AccessInfo>(`/api/stores/${store}/access`, access),
+  clearAccess: (store: string) =>
+    del<{ ok: boolean }>(`/api/stores/${store}/access`),
+  checkAccess: (store: string) =>
+    post<{ ok: boolean; message: string }>(
+      `/api/stores/${store}/access/check`,
+      {},
+    ),
+  batches: () => request<BatchSummary[]>("/api/batches"),
+  batch: (id: number, focus?: number) =>
+    request<Batch>(`/api/batches/${id}${focus ? `?focus=${focus}` : ""}`),
   catalog: (q: string, filter: CatalogFilter, limit: number) =>
-    request<Catalog>(`/api/catalog?${new URLSearchParams({ q, filter, limit: String(limit) })}`),
-  syncStores: (stores?: string[]) => post<{ job_id: string }>('/api/stores/sync', { stores: stores ?? null }),
-  deleteProduct: (id: number) => del<{ deleted: number; batch_deleted: boolean }>(`/api/products/${id}`),
+    request<Catalog>(
+      `/api/catalog?${new URLSearchParams({ q, filter, limit: String(limit) })}`,
+    ),
+  syncStores: (stores?: string[]) =>
+    post<{ job_id: string }>("/api/stores/sync", { stores: stores ?? null }),
+  deleteProduct: (id: number) =>
+    del<{ deleted: number; batch_deleted: boolean }>(`/api/products/${id}`),
   spread: (productId: number, store: string) =>
     post<{ job_id: string }>(`/api/products/${productId}/spread`, { store }),
   sendPlan: (id: number) => request<SendPlan>(`/api/products/${id}/send`),
-  send: (id: number, stores: string[], status: 'draft' | 'active', align = false) =>
-    post<{ done?: Record<string, string>; plan?: SendPlan; job_id?: string }>(`/api/products/${id}/send`, {
-      stores,
-      status,
-      align,
-    }),
-  productCatalog: (id: number) => request<CatalogEntry>(`/api/products/${id}/catalog`),
-  product: (id: number) => request<Product & { batch_id: number }>(`/api/products/${id}`),
-  vocab: (group: string) => request<Record<string, string[]>>(`/api/groups/${group}/vocab`),
-  decide: (fieldId: number, action: 'accept' | 'edit' | 'pick', value?: unknown) =>
-    post<Product>(`/api/fields/${fieldId}/decision`, { action, value }),
-  acceptAll: (productId: number, store?: string) => post<Product>(`/api/products/${productId}/accept-all`, { store }),
-  approve: (productId: number) => post<Product>(`/api/products/${productId}/approve`, {}),
-  replaceImage: (productId: number, source: { url?: string; file?: File; ready?: boolean }) => {
-    const form = new FormData()
-    if (source.file) form.append('file', source.file)
-    else form.append('url', source.url ?? '')
-    if (source.ready) form.append('ready', 'true')
-    return upload<Product>(`/api/products/${productId}/image`, form)
+  send: (
+    id: number,
+    stores: string[],
+    status: "draft" | "active",
+    align = false,
+  ) =>
+    post<{ done?: Record<string, string>; plan?: SendPlan; job_id?: string }>(
+      `/api/products/${id}/send`,
+      {
+        stores,
+        status,
+        align,
+      },
+    ),
+  productCatalog: (id: number) =>
+    request<CatalogEntry>(`/api/products/${id}/catalog`),
+  product: (id: number) =>
+    request<Product & { batch_id: number }>(`/api/products/${id}`),
+  vocab: (group: string) =>
+    request<Record<string, string[]>>(`/api/groups/${group}/vocab`),
+  decide: (
+    fieldId: number,
+    action: "accept" | "edit" | "pick",
+    value?: unknown,
+  ) => post<Product>(`/api/fields/${fieldId}/decision`, { action, value }),
+  acceptAll: (productId: number, store?: string) =>
+    post<Product>(`/api/products/${productId}/accept-all`, { store }),
+  approve: (productId: number) =>
+    post<Product>(`/api/products/${productId}/approve`, {}),
+  replaceImage: (
+    productId: number,
+    source: { url?: string; file?: File; ready?: boolean },
+  ) => {
+    const form = new FormData();
+    if (source.file) form.append("file", source.file);
+    else form.append("url", source.url ?? "");
+    if (source.ready) form.append("ready", "true");
+    return upload<Product>(`/api/products/${productId}/image`, form);
   },
-  fx: () => request<{ date: string | null; rates: Record<string, number> }>('/api/fx'),
-  pricePlan: (productId: number, price_eur: number, compare_eur: number | null) =>
-    post<PricePlan>(`/api/products/${productId}/prices/plan`, { price_eur, compare_eur }),
-  setPrices: (productId: number, stores: Record<string, { price: string; compare_at: string }>) =>
-    put<Product>(`/api/products/${productId}/prices`, { stores }),
+  fx: () =>
+    request<{ date: string | null; rates: Record<string, number> }>("/api/fx"),
+  pricePlan: (
+    productId: number,
+    price_eur: number,
+    compare_eur: number | null,
+  ) =>
+    post<PricePlan>(`/api/products/${productId}/prices/plan`, {
+      price_eur,
+      compare_eur,
+    }),
+  setPrices: (
+    productId: number,
+    stores: Record<string, { price: string; compare_at: string }>,
+  ) => put<Product>(`/api/products/${productId}/prices`, { stores }),
   missing: (productId: number) =>
-    request<{ product_id: number; keys: string[]; labels: string[] }>(`/api/products/${productId}/missing`),
+    request<{ product_id: number; keys: string[]; labels: string[] }>(
+      `/api/products/${productId}/missing`,
+    ),
   fill: (productId: number, url: string | null, keys?: string[]) =>
-    post<{ job_id: string }>(`/api/products/${productId}/fill`, { url, keys: keys ?? null }),
-  syncNotes: (fieldId: number, text: string) => post<Product>(`/api/fields/${fieldId}/sync-notes`, { text }),
-  liveChanges: (productId: number) => request<LiveChanges>(`/api/products/${productId}/live`),
-  pushLive: (productId: number) => post<LiveChanges>(`/api/products/${productId}/live`, {}),
-  refreshLive: (productId: number) => post<LiveChanges>(`/api/products/${productId}/refresh`, {}),
-  liveBatch: (batchId: number) => request<LiveBatch>(`/api/batches/${batchId}/live`),
+    post<{ job_id: string }>(`/api/products/${productId}/fill`, {
+      url,
+      keys: keys ?? null,
+    }),
+  syncNotes: (fieldId: number, text: string) =>
+    post<Product>(`/api/fields/${fieldId}/sync-notes`, { text }),
+  liveChanges: (productId: number) =>
+    request<LiveChanges>(`/api/products/${productId}/live`),
+  pushLive: (productId: number) =>
+    post<LiveChanges>(`/api/products/${productId}/live`, {}),
+  refreshLive: (productId: number) =>
+    post<LiveChanges>(`/api/products/${productId}/refresh`, {}),
+  liveBatch: (batchId: number) =>
+    request<LiveBatch>(`/api/batches/${batchId}/live`),
   startLiveBatch: (batchId: number, productIds?: number[]) =>
-    post<LiveBatch>(`/api/batches/${batchId}/live`, { product_ids: productIds ?? null }),
-  crossSyncTaken: (batchId: number) => request<CrossSyncTaken>(`/api/batches/${batchId}/crosssync/taken`),
-  crossSync: (batchId: number) => request<CrossSyncOptions>(`/api/batches/${batchId}/crosssync`),
+    post<LiveBatch>(`/api/batches/${batchId}/live`, {
+      product_ids: productIds ?? null,
+    }),
+  crossSyncTaken: (batchId: number) =>
+    request<CrossSyncTaken>(`/api/batches/${batchId}/crosssync/taken`),
+  crossSync: (batchId: number) =>
+    request<CrossSyncOptions>(`/api/batches/${batchId}/crosssync`),
   startCrossSync: (batchId: number, kinds: string[]) =>
     post<{ job_id: string }>(`/api/batches/${batchId}/crosssync`, { kinds }),
   crossSyncProduct: (productId: number) =>
-    request<{ product_id: number; items: { kind: string; label: string; from: string; value: unknown }[] }>(
-      `/api/products/${productId}/crosssync`,
-    ),
+    request<{
+      product_id: number;
+      items: { kind: string; label: string; from: string; value: unknown }[];
+    }>(`/api/products/${productId}/crosssync`),
   takeFromStores: (productId: number, kinds: string[]) =>
-    post<{ result: Record<string, string>; cost_usd: number; product: Product }>(
-      `/api/products/${productId}/crosssync`,
-      { kinds },
+    post<{
+      result: Record<string, string>;
+      cost_usd: number;
+      product: Product;
+    }>(`/api/products/${productId}/crosssync`, { kinds }),
+  publish: (
+    productId: number,
+    stores: string[] | null,
+    status: "draft" | "active",
+  ) =>
+    post<{ stores: string[]; skipped: Record<string, string> }>(
+      `/api/products/${productId}/publish`,
+      {
+        stores,
+        status,
+      },
     ),
-  publish: (productId: number, stores: string[] | null, status: 'draft' | 'active') =>
-    post<{ stores: string[]; skipped: Record<string, string> }>(`/api/products/${productId}/publish`, {
-      stores,
-      status,
-    }),
-  stores: () => request<StoreRow[]>('/api/stores'),
-  groups: () => request<GroupInfo[]>('/api/groups'),
-  createGroup: (name: string) => post<{ key: string; name: string }>('/api/groups', { name }),
+  stores: () => request<StoreRow[]>("/api/stores"),
+  groups: () => request<GroupInfo[]>("/api/groups"),
+  createGroup: (name: string) =>
+    post<{ key: string; name: string }>("/api/groups", { name }),
   deriveGroup: (key: string) =>
-    post<{ group: string; stores: string[]; base: string; products: number; to_confirm: string[] }>(
-      `/api/groups/${key}/derive`,
-      {},
-    ),
-  checkBatch: (form: FormData) => upload<CheckResult>('/api/batches/check', form),
-  startBatch: (form: FormData) => upload<{ job_id: string }>('/api/batches/start', form),
+    post<{
+      group: string;
+      stores: string[];
+      base: string;
+      products: number;
+      to_confirm: string[];
+    }>(`/api/groups/${key}/derive`, {}),
+  checkBatch: (form: FormData) =>
+    upload<CheckResult>("/api/batches/check", form),
+  startBatch: (form: FormData) =>
+    upload<{ job_id: string }>("/api/batches/start", form),
   job: (id: string) => request<Job>(`/api/jobs/${id}`),
   quickCheck: (items: QuickItem[], stores: string[]) =>
-    post<Omit<CheckResult, 'rows'> & { rows: QuickRow[] }>('/api/quick/check', { items, stores }),
+    post<Omit<CheckResult, "rows"> & { rows: QuickRow[] }>("/api/quick/check", {
+      items,
+      stores,
+    }),
   quickStart: (items: QuickItem[], stores: string[], ownImages = false) =>
-    post<{ job_id: string }>('/api/quick/start', { items, stores, own_images: ownImages }),
-  latestJob: () => request<Job | null>('/api/jobs/latest'),
-  storeOptions: (batchId: number) => request<StoreOptions>(`/api/batches/${batchId}/stores/options`),
+    post<{ job_id: string }>("/api/quick/start", {
+      items,
+      stores,
+      own_images: ownImages,
+    }),
+  latestJob: () => request<Job | null>("/api/jobs/latest"),
+  storeOptions: (batchId: number) =>
+    request<StoreOptions>(`/api/batches/${batchId}/stores/options`),
   addStores: (batchId: number, stores: string[], fast: boolean) =>
-    post<{ job_id: string }>(`/api/batches/${batchId}/stores`, { stores, fast }),
-  audit: (batchId: number) => request<AuditSummary>(`/api/batches/${batchId}/audit`),
+    post<{ job_id: string }>(`/api/batches/${batchId}/stores`, {
+      stores,
+      fast,
+    }),
+  audit: (batchId: number) =>
+    request<AuditSummary>(`/api/batches/${batchId}/audit`),
   auditItems: (batchId: number, rule: string, limit: number) =>
     request<{ rule: string; label: string; total: number; items: AuditItem[] }>(
       `/api/batches/${batchId}/audit/${encodeURIComponent(rule)}?limit=${limit}`,
     ),
   connectStore: (body: {
-    store?: string
-    name?: string
-    group?: string
-    shop?: string
-    country?: string
-    language?: string
-    currency?: string
-    client_id?: string
-    client_secret?: string
-    token?: string
-  }) => post<{ job_id: string; store: string }>('/api/stores/connect', body),
-  analyze: (form: FormData) => upload<{ profile_id: number }>('/api/stores/analyze', form),
+    store?: string;
+    name?: string;
+    group?: string;
+    shop?: string;
+    country?: string;
+    language?: string;
+    currency?: string;
+    client_id?: string;
+    client_secret?: string;
+    token?: string;
+  }) => post<{ job_id: string; store: string }>("/api/stores/connect", body),
+  analyze: (form: FormData) =>
+    upload<{ profile_id: number }>("/api/stores/analyze", form),
   profile: (id: number) => request<StoreProfile>(`/api/profiles/${id}`),
   editProfileItem: (id: number, key: string, value: unknown) =>
-    put<StoreProfile>(`/api/profiles/${id}/items/${encodeURIComponent(key)}`, { value }),
-  acceptProfile: (id: number, group: string | null) => post<StoreProfile>(`/api/profiles/${id}/accept`, { group }),
-  rejectProfile: (id: number) => post<StoreProfile>(`/api/profiles/${id}/reject`, {}),
-  setShop: (store: string, shop: string) => put<{ ok: boolean }>(`/api/stores/${store}/shop`, { shop }),
-  uploadState: (batchId: number) => request<UploadState>(`/api/batches/${batchId}/upload`),
-  startUpload: (batchId: number, body: { status: 'draft' | 'active'; stores?: string[]; only_failed?: boolean }) =>
-    post<{ started: boolean }>(`/api/batches/${batchId}/upload`, body),
+    put<StoreProfile>(`/api/profiles/${id}/items/${encodeURIComponent(key)}`, {
+      value,
+    }),
+  acceptProfile: (id: number, group: string | null) =>
+    post<StoreProfile>(`/api/profiles/${id}/accept`, { group }),
+  rejectProfile: (id: number) =>
+    post<StoreProfile>(`/api/profiles/${id}/reject`, {}),
+  setShop: (store: string, shop: string) =>
+    put<{ ok: boolean }>(`/api/stores/${store}/shop`, { shop }),
+  uploadState: (batchId: number) =>
+    request<UploadState>(`/api/batches/${batchId}/upload`),
+  startUpload: (
+    batchId: number,
+    body: {
+      status: "draft" | "active";
+      stores?: string[];
+      only_failed?: boolean;
+    },
+  ) => post<{ started: boolean }>(`/api/batches/${batchId}/upload`, body),
   acceptColumn: (batchId: number, store: string, key: string) =>
-    post<{ accepted: number }>(`/api/batches/${batchId}/accept-column`, { store, key }),
-}
+    post<{ accepted: number }>(`/api/batches/${batchId}/accept-column`, {
+      store,
+      key,
+    }),
+};

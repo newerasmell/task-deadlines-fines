@@ -89,7 +89,7 @@ def test_a_store_without_the_product_can_have_it_made(batch, monkeypatch, fixed_
     monkeypatch.setattr(
         newbatch,
         "quick_start",
-        lambda items, keys, actor, client=None, research=None: (
+        lambda items, keys, actor, client=None, research=None, then=None: (
             asked.update(items=items, keys=keys, research=research) or "j1"
         ),
     )
@@ -201,3 +201,35 @@ def test_align_entry(audits, monkeypatch):  # noqa: F811
     assert after["sku"]["value"] == "CH-NEW-15" and after["sku"]["previous"] == before["sku"]["value"]
     entry = next(e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared)
     assert entry["stores"]["parfemija"]["state"] == "diff"  # waiting to go live in HR
+
+
+def test_a_product_is_made_in_another_groups_stores_by_their_rules(batch, monkeypatch, fixed_rates):  # noqa: F811
+    """Group 2, 3…: a store of another group with a structure is offered too; one quick product per group, one
+    after the other, each with the facts in its own group's vocabulary (decisions #50)."""
+    import pipeline.config
+    from db import newbatch, stores
+
+    batch_id, _ = batch
+    product = _fixed(batch_id)
+    real, real_group = stores.list_stores(), pipeline.config.load_group
+    extra = {**real[0], "key": "bgstore", "label": "BG", "group": "group-9", "profile_accepted": True}
+    monkeypatch.setattr(stores, "list_stores", lambda: [*real, extra])
+    monkeypatch.setattr(pipeline.config, "load_group", lambda k: real_group("group-1" if k == "group-9" else k))
+    missing = {s["store"]: s for s in publish.plan(product["id"])["stores"] if s["action"] == "missing"}
+    assert missing["bgstore"]["group"] == "group-9"
+
+    vocab, calls = [], []
+    monkeypatch.setattr(publish, "_from_live", lambda pid, client=None, target=None: vocab.append(target) or {})
+
+    def quick(items, keys, actor, client=None, research=None, then=None):
+        calls.append(keys)
+        if then:  # the job ended: the next group starts
+            then()
+        return f"j{len(calls)}"
+
+    monkeypatch.setattr(newbatch, "quick_start", quick)
+    others = [k for k in missing if k != "bgstore"]
+    result = publish.run(product["id"], [*others, "bgstore"], "active", "Мария")
+    assert result["job_id"] == "j1"
+    assert calls[-1] == ["bgstore"] and vocab[-1] == "group-9"
+    assert sorted(k for c in calls for k in c) == sorted([*others, "bgstore"])

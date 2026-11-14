@@ -70,16 +70,22 @@ def plan(product_id: int) -> dict:
                 item.update(action="create", changes=[], reason=None)
             item["message"] = sp.upload_message if sp.upload_status == "failed" else None
             out.append(item)
-    # Stores of the same group with a template that do not have the product: it can be made for them.
+    # Stores with a template that do not have the product, in its group or in another one with a structure
+    # (group 2, 3…): it can be made for them, by their own group's rules (decisions #50).
     from db.stores import list_stores
+    from pipeline.config import load_group
 
-    groups = {s["key"]: s["group"] for s in list_stores()}
-    group = next((groups.get(s) for s in entry["stores"] if groups.get(s)), None)
+    ready: dict[str, bool] = {}
     for s in list_stores():
-        if s["group"] == group and s["profile_accepted"] and s["key"] not in entry["stores"]:
+        if not s["profile_accepted"] or not s["group"] or s["key"] in entry["stores"]:
+            continue
+        if s["group"] not in ready:
+            ready[s["group"]] = load_group(s["group"]).spec is not None
+        if ready[s["group"]]:
             out.append(
                 {
                     "store": s["key"],
+                    "group": s["group"],
                     "product_id": None,
                     "batch_id": None,
                     "kind": None,
@@ -166,18 +172,31 @@ def run(product_id: int, stores: list[str], status: str, actor: str | None, clie
             for key in keys:
                 done[key] = str(exc)
     if missing:
-        # Made like a quick new product, its facts from the live copies (no new research when there are any),
-        # each store's text by its template, the price from the euro price of a store that has the product.
+        # Made like a quick new product, its facts from the live copies (no new research when there are any)
+        # mapped to each target group's vocabulary, each store's text by its template, the price from the euro
+        # price of a store that has the product. One job per group, one after the other.
         from db import newbatch
+        from db.stores import list_stores
 
         whole = plan(product_id)
         price, compare = _euro_price(product_id)
         item = {"name": whole["title"], "ean": whole["ean"] or "", "price": price, "compare": compare}
+        group_of = {s["key"]: s["group"] for s in list_stores()}
+        by_group: dict[str, list[str]] = {}
+        for store in missing:
+            by_group.setdefault(group_of.get(store) or "", []).append(store)
         try:
-            research = _from_live(product_id, client)
-            job_id = newbatch.quick_start([item], missing, actor, client=client, research=research)
+            chain = None
+            for group_key, keys in reversed(list(by_group.items())):
+
+                def step(group_key=group_key, keys=keys, then=chain):
+                    research = _from_live(product_id, client, group_key)
+                    return newbatch.quick_start([item], keys, actor, client=client, research=research, then=then)
+
+                chain = step
+            job_id = chain()
             for store in missing:
-                done[store] = "създава се (около минута); после го прегледай и го качи оттук"
+                done[store] = "създава се (около минута на група); после го прегледай и го качи оттук"
             return {"done": done, "plan": plan(product_id), "job_id": job_id}
         except (newbatch.NewBatchError, AIError) as exc:
             for store in missing:
@@ -188,8 +207,9 @@ def run(product_id: int, stores: list[str], status: str, actor: str | None, clie
 COPY_KEYS = ("title", "vendor", "gender", "fragrance_family", "top_note", "middle_note", "base_note", "ingredients")
 
 
-def _from_live(product_id: int, client=None) -> dict | None:
-    """The product's facts from its live copies (pipeline.unify), as saved research; None without live copies."""
+def _from_live(product_id: int, client=None, target_group: str | None = None) -> dict | None:
+    """The product's facts from its live copies (pipeline.unify), as saved research, in the vocabulary of the
+    group it is made for (its own group by default); None without live copies."""
     from db.models import Batch, Product
     from pipeline.ai import default_client
     from pipeline.config import load_group
@@ -214,7 +234,7 @@ def _from_live(product_id: int, client=None) -> dict | None:
             copies.append(copy)
     if not copies:
         return None
-    raw, _ = unify_facts(client or default_client(), copies, group)
+    raw, _ = unify_facts(client or default_client(), copies, load_group(target_group) if target_group else group)
     return raw
 
 
