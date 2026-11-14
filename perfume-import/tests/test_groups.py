@@ -76,3 +76,62 @@ def test_a_group_needs_a_connected_store_to_learn_from():
     key = groups.create("")
     with pytest.raises(groups.GroupError, match="свържи поне един магазин"):
         groups.derive(key)
+
+
+def test_a_product_is_made_and_sent_in_a_learned_groups_stores(clean, monkeypatch, fixed_rates):  # noqa: F811
+    """„Качи в магазините“ for a group 1 product into a learned group's stores: the product is made there by the
+    group's rules and each store's template, then sent, in one job (decisions #50)."""
+    from sqlalchemy import delete, select
+    from sqlalchemy.orm import Session
+
+    from db import publish, review
+    from db.models import Batch, Event, Product, Store, StoreProduct, StoreProfile, StoreSecret
+    from db.repo import engine
+    from tests.fake_ai import FakeClient
+    from tests.test_batch import HR, text
+    from tests.test_batch import responder as base
+
+    def responder(kw):  # the stores' own texts in any language, with the notes translated
+        system = kw.get("system") or ""
+        if not kw.get("tools") and (" into " in system or "for the online perfume shop" in system):
+            return text(HR, notes=[{"en": t, "local": f"{t}-x"} for t in ["sicilian lemon", "rose", "vanilla"]])
+        return base(kw)
+
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    key = groups.create("Група Тест")
+    first, pa = _connected("Test Connect Shop", "testconnect.myshopify.com", key)
+    second, pb = _connected("Test Connect Two", "testconnect2.myshopify.com", key)
+    sent = {}
+    monkeypatch.setattr(publish, "_from_live", lambda pid, client=None, target=None: None)
+    monkeypatch.setattr(publish, "plan", lambda pid: {"title": "Dior Sauvage EDT 100 ml", "ean": "3348901250146"})
+    monkeypatch.setattr(publish, "_euro_price", lambda pid: ("69", "99"))
+    monkeypatch.setattr(
+        review,
+        "publish",
+        lambda pid, keys, status, actor: sent.update({k: pid for k in keys}) or {"stores": keys, "skipped": {}},
+    )
+    try:
+        stores.accept(pb, key, "Мария")
+        stores.accept(pa, key, "Мария")
+        job = {"id": "parent", "running": True, "kind": "fill"}
+        newbatch._jobs["parent"] = job  # the job that waits: another AI job may start beside it
+        out = publish.make(1, [first, second], "active", "Мария", FakeClient(responder=responder), job)
+        assert out == {first: "създаден, качва се в магазина…", second: "създаден, качва се в магазина…"}, out
+        made = review.get_product(sent[first])
+        assert set(made["stores"]) == {first, second}
+        assert made["stores"][first]["fields"]["title"]["value"].endswith("100 ml")  # by the learned title rule
+    finally:
+        with Session(engine()) as session, session.begin():
+            ids = set(
+                session.execute(
+                    select(Product.batch_id)
+                    .join(StoreProduct, StoreProduct.product_id == Product.id)
+                    .where(StoreProduct.store_key == second)
+                ).scalars()
+            )
+            ids |= set(session.execute(select(Batch.id).where(Batch.store_key == second)).scalars())
+            session.execute(delete(Event).where(Event.batch_id.in_(ids)))
+            session.execute(delete(Batch).where(Batch.id.in_(ids)))
+            for model in (StoreProfile, StoreSecret):
+                session.execute(delete(model).where(model.store_key == second))
+            session.execute(delete(Store).where(Store.key == second))

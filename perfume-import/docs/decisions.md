@@ -344,3 +344,8 @@ job per group; the next group's job starts when the previous one ends, so only o
 Later: the structure is learned on its own. „Запази шаблона“ on a store of a group with no structure asks for at
 least two connected stores of that group (one store is too little to tell the group's rules from the store's);
 with the second, it learns the structure from them and accepts, with no separate step.
+
+Later: making and sending is one job. The dialog's job makes the product per group (each a quick product job
+started beside it), waits for it, accepts its suggestions and sends it, so the result per store shows in the
+dialog: created and uploading, waiting on a missing field, or why it was not made. Before, the product was made
+after the dialog had said „Готово“, its outcome not shown, and it waited unsent.

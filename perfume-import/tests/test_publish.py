@@ -21,6 +21,15 @@ def _fixed(batch_id: int) -> dict:
     )
 
 
+def _wait(job_id: str) -> dict:
+    import threading
+
+    from db import newbatch
+
+    next(t for t in threading.enumerate() if t.name == f"align-{job_id}").join(timeout=120)
+    return newbatch.job(job_id)
+
+
 def _store(product_id: int) -> dict:
     return next(s for s in publish.plan(product_id)["stores"] if s["product_id"] == product_id)
 
@@ -86,13 +95,13 @@ def test_a_store_without_the_product_can_have_it_made(batch, monkeypatch, fixed_
     if not any(s["store"] == "parfemija" for s in missing):
         pytest.skip("parfemija already has this EAN in this database")
     asked = {}
-    monkeypatch.setattr(
-        newbatch,
-        "quick_start",
-        lambda items, keys, actor, client=None, research=None, then=None: (
-            asked.update(items=items, keys=keys, research=research) or "j1"
-        ),
-    )
+
+    def quick(items, keys, actor, client=None, research=None, besides=None):
+        asked.update(items=items, keys=keys, research=research)
+        newbatch._jobs["j1"] = {"id": "j1", "running": False, "error": "стоп в теста", "batch_id": None}
+        return "j1"
+
+    monkeypatch.setattr(newbatch, "quick_start", quick)
     seen = {}
 
     def unify(kwargs):  # the live copy read into English facts, the store page as the source
@@ -111,7 +120,8 @@ def test_a_store_without_the_product_can_have_it_made(batch, monkeypatch, fixed_
         return message(data)
 
     result = publish.run(product["id"], ["parfemija"], "active", "Мария", client=FakeClient(responder=unify))
-    assert result["job_id"] == "j1" and asked["keys"] == ["parfemija"]
+    job = _wait(result["job_id"])
+    assert asked["keys"] == ["parfemija"] and "стоп в теста" in job["result"]["parfemija"]
     item = asked["items"][0]
     assert item["ean"] == product["ean"] and float(item["price"]) > 0
     research = asked["research"]  # facts from the live store, no web research
@@ -221,15 +231,16 @@ def test_a_product_is_made_in_another_groups_stores_by_their_rules(batch, monkey
     vocab, calls = [], []
     monkeypatch.setattr(publish, "_from_live", lambda pid, client=None, target=None: vocab.append(target) or {})
 
-    def quick(items, keys, actor, client=None, research=None, then=None):
+    def quick(items, keys, actor, client=None, research=None, besides=None):
         calls.append(keys)
-        if then:  # the job ended: the next group starts
-            then()
-        return f"j{len(calls)}"
+        job_id = f"j{len(calls)}"
+        newbatch._jobs[job_id] = {"id": job_id, "running": False, "error": "стоп в теста", "batch_id": None}
+        return job_id
 
     monkeypatch.setattr(newbatch, "quick_start", quick)
     others = [k for k in missing if k != "bgstore"]
-    result = publish.run(product["id"], [*others, "bgstore"], "active", "Мария")
-    assert result["job_id"] == "j1"
+    result = publish.run(product["id"], [*others, "bgstore"], "active", "Мария", client=FakeClient())
+    job = _wait(result["job_id"])
     assert calls[-1] == ["bgstore"] and vocab[-1] == "group-9"
+    assert set(job["result"]) == {*others, "bgstore"}
     assert sorted(k for c in calls for k in c) == sorted([*others, "bgstore"])

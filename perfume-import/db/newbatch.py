@@ -31,11 +31,12 @@ class NewBatchError(Exception):
     """Something the person can fix; Bulgarian message."""
 
 
-def busy(sync: bool = False) -> None:
+def busy(sync: bool = False, besides: str | None = None) -> None:
     """One AI job at a time, and one read of the stores at a time; the two run side by side, so a long Shopify
-    read never blocks filling a product (and the other way round). Call under _lock."""
+    read never blocks filling a product (and the other way round). besides: the job that starts this one and
+    waits for it („Качи в магазините“ making a product). Call under _lock."""
     for j in _jobs.values():
-        if j["running"] and (j.get("kind") == "sync") == sync:
+        if j["running"] and (besides is None or j.get("id") != besides) and (j.get("kind") == "sync") == sync:
             if sync:
                 raise NewBatchError("Магазините вече се изтеглят от Shopify; изчакай да свърши.")
             raise NewBatchError(f"Вече върви AI задача ({j.get('stage_label') or 'работа'}); изчакай да свърши.")
@@ -129,11 +130,10 @@ def start(
     after=None,
     research: dict | None = None,
     own_images: bool = False,
-    then=None,
+    besides: str | None = None,
 ) -> str:
     """Run the batch in a background thread; returns the job id. Rows with problems are left out.
-    after(batch_id): runs once the batch is saved (the quick new product sets its prices there).
-    then(): started once this job has ended (the next group's product, publish.run)."""
+    after(batch_id): runs once the batch is saved (the quick new product sets its prices there)."""
     if not api_key() and client is None:
         raise NewBatchError(
             "Няма ключ за Claude. Добави ANTHROPIC_API_KEY в Render → perfume-import → Environment и опитай отново."
@@ -144,7 +144,7 @@ def start(
     if not rows:
         raise NewBatchError("Няма нито един ред без грешка.")
     with _lock:
-        busy()
+        busy(besides=besides)
         job_id = uuid.uuid4().hex[:12]
         _jobs[job_id] = {
             "id": job_id,
@@ -194,11 +194,6 @@ def start(
             _jobs[job_id]["error"] = f"{type(exc).__name__}: {exc}"
         finally:
             _jobs[job_id].update({"running": False, "finished_at": time.time()})
-        if then is not None:
-            try:
-                then()
-            except Exception as exc:  # the next one is reported on this job
-                _jobs[job_id]["error"] = (_jobs[job_id]["error"] or "") + f" Следващата група: {exc}"
 
     threading.Thread(target=work, daemon=True, name=f"new-batch-{job_id}").start()
     return job_id
@@ -292,7 +287,7 @@ def quick_start(
     client=None,
     research: dict | None = None,
     own_images: bool = False,
-    then=None,
+    besides: str | None = None,
 ) -> str:
     """Research, texts per store, pictures and fields like a new batch (fast texts), then each product gets its
     prices in every store's currency from the euro price (ECB rate, the store's rounding)."""
@@ -329,5 +324,5 @@ def quick_start(
     name = f"{date.today().isoformat()} · {len(prices)} {'продукт' if len(prices) == 1 else 'продукта'}"
     return start(
         text, _group_of(stores), stores, name=name, actor=actor, client=client, mode="names", fast=True,
-        after=set_prices, research=research, own_images=own_images, then=then,
+        after=set_prices, research=research, own_images=own_images, besides=besides,
     )  # fmt: skip

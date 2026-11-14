@@ -221,10 +221,9 @@ function SendDialog({
               onToggle={() => toggle(s.store)}
               can={usable.has(s.action)}
               result={
-                done?.[s.store] ??
                 (job.data?.result as Record<string, string> | undefined)?.[
                   s.store
-                ]
+                ] ?? done?.[s.store]
               }
               onOpen={onClose}
             />
@@ -236,8 +235,9 @@ function SendDialog({
           В {makes === 1 ? "1 магазин" : `${makes} магазина`} продуктът се прави
           от магазините, в които вече е на живо: нотките, семейството, пола и
           снимката се вземат оттам и се превеждат, текстът се пише по шаблона на
-          магазина (около минута, ≈ $0.02 на магазин). Каквото два магазина
-          казват еднакво, е прието; останалото прегледай и го качи оттук.
+          магазина на неговата група (около минута на група, ≈ $0.02 на
+          магазин), после се качва. Ако някое поле липсва, магазинът чака и го
+          довършваш в продукта.
         </span>
       )}
       {error && <span className="text-sm text-blocked-text">{error}</span>}
@@ -310,7 +310,18 @@ function Row({
             Последният опит: {s.message}
           </span>
         )}
-        {result && <span className="text-xs text-ok">{result}</span>}
+        {result && (
+          <span
+            className={cn(
+              "text-xs",
+              /не се|чака|грешка|спря/i.test(result)
+                ? "text-blocked-text"
+                : "text-ok",
+            )}
+          >
+            {result}
+          </span>
+        )}
       </span>
       {s.product_id && s.batch_id && (
         <Link

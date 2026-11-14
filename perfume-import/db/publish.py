@@ -171,36 +171,16 @@ def run(product_id: int, stores: list[str], status: str, actor: str | None, clie
         except review.ReviewError as exc:
             for key in keys:
                 done[key] = str(exc)
-    if missing:
-        # Made like a quick new product, its facts from the live copies (no new research when there are any)
-        # mapped to each target group's vocabulary, each store's text by its template, the price from the euro
-        # price of a store that has the product. One job per group, one after the other.
-        from db import newbatch
-        from db.stores import list_stores
-
-        whole = plan(product_id)
-        price, compare = _euro_price(product_id)
-        item = {"name": whole["title"], "ean": whole["ean"] or "", "price": price, "compare": compare}
-        group_of = {s["key"]: s["group"] for s in list_stores()}
-        by_group: dict[str, list[str]] = {}
-        for store in missing:
-            by_group.setdefault(group_of.get(store) or "", []).append(store)
+    if missing:  # made and sent by a background job (make), its state in the dialog
         try:
-            chain = None
-            for group_key, keys in reversed(list(by_group.items())):
-
-                def step(group_key=group_key, keys=keys, then=chain):
-                    research = _from_live(product_id, client, group_key)
-                    return newbatch.quick_start([item], keys, actor, client=client, research=research, then=then)
-
-                chain = step
-            job_id = chain()
-            for store in missing:
-                done[store] = "създава се (около минута на група); после го прегледай и го качи оттук"
-            return {"done": done, "plan": plan(product_id), "job_id": job_id}
-        except (newbatch.NewBatchError, AIError) as exc:
+            job_id = start_align(product_id, missing, status, actor, client)
+        except Exception as exc:
             for store in missing:
                 done[store] = str(exc)
+            return {"done": done, "plan": plan(product_id)}
+        for store in missing:
+            done[store] = "създава се (около минута на група), после се качва"
+        return {"done": done, "plan": plan(product_id), "job_id": job_id}
     return {"done": done, "plan": plan(product_id)}
 
 
@@ -238,10 +218,64 @@ def _from_live(product_id: int, client=None, target_group: str | None = None) ->
     return raw
 
 
+def make(product_id: int, stores: list[str], status: str, actor: str | None, client, job: dict) -> dict[str, str]:
+    """Stores without the product (its group or group 2, 3…): made like a quick new product, its facts from the
+    live copies (no new web research when there are any) read into each target group's vocabulary, each store's
+    text by its template, the price from the euro price; then sent, as the person picked these stores (their
+    suggestions accepted; a blocked field keeps that store back). One group at a time; runs in `job`'s thread.
+    Returns what happened per store (decisions #50)."""
+    import time
+
+    from db import newbatch
+    from db.models import Product
+    from db.stores import list_stores
+
+    whole = plan(product_id)
+    price, compare = _euro_price(product_id)
+    item = {"name": whole["title"], "ean": whole["ean"] or "", "price": price, "compare": compare}
+    group_of = {s["key"]: s["group"] for s in list_stores()}
+    by_group: dict[str, list[str]] = {}
+    for store in stores:
+        by_group.setdefault(group_of.get(store) or "", []).append(store)
+    out: dict[str, str] = {}
+    for group_key, keys in by_group.items():
+        job.update(stage="research", stage_label=f"Създавам продукта в {len(keys)} магазина ({group_key})")
+        try:
+            research = _from_live(product_id, client, group_key or None)
+            made = newbatch.quick_start([item], keys, actor, client=client, research=research, besides=job["id"])
+            while newbatch.job(made)["running"]:
+                time.sleep(1)
+            result = newbatch.job(made)
+            if result["error"] or not result["batch_id"]:
+                raise newbatch.NewBatchError(result["error"] or "продуктът не се създаде")
+            with Session(_engine()) as session:
+                new_id = session.execute(
+                    select(Product.id).where(Product.batch_id == result["batch_id"]).order_by(Product.id)
+                ).scalar()
+            for key in keys:
+                review.accept_all(new_id, actor, key)
+            sent = review.publish(new_id, keys, status, actor)
+            for key in keys:
+                out[key] = (
+                    "създаден, качва се в магазина…"
+                    if key in sent["stores"]
+                    else f"създаден, но чака: {sent['skipped'].get(key, 'преглед')}; отвори го и го качи"
+                )
+        except Exception as exc:  # one group failing does not stop the next
+            message = (
+                str(exc)
+                if isinstance(exc, (newbatch.NewBatchError, review.ReviewError, AIError))
+                else (f"{type(exc).__name__}: {exc}")
+            )
+            for key in keys:
+                out[key] = f"не се създаде: {message}"
+    return out
+
+
 def start_align(product_id: int, stores: list[str], status: str, actor: str | None, client=None) -> str:
     """„Изравни и качи“ as a background job: the open copy's facts, translated notes, texts in each store's
     template and picture go to the chosen stores' copies (db.fill.spread_entry), then everything is sent
-    (run). Stores without the product are made afterwards from the live copies, as „Създай го“ does."""
+    (run). Stores without the product are then made and sent in the same job (make)."""
     import threading
     import time
     import uuid
@@ -262,7 +296,11 @@ def start_align(product_id: int, stores: list[str], status: str, actor: str | No
             "kind": "fill",
             "running": True,
             "stage": "texts",
-            "stage_label": f"Изравнявам {len(existing)} магазина (превод, описания, снимка)",
+            "stage_label": (
+                f"Изравнявам {len(existing)} магазина (превод, описания, снимка)"
+                if existing
+                else f"Създавам продукта в {len(missing)} магазина"
+            ),
             "done": 0,
             "total": len(stores),
             "error": None,
@@ -282,22 +320,20 @@ def start_align(product_id: int, stores: list[str], status: str, actor: str | No
         result: dict[str, str] = {}
         try:
             ai = client or default_client()
-            aligned, cost = fill.spread_entry(product_id, existing, actor, ai)
-            job.update(stage="saving", stage_label="Качвам в магазините", cost_usd=cost)
-            sent = run(product_id, existing, status, actor)["done"]
-            for store in existing:
-                parts = [p for p in (aligned.get(store), sent.get(store)) if p]
-                result[store] = " · ".join(parts) or "няма какво да се качи"
+            if existing:
+                aligned, cost = fill.spread_entry(product_id, existing, actor, ai)
+                job.update(stage="saving", stage_label="Качвам в магазините", cost_usd=cost)
+                sent = run(product_id, existing, status, actor)["done"]
+                for store in existing:
+                    parts = [p for p in (aligned.get(store), sent.get(store)) if p]
+                    result[store] = " · ".join(parts) or "няма какво да се качи"
+                job.update(result=dict(result), done=len(existing))
+            if missing:
+                result.update(make(product_id, missing, status, actor, ai, job))
         except Exception as exc:
             job["error"] = f"{type(exc).__name__}: {exc}"
         finally:
             job.update(result=result, running=False, finished_at=time.time(), done=len(stores))
-        if missing and not job["error"]:
-            try:  # its own job, once this one has finished
-                made = run(product_id, missing, status, actor, client)["done"]
-                job["result"] = {**result, **made}
-            except Exception as exc:
-                job["result"] = {**result, **{s: str(exc) for s in missing}}
 
     threading.Thread(target=work, daemon=True, name=f"align-{job_id}").start()
     return job_id
