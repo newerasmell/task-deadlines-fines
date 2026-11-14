@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db import catalog, live, review
-from db.models import FieldRow, StoreProduct
+from db.models import FieldRow, Product, StoreProduct
 from pipeline.ai import AIError
 
 
@@ -215,7 +215,25 @@ def _from_live(product_id: int, client=None, target_group: str | None = None) ->
     if not copies:
         return None
     raw, _ = unify_facts(client or default_client(), copies, load_group(target_group) if target_group else group)
+    # A picture uploaded or replaced here first (the clean original, laid out again on the target store's
+    # background); the store pages' pictures after it.
+    raw["images"] = _originals(entry) + list(raw.get("images") or [])
     return raw
+
+
+def _originals(entry: dict) -> list[dict]:
+    """The product's original pictures kept on the media disk, the newest first."""
+    from db.models import Media
+
+    ids = [at["product_id"] for at in entry["stores"].values()]
+    with Session(_engine()) as session:
+        rows = session.execute(
+            select(Media).where(Media.product_id.in_(ids), Media.kind == "original").order_by(Media.id.desc())
+        ).scalars()
+        return [
+            {"url": f"media:{m.path}", "width": m.width, "height": m.height, "source": "снимка от приложението"}
+            for m in rows
+        ]
 
 
 def make(product_id: int, stores: list[str], status: str, actor: str | None, client, job: dict) -> dict[str, str]:
@@ -232,7 +250,8 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
 
     whole = plan(product_id)
     price, compare = _euro_price(product_id)
-    item = {"name": whole["title"], "ean": whole["ean"] or "", "price": price, "compare": compare}
+    ean, sku = _codes(product_id)
+    item = {"name": whole["title"], "ean": ean or whole["ean"] or "", "price": price, "compare": compare}
     group_of = {s["key"]: s["group"] for s in list_stores()}
     by_group: dict[str, list[str]] = {}
     for store in stores:
@@ -255,6 +274,8 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
                 new_id = session.execute(
                     select(Product.id).where(Product.batch_id == result["batch_id"]).order_by(Product.id)
                 ).scalar()
+            if sku:
+                _keep_sku(new_id, sku, actor)
             for key in keys:
                 review.accept_all(new_id, actor, key)
             try:
@@ -277,6 +298,32 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
             for key in keys:
                 out[key] = f"не се създаде: {message}"
     return out
+
+
+def _codes(product_id: int) -> tuple[str, str]:
+    """The EAN and the SKU of the open copy, as they are there: carried over, never made up (decisions #32)."""
+    with Session(_engine()) as session:
+        product = session.get(Product, product_id)
+        sp = session.execute(select(StoreProduct).where(StoreProduct.product_id == product_id)).scalars().first()
+        fields = review._product_rows(session, product_id).get(sp.store_key, {}) if sp else {}
+
+        def text(key: str) -> str:
+            row = fields.get(key)
+            return str(row.value).strip() if row is not None and row.value not in (None, "") else ""
+
+        ean = text("ean")
+        if not ean.isdigit():  # not a barcode: the product's own EAN
+            ean = str(product.ean or "") if product is not None and str(product.ean or "").isdigit() else ""
+        return ean, text("sku")
+
+
+def _keep_sku(product_id: int, sku: str, actor: str | None) -> None:
+    """The SKU of the copy it was made from, in every store of the new product (one edit reaches them all)."""
+    with Session(_engine()) as session:
+        rows = review._product_rows(session, product_id)
+        ids = [r["sku"].id for r in rows.values() if r.get("sku") is not None and str(r["sku"].value) != sku]
+    for field_id in ids:  # one edit reaches every store with the same SKU; a store with its own gets its edit
+        review.decide(field_id, "edit", actor, sku)
 
 
 def _blocked(product_id: int) -> dict[str, str]:

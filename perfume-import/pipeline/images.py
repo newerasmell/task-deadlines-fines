@@ -42,6 +42,14 @@ def host(url: str) -> str:
 def fetch(url: str) -> bytes:
     import httpx
 
+    if url.startswith("media:"):  # a picture kept here (uploaded or replaced in the app), not on the web
+        from pipeline import media
+
+        try:
+            return media.resolve(url.removeprefix("media:")).read_bytes()
+        except (OSError, ValueError) as exc:
+            raise FetchError("снимката липсва на диска") from exc
+
     try:
         with httpx.stream(
             "GET", url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT, follow_redirects=True

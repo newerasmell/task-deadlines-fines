@@ -34,6 +34,9 @@ Keep the meaning, tone and every fact; keep brand and fragrance names exactly as
 must be {lo}-{hi} characters in {language_name}; the SEO description at most 160 characters.
 Translate each listed perfume note as a perfumer would name it in {language_name}, lowercase."""
 
+# The English tester sentence, for a group learned from its stores (their own languages only).
+TESTER_EN = "The TESTER version contains the same fragrance composition and is intended primarily for practical use."
+
 STORE_SYSTEM = """You write the product description for the online perfume shop "{label}", in {language_name}.
 You get an English reference description and the verified facts. Write this shop's own text from them:
 - Follow the shop's style shown in its existing descriptions below: structure ({shape}), paragraphing, tone,
@@ -279,7 +282,7 @@ def local_task(
         f"Description:\n{master.description}\n\nSEO description:\n{master.seo_description}\n\n"
         f"Notes to translate: {', '.join(unknown) if unknown else '(none)'}\n"
         + (
-            f"Also translate this sentence as tester_sentence: {group.spec.tester_sentence['en']}\n"
+            f"Also translate this sentence as tester_sentence: {group.spec.tester_sentence.get('en') or TESTER_EN}\n"
             if need_sentence
             else "tester_sentence: return an empty string.\n"
         )
@@ -324,7 +327,7 @@ def store_task(
         f"English SEO description:\n{master.seo_description}\n\n"
         f"Notes to translate: {', '.join(unknown) if unknown else '(none)'}\n"
         + (
-            f"Also translate this sentence as tester_sentence: {group.spec.tester_sentence['en']}\n"
+            f"Also translate this sentence as tester_sentence: {group.spec.tester_sentence.get('en') or TESTER_EN}\n"
             if need_sentence
             else "tester_sentence: return an empty string.\n"
         )

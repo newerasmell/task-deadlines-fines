@@ -62,7 +62,9 @@ def group_yaml(name: str, profile: dict, profiles: dict[str, dict]) -> dict:
             v = fixed_items[column]["value"]
             google[key] = int(v) if str(v).isdigit() else v
     lo, hi = value(profile, "description_length", [300, 600])
-    tester = {}
+    from pipeline.generate import TESTER_EN
+
+    tester = {"en": TESTER_EN}  # the master text is English: the sentence the stores' ones are translated from
     for p in profiles.values():
         language = value(p, "content_language")
         sentence = value(p, "tester_sentence")

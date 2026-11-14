@@ -349,3 +349,8 @@ Later: making and sending is one job. The dialog's job makes the product per gro
 started beside it), waits for it, accepts its suggestions and sends it, so the result per store shows in the
 dialog: created and uploading, waiting on a missing field, or why it was not made. Before, the product was made
 after the dialog had said „Готово“, its outcome not shown, and it waited unsent.
+
+Later: what is carried over as it is. The EAN and the SKU of the copy it is made from go to the new stores
+unchanged (the SKU is the team's code, never made by the group's formula here). A picture uploaded or replaced in
+the app (its original on the media disk) is the one laid out for the new stores, before the store pages'
+pictures. A group learned from its stores gets the English tester sentence the stores' ones are translated from.
