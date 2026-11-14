@@ -354,3 +354,7 @@ Later: what is carried over as it is. The EAN and the SKU of the copy it is made
 unchanged (the SKU is the team's code, never made by the group's formula here). A picture uploaded or replaced in
 the app (its original on the media disk) is the one laid out for the new stores, before the store pages'
 pictures. A group learned from its stores gets the English tester sentence the stores' ones are translated from.
+
+Later: the picture is copied, not made again. The new stores get the open copy's finished picture exactly as its
+store shows it (no search, no new layout on the target group's background), as the team wants the same picture
+everywhere. The EAN is a valid barcode: a placeholder in the open copy gives way to the one the other copies have.

@@ -107,6 +107,7 @@ def test_a_product_is_made_and_sent_in_a_learned_groups_stores(clean, monkeypatc
     monkeypatch.setattr(publish, "plan", lambda pid: {"title": "Dior Sauvage EDT 100 ml", "ean": "3348901250146"})
     monkeypatch.setattr(publish, "_euro_price", lambda pid: ("69", "99"))
     monkeypatch.setattr(publish, "_codes", lambda pid: ("3348901250146", ""))
+    monkeypatch.setattr(publish, "_picture", lambda pid: None)
     monkeypatch.setattr(
         review,
         "publish",
@@ -219,19 +220,25 @@ def test_a_group_1_product_keeps_its_ean_sku_and_picture_in_group_2(batch, clean
             ).scalar_one()
             real = ean_row.value
             ean_row.value = "5901234000005"  # a placeholder in this copy only: the store's real one travels
-            session.add(
-                Media(
-                    product_id=product_id,
-                    kind="original",
-                    path=stored.path,
-                    content_type="image/png",
-                    width=800,
-                    height=1200,
-                    bytes=stored.bytes,
-                    sha256=stored.sha256,
-                    info={},
-                )
+            finished = Media(
+                product_id=product_id,
+                kind="composed",
+                path=stored.path,
+                content_type="image/png",
+                width=800,
+                height=1200,
+                bytes=stored.bytes,
+                sha256=stored.sha256,
+                info={},
             )
+            session.add(finished)
+            session.flush()
+            picture = session.execute(
+                select(FieldRow)
+                .join(StoreProduct, StoreProduct.id == FieldRow.store_product_id)
+                .where(FieldRow.key == "image", StoreProduct.product_id == product_id)
+            ).scalar_one()
+            picture.value = f"/api/media/{finished.id}"  # the finished picture the stores show
         job = {"id": "parent", "running": True, "kind": "fill"}
         newbatch._jobs["parent"] = job
         publish.make(product_id, [first, second], "active", "Мария", FakeClient(responder=responder), job)
@@ -241,7 +248,10 @@ def test_a_group_1_product_keeps_its_ean_sku_and_picture_in_group_2(batch, clean
         for store in (first, second):
             assert made[store]["fields"]["sku"]["value"] == "PR-0777"
             assert made[store]["fields"]["ean"]["value"] == real
-            assert made[store]["fields"]["image"]["value"]
-        assert review.get_research(new_id)["research"]["images"][0]["url"].startswith("media:")
+            image = made[store]["fields"]["image"]
+            assert "без сглобяване" in image["message"]  # copied as it is, not laid out again
+        with Session(engine()) as session:
+            copied = session.execute(select(Media.sha256).where(Media.product_id == new_id)).scalars().all()
+        assert copied == [stored.sha256]  # the very same picture, nothing else made
     finally:
         _cleanup([first, second])

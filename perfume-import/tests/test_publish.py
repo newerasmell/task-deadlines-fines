@@ -96,12 +96,13 @@ def test_a_store_without_the_product_can_have_it_made(batch, monkeypatch, fixed_
         pytest.skip("parfemija already has this EAN in this database")
     asked = {}
 
-    def quick(items, keys, actor, client=None, research=None, besides=None):
+    def quick(items, keys, actor, client=None, research=None, own_images=False, besides=None):
         asked.update(items=items, keys=keys, research=research)
         newbatch._jobs["j1"] = {"id": "j1", "running": False, "error": "стоп в теста", "batch_id": None}
         return "j1"
 
     monkeypatch.setattr(newbatch, "quick_start", quick)
+    monkeypatch.setattr(publish, "_picture", lambda pid: None)
     seen = {}
 
     def unify(kwargs):  # the live copy read into English facts, the store page as the source
@@ -231,13 +232,14 @@ def test_a_product_is_made_in_another_groups_stores_by_their_rules(batch, monkey
     vocab, calls = [], []
     monkeypatch.setattr(publish, "_from_live", lambda pid, client=None, target=None: vocab.append(target) or {})
 
-    def quick(items, keys, actor, client=None, research=None, besides=None):
+    def quick(items, keys, actor, client=None, research=None, own_images=False, besides=None):
         calls.append(keys)
         job_id = f"j{len(calls)}"
         newbatch._jobs[job_id] = {"id": job_id, "running": False, "error": "стоп в теста", "batch_id": None}
         return job_id
 
     monkeypatch.setattr(newbatch, "quick_start", quick)
+    monkeypatch.setattr(publish, "_picture", lambda pid: None)
     others = [k for k in missing if k != "bgstore"]
     result = publish.run(product["id"], [*others, "bgstore"], "active", "Мария", client=FakeClient())
     job = _wait(result["job_id"])

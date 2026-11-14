@@ -255,6 +255,7 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
     whole = plan(product_id)
     price, compare = _euro_price(product_id)
     ean, sku = _codes(product_id)
+    picture = _picture(product_id)  # the finished picture as the stores show it, copied as it is
     item = {"name": whole["title"], "ean": ean or whole["ean"] or "", "price": price, "compare": compare}
     group_of = {s["key"]: s["group"] for s in list_stores()}
     by_group: dict[str, list[str]] = {}
@@ -268,7 +269,10 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
                 research = _from_live(product_id, client, group_key or None)
             except AIError:  # the live copies could not be read together: researched like a new product
                 research = None
-            made = newbatch.quick_start([item], keys, actor, client=client, research=research, besides=job["id"])
+            made = newbatch.quick_start(
+                [item], keys, actor, client=client, research=research, own_images=picture is not None,
+                besides=job["id"],
+            )  # fmt: skip
             while newbatch.job(made)["running"]:
                 time.sleep(1)
             result = newbatch.job(made)
@@ -280,6 +284,10 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
                 ).scalar()
             if sku:
                 _keep_sku(new_id, sku, actor)
+            if picture is not None:
+                from db import images
+
+                images.replace(new_id, picture[0], picture[1], actor, ready=True)
             for key in keys:
                 review.accept_all(new_id, actor, key)
             try:
@@ -339,6 +347,36 @@ def _codes(product_id: int) -> tuple[str, str]:
 
     ean = valid(text("ean")) or (seen.most_common(1)[0][0] if seen else "")
     return ean, text("sku")
+
+
+def _picture(product_id: int) -> tuple[bytes, str] | None:
+    """The open copy's picture as its store shows it (a finished one kept here, or the store's own), to be used
+    as it is in the new stores: no new search, no new layout. None when it cannot be had."""
+    import re
+
+    from db.models import Media
+    from pipeline import media
+    from pipeline.images import FetchError, fetch
+
+    with Session(_engine()) as session:
+        sp = session.execute(select(StoreProduct).where(StoreProduct.product_id == product_id)).scalars().first()
+        row = review._product_rows(session, product_id).get(sp.store_key, {}).get("image") if sp else None
+        value = str(row.value or "").strip() if row is not None else ""
+        found = re.fullmatch(r"/api/media/(\d+)", value)
+        if found:
+            kept = session.get(Media, int(found[1]))
+            if kept is None:
+                return None
+            try:
+                return media.resolve(kept.path).read_bytes(), "снимката от другите магазини"
+            except (OSError, ValueError):
+                return None
+    if value.startswith("http"):
+        try:
+            return fetch(value), value
+        except FetchError:
+            return None
+    return None
 
 
 def _keep_sku(product_id: int, sku: str, actor: str | None) -> None:
