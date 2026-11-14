@@ -341,6 +341,9 @@ def _codes(product_id: int) -> tuple[str, str]:
             if row is None and product is not None and valid(product.ean):
                 seen[valid(product.ean)] += 1
 
+        if not own:  # the open product is hidden behind its store's own copy in the entry: read it directly
+            own = next(iter(review._product_rows(session, product_id).values()), {})
+
     def text(key: str) -> str:
         row = own.get(key)
         return str(row.value).strip() if row is not None and row.value not in (None, "") else ""

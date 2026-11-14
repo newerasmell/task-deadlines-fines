@@ -216,10 +216,19 @@ def test_a_product_prepared_here_and_its_live_copy_are_one_row(audits, monkeypat
         found = [e for e in catalog.catalog(q=shared)["items"] if e["ean"] == shared]
         assert len(found) == 1, [list(e["stores"]) for e in found]
         assert found[0]["stores"]["premierparfums"]["kind"] == "audit"  # what the store shows wins
+        # Hidden behind the stores' own copies, the product made here still opens its whole entry (a newer one
+        # made from it for other stores does not cut it off).
+        hidden = prepared["id"]
+        newer_id = save_batch(run_batch(FakeClient(responder=responder), rows, G, ["parfemija"], "y"))
+        newer = review.get_batch(newer_id)["products"][0]
+        _set(newer["stores"]["parfemija"]["fields"]["title"]["id"], value=title)
+        entry = catalog.entry_for(hidden)
+        assert entry["product_id"] == newer["id"] and live["id"] in entry["ids"] and hidden in entry["ids"]
     finally:
         with Session(engine()) as session, session.begin():
-            session.execute(delete(Event).where(Event.batch_id == batch_id))
-            session.execute(delete(Batch).where(Batch.id == batch_id))
+            ids = [batch_id] + ([newer_id] if "newer_id" in locals() else [])
+            session.execute(delete(Event).where(Event.batch_id.in_(ids)))
+            session.execute(delete(Batch).where(Batch.id.in_(ids)))
 
 
 def test_one_placeholder_ean_on_two_brands_is_two_products(audits):

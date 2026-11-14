@@ -187,7 +187,9 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
                 "batch_id": p.batch_id,
                 "created_at": p.created_at.isoformat(),
                 "fixes": 0,
+                "ids": [],
             }
+        entry["ids"].append(p.id)  # every copy, also one hidden behind its store's own (entry_for finds it)
         entry["ean"] = entry["ean"] or ean or None
         image = _text(own.get("image"))
         # The newest new-products batch is the place to work on a product: every store side by side.
@@ -345,6 +347,6 @@ def entry_for(product_id: int, fresh: bool = True) -> dict:
     for attempt in (fresh, True) if not fresh else (True,):
         entries, _ = _entries(attempt)
         for e in entries:
-            if e["product_id"] == product_id or any(s["product_id"] == product_id for s in e["stores"].values()):
+            if e["product_id"] == product_id or product_id in e["ids"]:
                 return e
     raise KeyError(f"Няма продукт {product_id}.")
