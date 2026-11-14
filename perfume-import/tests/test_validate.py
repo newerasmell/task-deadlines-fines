@@ -199,3 +199,16 @@ def test_translated_notes_are_not_mistaken_for_english():
     q["base_note"].value_en = "amber, tonka bean, vanilla"
     validate_product(q, hr)
     assert q["base_note"].rule == "language_notes"
+
+
+def test_empty_seo_title_volume_and_type_are_filled_from_the_title(ctx):
+    p = run(ctx, title="Tom Ford Tobacco Vanille EDP 15 ml", seo_title="", product_milliliters="", product_type=None)
+    assert (p["seo_title"].value, p["seo_title"].status) == ("Tom Ford Tobacco Vanille EDP 15 ml", "fixed")
+    assert p["product_milliliters"].value == "15 ml" and p["product_type"].value == "EDP"
+    assert p["product_milliliters"].previous == ""  # what the store had, so it goes as a change
+
+
+def test_values_the_store_has_are_not_replaced(ctx):
+    p = run(ctx, seo_title="Own SEO title", product_type="Parfum")
+    assert p["seo_title"].value == "Own SEO title" and p["product_type"].value == "Parfum"
+    assert "product_type" in p and "custom.product_type" not in p  # nothing added that the store does not have

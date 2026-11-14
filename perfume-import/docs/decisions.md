@@ -300,3 +300,12 @@ Fragrantica (and other perfume sites) refuse automated visits, so „Попъл�
 no notes. With a link the AI now also has web search: when the page does not open or does not show a fact, it
 searches that perfume by the name in the page address (Fragrantica in the results, Parfumo, Notino) and takes the
 fact from the results with them as sources; still nothing from memory.
+
+
+## 47. Empty SEO title, volume and type come from the title
+
+A store product with an empty SEO title, volume (custom.product_milliliters) or type (custom.product_type) gets it
+from its title by the group's own formulas (SEO title = the title; „15 ml“; EDP/EDT/EDC or the concentration as
+written) as an automatic fix, sent with the rest. Values the store has are never replaced, and a field the store
+does not use is not added. It applies to a product when its store is read again (Shopify read or „Провери в
+магазина“).

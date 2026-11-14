@@ -14,8 +14,8 @@ from pipeline import ean, lang
 from pipeline.config import Group, StoreConfig
 from pipeline.export import Export
 from pipeline.fields import SEVERITY, Field, worst
-from pipeline.text import collapse_spaces, space_ml, strip_html
-from pipeline.titles import ean_from_sku, parse_title, render
+from pipeline.text import collapse_spaces, format_ml, space_ml, strip_html
+from pipeline.titles import ean_from_sku, parse_title, render, short_concentration
 from pipeline.vocab import VocabMatcher, is_latin
 
 CONTROLLED = ("gender", "fragrance_family")
@@ -51,6 +51,7 @@ def validate_product(fields: dict[str, Field], ctx: Context) -> None:
     _controlled(fields, ctx)
     _ean_and_sku(fields, ctx)
     _title(fields, ctx)
+    _from_title(fields, ctx)
     _language(fields, ctx)
     _description(fields, ctx)
     _prices(fields, ctx)
@@ -111,6 +112,38 @@ def _ean_and_sku(fields: dict[str, Field], ctx: Context) -> None:
     elif missing:  # the group's usual code offered with one click, never written by itself
         sku.alternatives = [render(ctx.spec.sku, {"ean": code})]
         sku.flag("warning", "Няма SKU. Избери предложения код или въведи вашия.", "sku_missing")
+
+
+def _from_title(fields: dict[str, Field], ctx: Context) -> None:
+    """An empty SEO title, volume or type is filled from the title by the group's own formulas (decisions #47),
+    as an automatic fix the person sends with the rest. A field the store does not have is not added."""
+    title = (fields.get("title") or Field("title", "", "input", "ok")).value or ""
+    vendor = (fields.get("vendor") or Field("vendor", "", "input", "ok")).value or ""
+    parsed = parse_title(title, vendor)
+    if not title or parsed.ml is None:
+        return
+    values = {
+        "title": title,
+        "brand": parsed.brand or vendor,
+        "name": parsed.name,
+        "ml": format_ml(parsed.ml),
+        "concentration_short": short_concentration(parsed.concentration, ctx.spec.concentration_short),
+        "tester": bool(parsed.tester),
+        "ean": "",
+    }
+    formulas = {"seo_title": ctx.spec.seo.get("title")}
+    for key in ("product_milliliters", "product_type"):
+        formula = ctx.spec.metafields.get(key)
+        formulas[key] = formulas[f"custom.{key}"] = formula if isinstance(formula, str) else None
+    for key, formula in formulas.items():
+        f = fields.get(key)
+        if f is None or f.value not in (None, "") or not formula:
+            continue
+        if "{concentration_short}" in formula and not values["concentration_short"]:
+            continue
+        value = render(formula, values).strip()
+        if value:
+            f.fix(value, f"Попълнено от заглавието: „{value}“.", "from_title")
 
 
 def _title(fields: dict[str, Field], ctx: Context) -> None:
