@@ -257,13 +257,17 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
                 ).scalar()
             for key in keys:
                 review.accept_all(new_id, actor, key)
-            sent = review.publish(new_id, keys, status, actor)
+            try:
+                sent = review.publish(new_id, keys, status, actor)
+            except review.ReviewError:  # no store is ready: each one's missing fields are said below
+                sent = {"stores": [], "skipped": {}}
+            missing = _blocked(new_id)
             for key in keys:
-                out[key] = (
-                    "създаден, качва се в магазина…"
-                    if key in sent["stores"]
-                    else f"създаден, но чака: {sent['skipped'].get(key, 'преглед')}; отвори го и го качи"
-                )
+                if key in sent["stores"]:
+                    out[key] = "създаден, качва се в магазина…"
+                else:
+                    why = missing.get(key) or sent["skipped"].get(key) or "преглед"
+                    out[key] = f"създаден, но не е качен; липсва: {why}. Отвори го, допълни и го качи."
         except Exception as exc:  # one group failing does not stop the next
             message = (
                 str(exc)
@@ -273,6 +277,18 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
             for key in keys:
                 out[key] = f"не се създаде: {message}"
     return out
+
+
+def _blocked(product_id: int) -> dict[str, str]:
+    """Per store, the fields that keep the product back, by name and why („Снимка (Продуктът няма снимка.)“)."""
+    labels = {"ean": "EAN", **live.LABELS}
+    out: dict[str, list[str]] = {}
+    with Session(_engine()) as session:
+        for store, fields in review._product_rows(session, product_id).items():
+            for key, row in fields.items():
+                if row.status == "blocked":
+                    out.setdefault(store, []).append(f"{labels.get(key, key)} ({(row.message or '').strip()})")
+    return {k: "; ".join(v) for k, v in out.items()}
 
 
 def start_align(product_id: int, stores: list[str], status: str, actor: str | None, client=None) -> str:
