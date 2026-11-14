@@ -66,8 +66,10 @@ def test_missing_notes_are_filled_from_a_linked_page(product):
     state = job(job_id)
     assert state["error"] is None, state
     research = client.calls[0]
-    assert [t["name"] for t in research["tools"]] == ["web_fetch"]  # a link: no search
+    # a link that may refuse to open (Fragrantica): the page first, a search by its perfume's name as a fallback
+    assert [t["name"] for t in research["tools"]] == ["web_search", "web_fetch"]
     assert PAGE in research["messages"][0]["content"]
+    assert "L Ambre des Merveilles" in research["messages"][0]["content"]
     after = review.get_product(product["id"])["stores"]
     gr, hr = after["premierparfums"]["fields"], after["parfemija"]["fields"]
     assert gr["middle_note"]["value"] == "κεχριμπάρι, λάδανο" and gr["middle_note"]["value_en"] == "amber, labdanum"
