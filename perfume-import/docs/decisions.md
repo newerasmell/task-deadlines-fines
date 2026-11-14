@@ -358,3 +358,13 @@ pictures. A group learned from its stores gets the English tester sentence the s
 Later: the picture is copied, not made again. The new stores get the open copy's finished picture exactly as its
 store shows it (no search, no new layout on the target group's background), as the team wants the same picture
 everywhere. The EAN is a valid barcode: a placeholder in the open copy gives way to the one the other copies have.
+
+
+## 51. The product list within the server's memory
+
+With group 2 the list of every store's products (about 17 000 copies) ran the 512 MB server out of memory: a
+build loaded every field that differs from the store (value and store value) to compare them, and wrote the ids
+of every copy into each query. The comparison is now made in the database (tags, entities, spacing and number
+format do not count, as db.live.same) and summed per product, the copies are picked by a subquery, and the
+memory a build used for a moment is given back to the system. Measured on 17 000 copies with every field
+differing: peak 375 → 173 MB, held afterwards 334 → 154 MB.

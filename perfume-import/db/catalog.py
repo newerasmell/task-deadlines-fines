@@ -4,10 +4,10 @@ has. A store's copy comes from its latest catalog audit (it is live there) or fr
 
 import threading
 
-from sqlalchemy import func, literal_column, select
+from sqlalchemy import Numeric, case, func, literal_column, select
 from sqlalchemy.orm import Session
 
-from db.live import LABELS, same
+from db.live import LABELS
 from db.models import Batch, FieldRow, Product, StoreProduct
 
 # live: in the store, nothing to send; diff: in the store, changes made here wait to go live;
@@ -77,24 +77,67 @@ def _entries(fresh: bool = True) -> tuple[list[dict], list[str]]:
             if _cache.get("version") != version:
                 _cache["value"] = _build(session)
                 _cache["version"] = version
-            return _cache["value"]
+                built = True
+            else:
+                built = False
+        if built:
+            _give_back()
+        return _cache["value"]
+
+
+def _give_back() -> None:
+    """Return the memory a build used for a moment to the system: Python keeps freed memory otherwise, and the
+    server sat at two thirds of its 512 MB doing nothing (Render's memory graph)."""
+    import ctypes
+    import gc
+
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):  # not glibc (a developer's Mac): nothing to give back this way
+        pass
+
+
+def _comparable(col):
+    """db.live.comparable in SQL: tags out, a few entities, spacing collapsed, a plain number with two decimals."""
+    text = func.coalesce(col.op("#>>")(literal_column("'{}'")), "")
+    text = func.regexp_replace(text, "<[^>]+>", " ", "g")
+    for entity, char in (
+        ("&nbsp;", " "),
+        ("&amp;", "&"),
+        ("&quot;", '"'),
+        ("&#39;", "'"),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+    ):
+        text = func.replace(text, entity, char)
+    text = func.btrim(func.regexp_replace(text, r"\s+", " ", "g"))
+    number = func.to_char(func.cast(func.replace(text, ",", "."), Numeric), "FM9999999999999999990.00")
+    return case((text.op("~")(r"^\d+([.,]\d+)?$"), number), else_=text)
 
 
 def _build(session: Session) -> tuple[list[dict], list[str]]:
     latest_audit = select(func.max(Batch.id)).where(Batch.kind == "audit").group_by(Batch.store_key)
+    listed = (Batch.kind == "new") | Batch.id.in_(latest_audit)
+    # Only the name the list shows from the input, not the whole input.
+    named = func.coalesce(Product.input["name"].astext, Product.input["title"].astext, "").label("named")
     rows = session.execute(
-        select(Product.id, Product.batch_id, Product.ean, Product.input, Batch.kind, Batch.created_at)
+        select(Product.id, Product.batch_id, Product.ean, named, Batch.kind, Batch.created_at)
         .join(Batch, Batch.id == Product.batch_id)
-        .where((Batch.kind == "new") | Batch.id.in_(latest_audit))
+        .where(listed)
         .order_by(Product.id)
     ).all()
     products = {r.id: r for r in rows}
+    # The same products as a subquery: the database picks their rows, no list of every id is sent with each query
+    # (17 000 ids written into the SQL cost the server ~70 MB a build).
+    listed_products = select(Product.id).join(Batch, Batch.id == Product.batch_id).where(listed)
     sps = session.execute(
         select(StoreProduct.id, StoreProduct.product_id, StoreProduct.store_key, StoreProduct.upload_status)
-        .where(StoreProduct.product_id.in_(list(products)))
+        .where(StoreProduct.product_id.in_(listed_products))
         .order_by(StoreProduct.id)
     ).all()
-    sp_ids = [sp.id for sp in sps]
+    sps = [sp for sp in sps if sp.product_id in products]  # a product added between the two reads waits
+    sp_ids = select(StoreProduct.id).where(StoreProduct.product_id.in_(listed_products))
     blocked = dict(
         session.execute(
             select(FieldRow.store_product_id, func.count())
@@ -105,51 +148,54 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
     values: dict[int, dict[str, object]] = {}
     skus: dict[int, set[str]] = {}
     eans: dict[int, set[str]] = {}
+    # Streamed in chunks (not every row at once), the store's earlier value only where the link needs it.
     for sp_id, key, value, previous in session.execute(
-        select(FieldRow.store_product_id, FieldRow.key, FieldRow.value, FieldRow.previous).where(
+        select(
+            FieldRow.store_product_id,
+            FieldRow.key,
+            FieldRow.value,
+            case((FieldRow.key.in_(["sku", "ean"]), FieldRow.previous), else_=None),
+        )
+        .where(
             FieldRow.store_product_id.in_(sp_ids),
             FieldRow.key.in_(["title", "ean", "image", "sku", "product_milliliters"]),
         )
+        .execution_options(yield_per=5000)
     ):
         values.setdefault(sp_id, {})[key] = value
         if key == "sku":  # the code here and the one the store still shows: both keep the link (decisions #36)
             skus[sp_id] = {c for c in (_code(value), _code(previous)) if c}
         if key == "ean":  # likewise the EAN: a new one set here does not cut the product off its stores
             eans[sp_id] = {c for c in (_text(value), _text(previous)) if c}
-    # Only the columns the comparison needs, and only rows that differ at all (db.live._changes decides).
-    # A change a person or the AI made waits to go live (diff); a fix the store's rules made by themselves is
-    # counted apart, so the list is not all orange after every catalog check.
+    # Only rows that differ at all, and the comparison itself in the database (as db.live.same sees a value:
+    # HTML tags, entities, spacing and how a number is written do not count), so the list never loads the values
+    # (with group 2 the stores' values ran the 512 MB server out of memory). A change a person or the AI made
+    # waits to go live (diff); a fix the store's rules made by themselves is counted apart, so the list is not
+    # all orange after every catalog check.
     changed: set[int] = set()
     fixes: set[int] = set()
-    # Long texts are compared in the database as the shopper sees them (tags and spacing out), so the list never
-    # loads every description; short values come back and are compared by db.live.same.
-    long_keys = ("body_html", "seo_description")
-
-    def plain(col):
-        text = func.regexp_replace(col.op("#>>")(literal_column("'{}'")), "<[^>]+>", " ", "g")
-        return func.btrim(func.regexp_replace(text, r"\s+", " ", "g"))
-
-    base = (
-        FieldRow.store_product_id.in_(sp_ids),
-        FieldRow.previous.is_not(None),
-        func.jsonb_typeof(FieldRow.previous) != "null",
-        FieldRow.key.in_(list(LABELS)),
-        FieldRow.status != "blocked",
-        FieldRow.value.is_distinct_from(FieldRow.previous),
-    )
-    for sp_id, origin, decided_by in session.execute(
-        select(FieldRow.store_product_id, FieldRow.origin, FieldRow.decided_by).where(
-            *base, FieldRow.key.in_(long_keys), plain(FieldRow.value).is_distinct_from(plain(FieldRow.previous))
-        )
-    ):
-        (fixes if origin == "auto_fix" and not decided_by else changed).add(sp_id)
-    for sp_id, value, previous, origin, decided_by in session.execute(
+    rule_fix = (FieldRow.origin == "auto_fix") & FieldRow.decided_by.is_(None)
+    for sp_id, waiting, fixed in session.execute(
         select(
-            FieldRow.store_product_id, FieldRow.value, FieldRow.previous, FieldRow.origin, FieldRow.decided_by
-        ).where(*base, FieldRow.key.not_in(long_keys))
+            FieldRow.store_product_id,
+            func.bool_or(~rule_fix),  # a change a person or the AI made
+            func.bool_or(rule_fix),  # a fix the store's rules made by themselves
+        )
+        .where(
+            FieldRow.store_product_id.in_(sp_ids),
+            FieldRow.previous.is_not(None),
+            func.jsonb_typeof(FieldRow.previous) != "null",
+            FieldRow.key.in_(list(LABELS)),
+            FieldRow.status != "blocked",
+            FieldRow.value.is_distinct_from(FieldRow.previous),
+            _comparable(FieldRow.value).is_distinct_from(_comparable(FieldRow.previous)),
+        )
+        .group_by(FieldRow.store_product_id)
     ):
-        if previous is not None and not same(value, previous):
-            (fixes if origin == "auto_fix" and not decided_by else changed).add(sp_id)
+        if waiting:
+            changed.add(sp_id)
+        if fixed:
+            fixes.add(sp_id)
 
     groups = _link(sps, products, values, skus, eans)
     entries: dict[str, dict] = {}
@@ -158,7 +204,7 @@ def _build(session: Session) -> tuple[list[dict], list[str]]:
         p = products[sp.product_id]
         own = values.get(sp.id, {})
         ean = _text(p.ean) or _text(own.get("ean"))
-        title = _text(own.get("title")) or _text(p.input.get("name")) or _text(p.input.get("title"))
+        title = _text(own.get("title")) or _text(p.named)
         key = f"g{groups.find(sp.id)}"
         entry_fix = False
         if p.kind == "audit":
@@ -280,7 +326,7 @@ def _link(sps, products, values, skus, eans) -> _Groups:
     for sp in sps:
         own = values.get(sp.id, {})
         p = products[sp.product_id]
-        title = _text(own.get("title")) or _text(p.input.get("name")) or _text(p.input.get("title"))
+        title = _text(own.get("title")) or _text(p.named)
         who[sp.id] = _identity(title, own.get("product_milliliters"))
         codes = ({_text(p.ean)} | eans.get(sp.id, set())) - {""}
         keys = [f"sku:{c}" for c in skus.get(sp.id, ())] + [f"ean:{c}" for c in sorted(codes)]
