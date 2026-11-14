@@ -15,7 +15,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from db.models import Batch, Store, StoreProfile, StoreSecret
+from db.models import Batch, Event, Store, StoreProfile, StoreSecret
 from pipeline import config, media, shopify
 from pipeline.config import list_groups, load_group
 from pipeline.detect import detect_profile
@@ -145,10 +145,11 @@ def list_stores() -> list[dict]:
                 select(Batch.store_key, func.max(Batch.id)).where(Batch.kind == "audit").group_by(Batch.store_key)
             ).all()
         )
-        checked = dict(
+        checked = dict(  # the last read of the store's products (a Shopify read or a learned export)
             session.execute(
-                select(Batch.store_key, func.max(Batch.created_at))
-                .where(Batch.kind == "audit")
+                select(Batch.store_key, func.max(Event.at))
+                .join(Event, Event.batch_id == Batch.id)
+                .where(Batch.kind == "audit", Event.kind.in_(["catalog_synced", "audit_created"]))
                 .group_by(Batch.store_key)
             ).all()
         )
@@ -405,7 +406,6 @@ def update_item(profile_id: int, key: str, value, actor: str | None) -> dict:
 
 def accept(profile_id: int, group_key: str | None, actor: str | None) -> dict:
     """Confirm every shown item, record the store in its group, audit the same export (SPEC §8.7)."""
-    from db.repo import save_audit
     from pipeline.validate import audit
 
     if not group_key:
@@ -450,9 +450,12 @@ def accept(profile_id: int, group_key: str | None, actor: str | None) -> dict:
         store.settings = settings
         export_path = media.resolve(profile["export_path"])
         store_key = row.store_key
-    report = audit(load_export(export_path), load_group(group_key), store_key)
+    export = load_export(export_path)
+    report = audit(export, load_group(group_key), store_key)
     report.source = profile.get("source", report.source)
-    batch_id = save_audit(report, author=actor)
+    from db.sync import save_read  # the store's one catalog, updated in place when it has one (decisions #42)
+
+    batch_id = save_read(store_key, report, [p.get("Shopify ID") or None for p in export.products], actor)["batch_id"]
     return {**get_profile(profile_id), "audit_batch_id": batch_id}
 
 

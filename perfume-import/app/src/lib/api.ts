@@ -544,6 +544,18 @@ export const api = {
     request<{ rule: string; label: string; total: number; items: AuditItem[] }>(
       `/api/batches/${batchId}/audit/${encodeURIComponent(rule)}?limit=${limit}`,
     ),
+  connectStore: (body: {
+    store?: string
+    name?: string
+    group?: string
+    shop?: string
+    country?: string
+    language?: string
+    currency?: string
+    client_id?: string
+    client_secret?: string
+    token?: string
+  }) => post<{ job_id: string; store: string }>('/api/stores/connect', body),
   analyze: (form: FormData) => upload<{ profile_id: number }>('/api/stores/analyze', form),
   profile: (id: number) => request<StoreProfile>(`/api/profiles/${id}`),
   editProfileItem: (id: number, key: string, value: unknown) =>

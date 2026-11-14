@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from api.auth import require_admin
 from api.review import actor_name
-from db import newbatch, stores, sync
+from db import connect, newbatch, stores, sync
 
 router = APIRouter(prefix="/api")
 MAX_UPLOAD = 60_000_000
@@ -36,6 +36,31 @@ def sync_stores(body: Sync, x_actor: str | None = Header(default=None)):
     """Read the products of these stores live from Shopify (a background job, see /api/jobs/latest)."""
     keys = body.stores if body.stores is not None else sync.ready_stores()
     return {"job_id": _call(sync.start, keys, actor_name(x_actor))}
+
+
+class Connect(BaseModel):
+    store: str | None = None  # an existing store; else a new one from name
+    name: str = ""
+    group: str | None = None
+    shop: str = ""
+    country: str = ""
+    language: str = ""
+    currency: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    token: str = ""
+
+
+@router.post("/stores/connect", status_code=202, dependencies=[Depends(require_admin)])
+def connect_store(body: Connect, x_actor: str | None = Header(default=None)):
+    """„Свържи магазин“: address and access saved and checked, then the products are read from Shopify and the
+    store's template is learned from them (a background job; its result names the proposed template)."""
+    actor = actor_name(x_actor)
+    key, group = _call(
+        connect.prepare, body.store, body.name, body.group, body.shop, body.country, body.language,
+        body.currency, body.client_id, body.client_secret, body.token, actor,
+    )  # fmt: skip
+    return {"job_id": _call(connect.start, key, group, actor), "store": key}
 
 
 @router.post("/stores/analyze", status_code=201)

@@ -309,3 +309,14 @@ from its title by the group's own formulas (SEO title = the title; „15 ml“; 
 written) as an automatic fix, sent with the rest. Values the store has are never replaced, and a field the store
 does not use is not added. It applies to a product when its store is read again (Shopify read or „Провери в
 магазина“).
+
+
+## 48. Stores are connected from the app, nothing uploaded
+
+„Добави магазин“ and „Свържи“ ask only for the Shopify address and the app's access (and, for a new store, its
+name, group, country, language and currency). The access is saved encrypted and checked, the products are read
+from Shopify and the store's template is learned from them exactly as from an export; the person checks the
+proposed template and accepts it, which saves the products as the store's one catalog (in place when it has one,
+#42, now also on accepting a template learned again). The last read shown per store is the time of the last
+read, not of the catalog's first save. A store of a group without its structure (group 2 today) can be connected,
+but its template is accepted only once the group has one.

@@ -73,9 +73,15 @@ def run(store_key: str, actor: str | None, shop=None, job: dict | None = None) -
     report = run_audit(Export(Path(f"Shopify {stamp}"), columns, rows), group, store_key)
 
     gids = [r["Shopify ID"] for r in rows]  # in the order of report.products
-    # One transaction, so a restart in the middle (a deploy) leaves the store as it was. The store's catalog is
-    # one batch kept for good: its products are updated in place (same ids, so open pages and links keep
-    # working), new ones are added, ones the store no longer has are removed (decisions #42).
+    result = save_read(store_key, report, gids, actor)
+    return {"store": store_key, "products": len(rows), **result}
+
+
+def save_read(store_key: str, report, gids: list[str | None], actor: str | None) -> dict:
+    """A store's products as read (Shopify, or an export when its template is learned) saved as its catalog. One
+    transaction, so a restart in the middle (a deploy) leaves the store as it was. The catalog is one batch kept
+    for good: its products are updated in place (same ids, so open pages and links keep working), new ones are
+    added, ones the store no longer has are removed (decisions #42)."""
     with Session(_engine()) as session, session.begin():
         batches = list(
             session.execute(
@@ -84,9 +90,14 @@ def run(store_key: str, actor: str | None, shop=None, job: dict | None = None) -
         )
         if not batches:
             batch_id = save_audit_in(session, report, actor)
+            by_handle = {p.handle: g for p, g in zip(report.products, gids, strict=True)}
             for handle, (_, sp_id) in _by_handle(session, batch_id).items():
-                gid = next((g for p, g in zip(report.products, gids, strict=True) if p.handle == handle), None)
-                session.execute(update(StoreProduct).where(StoreProduct.id == sp_id).values(shopify_product_id=gid))
+                if by_handle.get(handle):
+                    session.execute(
+                        update(StoreProduct)
+                        .where(StoreProduct.id == sp_id)
+                        .values(shopify_product_id=by_handle[handle])
+                    )
             carried = added = removed = 0
         else:
             batch_id = batches[-1]
@@ -100,14 +111,14 @@ def run(store_key: str, actor: str | None, shop=None, job: dict | None = None) -
                 batch_id=batch_id,
                 payload={
                     "store": store_key,
-                    "products": len(rows),
+                    "products": len(report.products),
                     "carried": carried,
                     "added": added,
                     "removed": removed,
                 },
             )
         )
-    return {"store": store_key, "batch_id": batch_id, "products": len(rows), "carried": carried}
+    return {"batch_id": batch_id, "carried": carried}
 
 
 def _apply(session: Session, sp_id: int, rows: dict[str, FieldRow], fresh: dict) -> int:
@@ -134,7 +145,9 @@ def _apply(session: Session, sp_id: int, rows: dict[str, FieldRow], fresh: dict)
     return waiting
 
 
-def _update_in_place(session: Session, batch_id: int, store_key: str, report, gids: list[str]) -> tuple[int, int, int]:
+def _update_in_place(
+    session: Session, batch_id: int, store_key: str, report, gids: list[str | None]
+) -> tuple[int, int, int]:
     from db.repo import _ean, _field_rows
 
     existing = session.execute(
@@ -152,14 +165,14 @@ def _update_in_place(session: Session, batch_id: int, store_key: str, report, gi
     matched: set[int] = set()
     carried = added = 0
     for fresh, gid in zip(report.products, gids, strict=True):
-        found = by_gid.get(gid) or by_handle.get(fresh.handle)
+        found = (by_gid.get(gid) if gid else None) or by_handle.get(fresh.handle)
         if found is not None and found[0].id not in matched:
             product, sp = found
             matched.add(product.id)
             carried += _apply(session, sp.id, fields.get(sp.id, {}), fresh.fields)
             product.input = {**(product.input or {}), "handle": fresh.handle, "title": fresh.title}
             product.ean = _ean(fresh) or product.ean
-            sp.shopify_product_id = gid
+            sp.shopify_product_id = gid or sp.shopify_product_id
             continue
         product = Product(
             batch_id=batch_id, ean=_ean(fresh) or None, input={"handle": fresh.handle, "title": fresh.title}

@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { AppNav } from '../components/AppNav'
+import { ConnectStore } from '../components/ConnectStore'
 import { JobBanner } from '../components/JobBanner'
 import { Empty, Failure, Loading } from '../components/States'
 import { StatusMark } from '../components/StatusMark'
@@ -16,11 +18,11 @@ const COLUMNS =
 const STATE = {
   active: { label: 'активен', status: 'ok' as const },
   proposed: { label: 'чака потвърждение', status: 'suggested' as const },
-  waiting: { label: 'чака каталог', status: 'warning' as const },
+  waiting: { label: 'не е свързан', status: 'warning' as const },
 }
 
 function action(s: StoreRow): { label: string; to: string } {
-  if (s.state === 'proposed' && s.profile_id) return { label: 'Потвърди профила', to: `/profiles/${s.profile_id}` }
+  if (s.state === 'proposed' && s.profile_id) return { label: 'Потвърди шаблона', to: `/profiles/${s.profile_id}` }
   if (s.state === 'active') return { label: 'Обнови каталога', to: `/stores/new?store=${s.key}` }
   return { label: 'Качи каталог', to: `/stores/new?store=${s.key}` }
 }
@@ -30,6 +32,8 @@ export function StoresScreen() {
   const sync = useSyncStores()
   const job = useLatestJob()
   const busy = !!job.data?.running || sync.isPending
+  const [connecting, setConnecting] = useState<StoreRow | 'new' | null>(null)
+  const groups = [...new Set((stores.data ?? []).map((s) => s.group).filter(Boolean) as string[])].sort()
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex h-14 items-center gap-4 border-b border-line px-7">
@@ -38,10 +42,17 @@ export function StoresScreen() {
         <Button disabled={busy} onClick={() => sync.mutate(undefined)}>
           Изтегли всички
         </Button>
-        <Button variant="primary" asChild>
-          <Link to="/stores/new">Добави магазин</Link>
+        <Button variant="primary" onClick={() => setConnecting('new')}>
+          Добави магазин
         </Button>
       </header>
+      {connecting && (
+        <ConnectStore
+          store={connecting === 'new' ? undefined : connecting}
+          groups={groups}
+          onClose={() => setConnecting(null)}
+        />
+      )}
       <main className="flex flex-col gap-3.5 px-7 py-6">
         <JobBanner only={['sync']} />
         {sync.error && <div className="text-sm text-blocked-text">{sync.error.message}</div>}
@@ -50,7 +61,7 @@ export function StoresScreen() {
         ) : stores.isError ? (
           <Failure error={stores.error} retry={() => stores.refetch()} />
         ) : !stores.data.length ? (
-          <Empty>Няма магазини. Добави първия с експорт от Shopify.</Empty>
+          <Empty>Няма магазини. Добави първия с „Добави магазин“.</Empty>
         ) : (
           <>
             <div className="flex items-baseline gap-3">
@@ -66,7 +77,7 @@ export function StoresScreen() {
                 <div role="columnheader" className="px-3.5 py-[9px]">Група</div>
                 <div role="columnheader" className="px-3.5 py-[9px]">Държава · език</div>
                 <div role="columnheader" className="px-3.5 py-[9px] text-right">Продукти</div>
-                <div role="columnheader" className="px-3.5 py-[9px]">Профил</div>
+                <div role="columnheader" className="px-3.5 py-[9px]">Шаблон</div>
                 <div role="columnheader" className="px-3.5 py-[9px]">Продукти от Shopify</div>
                 <div role="columnheader" className="px-3.5 py-[9px]" />
               </div>
@@ -90,8 +101,8 @@ export function StoresScreen() {
                     <div role="cell" className="truncate px-3.5 text-ink-2" title={s.access ?? s.shop ?? undefined}>
                       {s.state !== 'active'
                         ? s.catalog_at
-                          ? `каталог от ${shortDate(s.catalog_at)}`
-                          : 'няма каталог'
+                          ? `шаблон от ${shortDate(s.catalog_at)}`
+                          : 'не е свързан'
                         : s.access
                           ? 'няма достъп до Shopify'
                           : s.checked_at
@@ -113,9 +124,13 @@ export function StoresScreen() {
                         <Button size="sm" className="h-8 px-3" disabled={busy} onClick={() => sync.mutate([s.key])}>
                           Изтегли
                         </Button>
-                      ) : (
-                        <Button size="sm" className="h-8 px-3" asChild>
+                      ) : s.state === 'proposed' && s.profile_id ? (
+                        <Button size="sm" variant="primary" className="h-8 px-3" asChild>
                           <Link to={a.to}>{a.label}</Link>
+                        </Button>
+                      ) : (
+                        <Button size="sm" className="h-8 px-3" disabled={busy} onClick={() => setConnecting(s)}>
+                          Свържи
                         </Button>
                       )}
                     </div>

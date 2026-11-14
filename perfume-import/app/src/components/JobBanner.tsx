@@ -17,7 +17,11 @@ function readDismissed(): string | null {
   }
 }
 
-type SyncResult = { stores: { store: string; products: number; carried: number }[]; errors: string[] }
+type SyncResult = {
+  stores: { store: string; products: number; carried: number }[]
+  errors: string[]
+  profile_id?: number // a store connected: its learned template to accept
+}
 
 const RUNNING: Record<string, string> = {
   extend: 'Добавят се магазини към внос',
@@ -91,12 +95,22 @@ export function JobBanner({ only }: { only?: Job['kind'][] }) {
                 {sync.stores.map((s) => `${label(s.store)} ${plural(s.products, 'продукт', 'продукта')}`).join(', ')}
               </span>
             )}
+            {sync.profile_id && (
+              <span className="font-medium">
+                Шаблонът на {label(j.store)} е научен от продуктите му в Shopify. Провери го и го потвърди.
+              </span>
+            )}
             {sync.errors.map((e) => (
               <span key={e} className="text-blocked-text">
                 {e}
               </span>
             ))}
           </span>
+          {sync.profile_id && (
+            <Button variant="primary" asChild>
+              <Link to={`/profiles/${sync.profile_id}`}>Потвърди шаблона</Link>
+            </Button>
+          )}
           <Button variant="ghost" size="icon" aria-label="Скрий" onClick={dismiss}>
             <X size={16} />
           </Button>
