@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from api.auth import require_admin
 from api.review import actor_name
-from db import connect, newbatch, stores, sync
+from db import connect, groups, newbatch, stores, sync
 
 router = APIRouter(prefix="/api")
 MAX_UPLOAD = 60_000_000
@@ -18,7 +18,7 @@ def _call(fn, *args, **kwargs):
         return fn(*args, **kwargs)
     except KeyError as exc:
         raise HTTPException(404, str(exc.args[0]) if exc.args else "Не е намерено.") from exc
-    except (stores.StoreError, sync.SyncError, newbatch.NewBatchError) as exc:
+    except (stores.StoreError, sync.SyncError, newbatch.NewBatchError, groups.GroupError) as exc:
         raise HTTPException(409, str(exc)) from exc
 
 
@@ -61,6 +61,23 @@ def connect_store(body: Connect, x_actor: str | None = Header(default=None)):
         body.currency, body.client_id, body.client_secret, body.token, actor,
     )  # fmt: skip
     return {"job_id": _call(connect.start, key, group, actor), "store": key}
+
+
+class NewGroup(BaseModel):
+    name: str = ""
+
+
+@router.post("/groups", status_code=201, dependencies=[Depends(require_admin)])
+def create_group(body: NewGroup):
+    """A new group (group 3 and on); its stores are connected into it and its structure learned from them."""
+    key = _call(groups.create, body.name)
+    return {"key": key, "name": groups.name_of(key)}
+
+
+@router.post("/groups/{group_key}/derive", dependencies=[Depends(require_admin)])
+def derive_group(group_key: str):
+    """The group's structure learned from its connected stores' products."""
+    return _call(groups.derive, group_key)
 
 
 @router.post("/stores/analyze", status_code=201)

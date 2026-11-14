@@ -528,6 +528,12 @@ export const api = {
     }),
   stores: () => request<StoreRow[]>('/api/stores'),
   groups: () => request<GroupInfo[]>('/api/groups'),
+  createGroup: (name: string) => post<{ key: string; name: string }>('/api/groups', { name }),
+  deriveGroup: (key: string) =>
+    post<{ group: string; stores: string[]; base: string; products: number; to_confirm: string[] }>(
+      `/api/groups/${key}/derive`,
+      {},
+    ),
   checkBatch: (form: FormData) => upload<CheckResult>('/api/batches/check', form),
   startBatch: (form: FormData) => upload<{ job_id: string }>('/api/batches/start', form),
   job: (id: string) => request<Job>(`/api/jobs/${id}`),

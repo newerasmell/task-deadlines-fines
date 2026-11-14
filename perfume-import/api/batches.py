@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from api.review import actor_name
+from db import groups as groups_db
 from db import newbatch
 from pipeline.config import input_template_columns, list_groups, load_group
 
@@ -51,7 +52,7 @@ def groups():
         out.append(
             {
                 "key": key,
-                "name": group.spec.name if group.spec else key,
+                "name": group.spec.name if group.spec else groups_db.name_of(key),
                 "ready": group.spec is not None,
                 "stores": [
                     {

@@ -320,3 +320,14 @@ proposed template and accepts it, which saves the products as the store's one ca
 #42, now also on accepting a template learned again). The last read shown per store is the time of the last
 read, not of the catalog's first save. A store of a group without its structure (group 2 today) can be connected,
 but its template is accepted only once the group has one.
+
+
+## 49. Groups made and learned in the app
+
+Groups and a group's structure no longer need files in the repository. „Нова група“ makes the next group
+(group-3, group-4…) on the persistent disk (MEDIA_DIR/groups); its stores are connected into it from the app. A
+group without a structure (group 2, a new group) learns it from its connected stores' products with „Научи
+структурата“ (the largest three; group.yaml, vocab.yaml, import template, a description guide started from group
+1's and group 1's picture layout to begin with), the same derivation as scripts/new_group.py
+(pipeline.newgroup). A group.yaml in the repository still wins over a learned one. Then the stores' templates are
+accepted as usual.

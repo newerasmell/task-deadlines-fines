@@ -90,15 +90,30 @@ def _yaml(path: Path) -> Any:
 store_overrides: Callable[[str], dict[str, dict]] | None = None
 
 
+def app_groups_dir() -> Path:
+    """Groups made in the app, and a group's structure learned in the app, live on the persistent disk
+    (MEDIA_DIR/groups), not in the repository (decisions #49)."""
+    return get_settings().media_dir / "groups"
+
+
 def load_group(key: str, base: Path | None = None) -> Group:
-    path = (base or config_dir()) / "groups" / key
-    if not path.is_dir():
-        raise FileNotFoundError(f"Няма група „{key}“ в {path.parent}")
+    repo = (base or config_dir()) / "groups" / key
+    app = app_groups_dir() / key if base is None else None
+    if not repo.is_dir() and not (app and app.is_dir()):
+        raise FileNotFoundError(f"Няма група „{key}“ в {repo.parent}")
+    # stores.yaml from the repository (when the group is there); the structure from where it was made: the
+    # repository's group.yaml wins, else the one the app learned.
+    if (repo / "group.yaml").exists():
+        path = repo
+    elif app is not None and (app / "group.yaml").exists():
+        path = app
+    else:
+        path = repo if repo.is_dir() else app
 
     raw_group = _yaml(path / "group.yaml")
     spec = GroupSpec.model_validate(raw_group) if raw_group else None
 
-    raw_stores = _yaml(path / "stores.yaml") or {}
+    raw_stores = _yaml(repo / "stores.yaml") or {}
     defaults = raw_stores.get("defaults") or {}
     stores = {}
     raw = {k: dict(v or {}) for k, v in (raw_stores.get("stores") or {}).items()}
@@ -132,8 +147,8 @@ def load_group(key: str, base: Path | None = None) -> Group:
 
 
 def list_groups(base: Path | None = None) -> list[str]:
-    root = (base or config_dir()) / "groups"
-    return sorted(p.name for p in root.iterdir() if p.is_dir())
+    roots = [(base or config_dir()) / "groups"] + ([app_groups_dir()] if base is None else [])
+    return sorted({p.name for root in roots if root.is_dir() for p in root.iterdir() if p.is_dir()})
 
 
 def load_glossary(language: str, base: Path | None = None) -> dict[str, str]:

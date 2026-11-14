@@ -1,12 +1,14 @@
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { AppNav } from '../components/AppNav'
 import { ConnectStore } from '../components/ConnectStore'
+import { Groups } from '../components/Groups'
 import { JobBanner } from '../components/JobBanner'
 import { Empty, Failure, Loading } from '../components/States'
 import { StatusMark } from '../components/StatusMark'
 import { Button } from '../components/ui/button'
-import type { StoreRow } from '../lib/api'
+import { api, type StoreRow } from '../lib/api'
 import { ago, languageName, shortDate } from '../lib/labels'
 import { useLatestJob, useStores, useSyncStores } from '../lib/queries'
 
@@ -33,7 +35,8 @@ export function StoresScreen() {
   const job = useLatestJob()
   const busy = !!job.data?.running || sync.isPending
   const [connecting, setConnecting] = useState<StoreRow | 'new' | null>(null)
-  const groups = [...new Set((stores.data ?? []).map((s) => s.group).filter(Boolean) as string[])].sort()
+  const groupList = useQuery({ queryKey: ['groups'], queryFn: api.groups })
+  const groups = (groupList.data ?? []).map((g) => g.key)
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex h-14 items-center gap-4 border-b border-line px-7">
@@ -71,6 +74,7 @@ export function StoresScreen() {
                 няколко часа или веднага с „Изтегли“.
               </span>
             </div>
+            <Groups stores={stores.data} />
             <div className="shrink-0 overflow-hidden rounded-lg border border-line" role="table" aria-label="Магазини">
               <div role="row" className={`grid ${COLUMNS} border-b border-line bg-surface text-xs font-medium text-ink-2`}>
                 <div role="columnheader" className="px-3.5 py-[9px]">Магазин</div>
