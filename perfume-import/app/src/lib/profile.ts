@@ -82,7 +82,11 @@ export function rows(p: StoreProfile): Row[] {
   const title = item(p, 'title_pattern')
   const tester = item(p, 'tester_marker')
   add('title_pattern', 'Заглавие', formula(title?.value), tester ? `маркер за тестер „${tester.value}“` : '', true)
-  add('handle', 'Handle', String(item(p, 'handle')?.value ?? ''), '', true)
+  const handle = item(p, 'handle')
+  const shown = ((handle?.examples as string[] | undefined) ?? []).slice(0, 2).map((e) => e.split(' ← ')[0])
+  // Only the address of products made here; existing products keep theirs.
+  add('handle', 'Handle', String(handle?.value ?? ''),
+    `само за нови продукти; сега в магазина: ${shown.join(', ') || '—'}`, true)
   const sku = item(p, 'sku_pattern')
   const ean = item(p, 'ean_location')
   add('sku_pattern', 'SKU', formula(sku?.value), ean ? `EAN се чете от ${ean.value}` : '', true)
