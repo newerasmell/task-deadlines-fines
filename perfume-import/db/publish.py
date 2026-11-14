@@ -20,6 +20,9 @@ def _engine():
     return engine()
 
 
+_LABELS = {"ean": "EAN", **live.LABELS}
+
+
 def _waiting(rows: list[FieldRow]) -> str | None:
     counts = Counter(r.status for r in rows if r.status in ("suggested", "blocked"))
     parts = []
@@ -28,7 +31,8 @@ def _waiting(rows: list[FieldRow]) -> str | None:
             f"{counts['suggested']} {'предложение' if counts['suggested'] == 1 else 'предложения'} за приемане"
         )
     if counts["blocked"]:
-        parts.append(f"{counts['blocked']} {'поле липсва' if counts['blocked'] == 1 else 'полета липсват'}")
+        names = sorted({_LABELS.get(r.key, r.key) for r in rows if r.status == "blocked"})
+        parts.append(f"липсва: {', '.join(names)}")
     return " и ".join(parts) or None
 
 
@@ -301,20 +305,40 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
 
 
 def _codes(product_id: int) -> tuple[str, str]:
-    """The EAN and the SKU of the open copy, as they are there: carried over, never made up (decisions #32)."""
+    """The EAN and the SKU to carry over, never made up (decisions #32). The SKU is the open copy's (the team's
+    code). The EAN is a valid barcode: the open copy's when it is one, else the one most of the product's other
+    copies have (a placeholder like 5901234000005 in one store does not travel)."""
+    from collections import Counter
+
+    from pipeline import ean as ean_check
+
+    def valid(value) -> str:
+        code = str(value or "").strip()
+        return code if code.isdigit() and not ean_check.problem(code) else ""
+
+    entry = catalog.entry_for(product_id)
     with Session(_engine()) as session:
-        product = session.get(Product, product_id)
-        sp = session.execute(select(StoreProduct).where(StoreProduct.product_id == product_id)).scalars().first()
-        fields = review._product_rows(session, product_id).get(sp.store_key, {}) if sp else {}
+        own = {}
+        seen: Counter = Counter()
+        for store, at in entry["stores"].items():
+            fields = review._product_rows(session, at["product_id"]).get(store, {})
+            if at["product_id"] == product_id:
+                own = fields
+            row = fields.get("ean")
+            for value in (row.value, row.previous) if row is not None else ():
+                if valid(value):
+                    seen[valid(value)] += 1
+                    break
+            product = session.get(Product, at["product_id"])
+            if row is None and product is not None and valid(product.ean):
+                seen[valid(product.ean)] += 1
 
-        def text(key: str) -> str:
-            row = fields.get(key)
-            return str(row.value).strip() if row is not None and row.value not in (None, "") else ""
+    def text(key: str) -> str:
+        row = own.get(key)
+        return str(row.value).strip() if row is not None and row.value not in (None, "") else ""
 
-        ean = text("ean")
-        if not ean.isdigit():  # not a barcode: the product's own EAN
-            ean = str(product.ean or "") if product is not None and str(product.ean or "").isdigit() else ""
-        return ean, text("sku")
+    ean = valid(text("ean")) or (seen.most_common(1)[0][0] if seen else "")
+    return ean, text("sku")
 
 
 def _keep_sku(product_id: int, sku: str, actor: str | None) -> None:
@@ -328,7 +352,7 @@ def _keep_sku(product_id: int, sku: str, actor: str | None) -> None:
 
 def _blocked(product_id: int) -> dict[str, str]:
     """Per store, the fields that keep the product back, by name and why („Снимка (Продуктът няма снимка.)“)."""
-    labels = {"ean": "EAN", **live.LABELS}
+    labels = _LABELS
     out: dict[str, list[str]] = {}
     with Session(_engine()) as session:
         for store, fields in review._product_rows(session, product_id).items():
