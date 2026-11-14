@@ -60,7 +60,7 @@ def test_new_store_gets_a_profile_and_a_group_recommendation(clean):
     assert edited["profile"]["items"]["handle"]["status"] == "accepted"
     assert "handle" not in edited["profile"]["to_confirm"]
 
-    with pytest.raises(stores.StoreError, match="/new-group"):
+    with pytest.raises(stores.StoreError, match="Избери група"):
         stores.accept(profile_id, None, "Мария")
     accepted = stores.accept(profile_id, "group-1", "Мария")
     assert accepted["state"] == "accepted" and accepted["audit_batch_id"]

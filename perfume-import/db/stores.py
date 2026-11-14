@@ -409,13 +409,18 @@ def accept(profile_id: int, group_key: str | None, actor: str | None) -> dict:
     from pipeline.validate import audit
 
     if not group_key:
-        raise StoreError(
-            "Магазинът не прилича на никоя група. Създай нова група от този експорт с /new-group в Claude Code "
-            "и после избери нея."
-        )
+        raise StoreError("Избери група за магазина (или направи нова с „Нова група“ в „Магазини“).")
     group = load_group(group_key)
-    if group.spec is None:
-        raise StoreError(f"Група „{group_key}“ още няма group.yaml; създай го с /new-group от експорт на нейн магазин.")
+    if group.spec is None:  # the group's first store: its structure is learned now (decisions #49)
+        from db import groups
+
+        try:
+            groups.derive(group_key, at_least=groups.MIN_STORES)
+        except groups.GroupError as exc:
+            raise StoreError(str(exc)) from exc
+        group = load_group(group_key)
+        if group.spec is None:
+            raise StoreError("Структурата на групата не можа да се научи от продуктите на магазина.")
     with Session(_engine()) as session, session.begin():
         row = session.get(StoreProfile, profile_id)
         if row is None:

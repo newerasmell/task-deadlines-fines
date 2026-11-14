@@ -14,6 +14,7 @@ from pipeline.export import load_export
 from pipeline.newgroup import write_group
 
 MAX_EXPORTS = 3  # the structure is learned from the largest three stores, as /new-group does
+MIN_STORES = 2  # learned on its own once this many of the group's stores are connected (one store is too little)
 
 
 class GroupError(Exception):
@@ -44,8 +45,9 @@ def create(name: str) -> str:
     return key
 
 
-def derive(group_key: str) -> dict:
-    """The group's structure from its connected stores' products (their learned templates keep the export)."""
+def derive(group_key: str, at_least: int = 1) -> dict:
+    """The group's structure from its connected stores' products (their learned templates keep the export).
+    at_least: how many connected stores it needs (the automatic learning on accept asks for MIN_STORES)."""
     group = load_group(group_key)
     with Session(_engine()) as session:
         rows = session.execute(
@@ -62,6 +64,12 @@ def derive(group_key: str) -> dict:
     )[:MAX_EXPORTS]
     if not sources:
         raise GroupError("Първо свържи поне един магазин от групата: структурата се научава от продуктите му.")
+    if len(sources) < at_least:
+        raise GroupError(
+            f"Групата още няма структура. Свържи още {at_least - len(sources)} "
+            f"{'магазин' if at_least - len(sources) == 1 else 'магазина'} от нея (с „Свържи“ в „Магазини“): "
+            f"от продуктите на {at_least} магазина структурата се научава сама, после запазваш шаблоните им."
+        )
     exports = {k: load_export(media.resolve(p.profile["export_path"])) for k, p in sources}
     summary = write_group(app_groups_dir() / group_key, name_of(group_key), exports)
     return {"group": group_key, "stores": [k for k, _ in sources], **summary}

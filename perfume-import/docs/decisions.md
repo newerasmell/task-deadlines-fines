@@ -340,3 +340,7 @@ stores of the product's own group. They are made like „Създай го“ (d
 copies (no new web research when there are any), read into the target group's vocabulary (its genders and
 families), the texts and title by each store's own template, the price from the euro price. One quick product
 job per group; the next group's job starts when the previous one ends, so only one AI job runs at a time.
+
+Later: the structure is learned on its own. „Запази шаблона“ on a store of a group with no structure asks for at
+least two connected stores of that group (one store is too little to tell the group's rules from the store's);
+with the second, it learns the structure from them and accepts, with no separate step.
