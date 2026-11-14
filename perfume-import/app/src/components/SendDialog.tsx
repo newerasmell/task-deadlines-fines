@@ -137,10 +137,13 @@ function SendDialog({
       footer={
         <>
           {creates && (
-            <span className="mr-auto flex items-center gap-3 text-sm">
-              Новите в магазина:
+            <span className="flex basis-full flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap pb-1 text-sm">
+              Новите продукти в магазина ще са:
               {(["active", "draft"] as const).map((s) => (
-                <label key={s} className="flex items-center gap-1.5">
+                <label
+                  key={s}
+                  className="flex items-center gap-1.5 whitespace-nowrap"
+                >
                   <input
                     type="radio"
                     checked={status === s}
