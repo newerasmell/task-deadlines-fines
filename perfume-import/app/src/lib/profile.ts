@@ -70,7 +70,7 @@ export function rows(p: StoreProfile): Row[] {
   add('content_language', 'Език на съдържанието', `${languageName(String(lang?.value ?? ''))} (${lang?.value ?? '?'})`,
     `от описанията и нотките: ${counts(lang)}`, true)
   const notes = item(p, 'notes_language')
-  if (notes) add('notes_language', 'Език на нотките', `${languageName(String(notes.value))} (${notes.value})`, counts(notes), true)
+  if (notes?.value) add('notes_language', 'Език на нотките', `${languageName(String(notes.value))} (${notes.value})`, counts(notes), true)
   const markets = (item(p, 'markets')?.value as { market: string; country: string; currency: string }[]) ?? []
   add(
     'currency',
