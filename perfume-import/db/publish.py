@@ -448,16 +448,23 @@ def start_align(product_id: int, stores: list[str], status: str, actor: str | No
         result: dict[str, str] = {}
         try:
             ai = client or default_client()
-            if existing:
-                aligned, cost = fill.spread_entry(product_id, existing, actor, ai)
-                job.update(stage="saving", stage_label="Качвам в магазините", cost_usd=cost)
-                sent = run(product_id, existing, status, actor)["done"]
-                for store in existing:
+            # The stores as they are now (a copy deleted since the dialog opened is made again, not updated).
+            now = {s["store"]: s["action"] for s in plan(product_id)["stores"]}
+            have = [s for s in existing + missing if s in now and now[s] != "missing"]
+            gone = [s for s in existing + missing if now.get(s) == "missing"]
+            if have:
+                try:
+                    aligned, cost = fill.spread_entry(product_id, have, actor, ai)
+                    job.update(stage="saving", stage_label="Качвам в магазините", cost_usd=cost)
+                    sent = run(product_id, have, status, actor)["done"]
+                except KeyError as exc:  # a copy removed meanwhile: said for these stores, the rest goes on
+                    aligned, sent = {}, {s: f"не се обнови: {exc.args[0] if exc.args else exc}" for s in have}
+                for store in have:
                     parts = [p for p in (aligned.get(store), sent.get(store)) if p]
                     result[store] = " · ".join(parts) or "няма какво да се качи"
-                job.update(result=dict(result), done=len(existing))
-            if missing:
-                result.update(make(product_id, missing, status, actor, ai, job))
+                job.update(result=dict(result), done=len(have))
+            if gone:
+                result.update(make(product_id, gone, status, actor, ai, job))
         except Exception as exc:
             job["error"] = f"{type(exc).__name__}: {exc}"
         finally:
