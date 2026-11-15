@@ -416,6 +416,7 @@ def start_align(product_id: int, stores: list[str], status: str, actor: str | No
 
     if not api_key() and client is None:
         raise newbatch.NewBatchError("Няма ключ за Claude (ANTHROPIC_API_KEY в Render → Environment).")
+    product_id = catalog.visible(product_id)  # a product made here and sent: its store's live copy is the source
     current = {s["store"]: s for s in plan(product_id)["stores"]}
     existing = [s for s in stores if s in current and current[s]["action"] != "missing"]
     missing = [s for s in stores if s in current and current[s]["action"] == "missing"]

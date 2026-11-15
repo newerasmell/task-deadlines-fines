@@ -555,6 +555,7 @@ def spread_entry(product_id: int, stores: list[str], actor: str | None, client) 
     from db.review import _withdraw_approval, now
     from pipeline.fill import normalize_notes
 
+    product_id = catalog.visible(product_id)  # made here and sent: the store's live copy is the source
     entry = catalog.entry_for(product_id)
     source = next((s for s, at in entry["stores"].items() if at["product_id"] == product_id), None)
     if source is None:

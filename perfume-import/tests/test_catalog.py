@@ -224,6 +224,9 @@ def test_a_product_prepared_here_and_its_live_copy_are_one_row(audits, monkeypat
         _set(newer["stores"]["parfemija"]["fields"]["title"]["id"], value=title)
         entry = catalog.entry_for(hidden)
         assert entry["product_id"] == newer["id"] and live["id"] in entry["ids"] and hidden in entry["ids"]
+        # It stands for itself through the store's live copy (the source of „Изравни“).
+        assert catalog.visible(hidden) == entry["stores"]["premierparfums"]["product_id"] == live["id"]
+        assert catalog.visible(live["id"]) == live["id"]
     finally:
         with Session(engine()) as session, session.begin():
             ids = [batch_id] + ([newer_id] if "newer_id" in locals() else [])

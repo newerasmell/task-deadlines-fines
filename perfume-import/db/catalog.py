@@ -387,6 +387,22 @@ def catalog(q: str = "", filter: str = "all", offset: int = 0, limit: int = 100,
     }
 
 
+def visible(product_id: int, fresh: bool = True) -> int:
+    """The copy that stands for this product in its store: itself, or, for a product made here and sent, the
+    store's own copy of it that the list shows in its place (what is live in that store)."""
+    entry = entry_for(product_id, fresh)
+    if any(at["product_id"] == product_id for at in entry["stores"].values()):
+        return product_id
+    with Session(_engine()) as session:
+        own = session.execute(
+            select(StoreProduct.store_key).where(StoreProduct.product_id == product_id).order_by(StoreProduct.id)
+        ).scalars()
+        for store in own:
+            if store in entry["stores"]:
+                return entry["stores"][store]["product_id"]
+    return product_id
+
+
 def entry_for(product_id: int, fresh: bool = True) -> dict:
     """The catalog entry a product belongs to: the same product in the other stores. With fresh=False the last
     built list is used when it has the product (else it is built now)."""
