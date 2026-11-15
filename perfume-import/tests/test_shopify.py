@@ -55,6 +55,13 @@ def test_payload_comes_from_the_fields(fields):
     assert p["files"][0]["originalSource"] == "https://staging.example/tmp/1"
 
 
+def test_inventory_is_always_tracked(fields):
+    """A group learned from its stores may have no inventory column: the stock is counted all the same."""
+    learned = {k: v for k, v in fields.items() if k != "fixed.Variant Inventory Tracker"}
+    p = product_input(learned, "active", CATEGORY_ID, None)
+    assert p["variants"][0]["inventoryItem"]["tracked"] is True
+
+
 def test_create_then_update_by_the_kept_id(fields):
     fake = FakeShopify()
     first = upload_product(shop(fake), fields, "draft", None, (b"png-bytes", "x.png", "image/png"))

@@ -367,7 +367,7 @@ def product_input(
     option_value = _text(_value(fields, "fixed.Option1 Value")) or "Default Title"
     grams = _value(fields, "fixed.Variant Grams")
     inventory_item: dict[str, Any] = {
-        "tracked": _text(_value(fields, "fixed.Variant Inventory Tracker")).lower() == "shopify",
+        "tracked": True,  # always counted in the stores (the team's rule), whatever a learned group's export says
         "requiresShipping": _bool(_value(fields, "fixed.Variant Requires Shipping"), True),
     }
     if grams not in (None, ""):
