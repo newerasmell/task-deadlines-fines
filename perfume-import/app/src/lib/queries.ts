@@ -102,6 +102,15 @@ export function useSyncStores() {
   })
 }
 
+/** Inventory tracking on for every product the app created in the stores; the job banner shows the result. */
+export function useTrackInventory() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.trackInventory(),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['job', 'latest'] }),
+  })
+}
+
 export const useUploadState = (batchId: number) =>
   useQuery({
     queryKey: ['upload', batchId],

@@ -38,6 +38,17 @@ def sync_stores(body: Sync, x_actor: str | None = Header(default=None)):
     return {"job_id": _call(sync.start, keys, actor_name(x_actor))}
 
 
+@router.post("/stores/track-inventory", status_code=202)
+def track_inventory(x_actor: str | None = Header(default=None)):
+    """Inventory tracking on for every product the app created in the stores (a background job)."""
+    from db import inventory
+
+    try:
+        return {"job_id": inventory.start(actor_name(x_actor))}
+    except (inventory.InventoryError, newbatch.NewBatchError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 class Connect(BaseModel):
     store: str | None = None  # an existing store; else a new one from name
     name: str = ""

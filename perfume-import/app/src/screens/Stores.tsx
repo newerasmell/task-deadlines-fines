@@ -10,7 +10,7 @@ import { StatusMark } from '../components/StatusMark'
 import { Button } from '../components/ui/button'
 import { api, type StoreRow } from '../lib/api'
 import { ago, languageName, shortDate } from '../lib/labels'
-import { useLatestJob, useStores, useSyncStores } from '../lib/queries'
+import { useLatestJob, useStores, useSyncStores, useTrackInventory } from '../lib/queries'
 
 // Stores (Stores.dc.html): every store, its group, its profile and the last catalog upload.
 
@@ -32,8 +32,9 @@ function action(s: StoreRow): { label: string; to: string } {
 export function StoresScreen() {
   const stores = useStores()
   const sync = useSyncStores()
+  const track = useTrackInventory()
   const job = useLatestJob()
-  const busy = !!job.data?.running || sync.isPending
+  const busy = !!job.data?.running || sync.isPending || track.isPending
   const [connecting, setConnecting] = useState<StoreRow | 'new' | null>(null)
   const groupList = useQuery({ queryKey: ['groups'], queryFn: api.groups })
   const groups = (groupList.data ?? []).map((g) => g.key)
@@ -42,6 +43,19 @@ export function StoresScreen() {
       <header className="flex h-14 items-center gap-4 border-b border-line px-7">
         <AppNav />
         <div className="grow" />
+        <Button
+          disabled={busy}
+          onClick={() => {
+            if (
+              window.confirm(
+                'Включва проследяването на наличностите в Shopify за всички продукти, създадени от приложението. Продължи?',
+              )
+            )
+              track.mutate()
+          }}
+        >
+          Включи наличностите
+        </Button>
         <Button disabled={busy} onClick={() => sync.mutate(undefined)}>
           Изтегли всички
         </Button>
@@ -59,6 +73,7 @@ export function StoresScreen() {
       <main className="flex flex-col gap-3.5 px-7 py-6">
         <JobBanner only={['sync']} />
         {sync.error && <div className="text-sm text-blocked-text">{sync.error.message}</div>}
+        {track.error && <div className="text-sm text-blocked-text">{track.error.message}</div>}
         {stores.isPending ? (
           <Loading what="магазините" />
         ) : stores.isError ? (

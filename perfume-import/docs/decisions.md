@@ -368,3 +368,11 @@ of every copy into each query. The comparison is now made in the database (tags,
 format do not count, as db.live.same) and summed per product, the copies are picked by a subquery, and the
 memory a build used for a moment is given back to the system. Measured on 17 000 copies with every field
 differing: peak 375 → 173 MB, held afterwards 334 → 154 MB.
+
+
+## 52. Inventory always tracked
+
+A new product goes to every store with inventory tracking on (the team's rule), not by the group's export: a
+group learned from its stores had no such column and its products went up untracked. „Включи наличностите“ in
+„Магазини“ turns tracking on for the products the app already created (only those; the stores' own products are
+left as they are), store by store, as a background job beside an AI job.

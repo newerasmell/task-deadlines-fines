@@ -47,6 +47,23 @@ class FakeShopify:
         if self.throttle:
             self.throttle -= 1
             return httpx.Response(200, json={"errors": [{"message": "Throttled", "extensions": {"code": "THROTTLED"}}]})
+        if "inventoryItem { tracked }" in query:  # pipeline.shopify.track_inventory reads the variants
+            found = self.products.get(variables["id"])
+            node = found and {
+                "id": found["id"],
+                "variants": {
+                    "nodes": [{"id": f"{found['id']}/v1", "inventoryItem": {"tracked": bool(found.get("tracked"))}}]
+                },
+            }
+            return self.ok({"product": node})
+        if "productVariantsBulkUpdate" in query and any(
+            "tracked" in (v.get("inventoryItem") or {}) for v in variables["variants"]
+        ):
+            self.variant_updates.append(variables["variants"])
+            found = self.products.get(variables.get("productId"))
+            if found:
+                found["tracked"] = True
+            return self.ok({"productVariantsBulkUpdate": {"userErrors": []}})
         if "productVariants(" in query:  # a lookup by SKU (not productVariantsBulkUpdate)
             sku = variables["q"].split('"')[1]
             nodes = [

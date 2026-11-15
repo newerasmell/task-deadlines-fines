@@ -573,6 +573,7 @@ export const api = {
     request<Catalog>(
       `/api/catalog?${new URLSearchParams({ q, filter, limit: String(limit) })}`,
     ),
+  trackInventory: () => post<{ job_id: string }>("/api/stores/track-inventory", {}),
   syncStores: (stores?: string[]) =>
     post<{ job_id: string }>("/api/stores/sync", { stores: stores ?? null }),
   deleteProduct: (id: number) =>

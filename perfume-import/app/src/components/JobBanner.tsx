@@ -21,6 +21,7 @@ type SyncResult = {
   stores: { store: string; products: number; carried: number }[]
   errors: string[]
   profile_id?: number // a store connected: its learned template to accept
+  message?: string | null // a job of the Shopify kind that is not a read (inventory tracking turned on)
 }
 
 const RUNNING: Record<string, string> = {
@@ -95,6 +96,7 @@ export function JobBanner({ only }: { only?: Job['kind'][] }) {
                 {sync.stores.map((s) => `${label(s.store)} ${plural(s.products, 'продукт', 'продукта')}`).join(', ')}
               </span>
             )}
+            {sync.message && <span className="font-medium">{sync.message}</span>}
             {sync.profile_id && (
               <span className="font-medium">
                 Шаблонът на {label(j.store)} е научен от продуктите му в Shopify. Провери го и го потвърди.

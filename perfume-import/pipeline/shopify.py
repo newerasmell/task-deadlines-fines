@@ -477,6 +477,34 @@ def _publish_everywhere(shop: Shopify, product_id: str) -> str:
     return f"Публикуван в {len(publications)} канала: " + ", ".join(p["name"] for p in publications) + "."
 
 
+TRACKED_QUERY = """
+query ($id: ID!) { product(id: $id) { id variants(first: 50) { nodes { id inventoryItem { tracked } } } } }
+"""
+
+TRACK_MUTATION = """
+mutation ($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+  productVariantsBulkUpdate(productId: $productId, variants: $variants) { userErrors { field message } }
+}
+"""
+
+
+def track_inventory(shop: Shopify, product_id: str) -> int:
+    """Turn on inventory tracking for every variant of a product that has it off. Returns how many were changed;
+    0 when all were tracked already (or the product is gone from the store)."""
+    product = shop.graphql(TRACKED_QUERY, {"id": product_id}).get("product")
+    if not product:
+        return 0
+    off = [v["id"] for v in product["variants"]["nodes"] if not (v.get("inventoryItem") or {}).get("tracked")]
+    if not off:
+        return 0
+    variants = [{"id": v, "inventoryItem": {"tracked": True}} for v in off]
+    data = shop.graphql(TRACK_MUTATION, {"productId": product_id, "variants": variants})
+    errors = data["productVariantsBulkUpdate"]["userErrors"]
+    if errors:
+        raise ShopifyError("Shopify: " + "; ".join(e["message"] for e in errors))
+    return len(off)
+
+
 def store_client(group: Group, store_key: str, http: httpx.Client | None = None) -> Shopify:
     shop, token = credentials(group.store(store_key), http)
     return Shopify(shop, token, http=http)
