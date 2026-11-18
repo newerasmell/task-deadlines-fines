@@ -293,6 +293,14 @@ def push_live(product_id: int, x_actor: str | None = Header(default=None)):
     return _live(live.push, product_id, actor_name(x_actor))
 
 
+@router.post("/products/{product_id}/discard")
+def discard_changes(product_id: int, x_actor: str | None = Header(default=None)):
+    """„Откажи промените“: the changes waiting to go live go back to the store's values."""
+    from db import live
+
+    return _live(live.discard, product_id, actor_name(x_actor))
+
+
 @router.get("/batches/{batch_id}/live")
 def live_batch_state(batch_id: int):
     from db import live

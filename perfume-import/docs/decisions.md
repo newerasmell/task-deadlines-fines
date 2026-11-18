@@ -381,3 +381,24 @@ Later: codes from the good copies. A store copy with a placeholder EAN (a decant
 SKU SK5901234000006 made from it) passes on neither code: making a product elsewhere takes the valid EAN most
 copies have and the SKU of a copy with that EAN, and „Изравни“ from such a copy leaves the others' EAN and SKU as
 they are.
+
+
+## 53. The most complete copy is the truth for „Изравни“
+
+„Изравни“ took the open copy as the truth for the others. Opened from a decant listing with no gender, family
+or notes and a placeholder EAN, it wrote new descriptions from almost no facts and sent them everywhere (Creed
+Aventus went out as a unisex floral). The source is now the most complete copy of the product: a valid EAN
+first, then each of gender, family, the three notes, ingredients and description it has. The open copy stays
+the source when no other copy is more complete; an incomplete open copy is filled from the source like the
+others. The result says which store was the source.
+
+Later: old changes left over. A picture replaced here more than a day ago that never reached the store is left
+over from earlier work: „Изравни“ sends the store's picture instead and drops the old change in the source. A
+store's own picture is copied as it is (not laid out again on the target's background). „Откажи промените“ on a
+store copy sends every waiting change back to the store's value.
+
+Later: only live copies are the truth. A product made here months ago (the first version from the first
+integration, with its old picture and AI texts) stays in the list as a copy of the product; opened from it,
+„Изравни“ sent that old version everywhere. The source, and the codes and picture of a product made in another
+group, now come only from the stores' own copies (read from Shopify) when there are any, and the original
+pictures kept here count only from those copies.

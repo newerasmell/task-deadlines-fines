@@ -380,6 +380,38 @@ def sync_notes(field_id: int, text: str, actor: str | None, client=None) -> dict
 
 
 # The SKU and EAN too: pouring one store into the others is the person saying these codes are right (decisions #45).
+QUALITY_KEYS = ("gender", "fragrance_family", "top_note", "middle_note", "base_note", "ingredients", "body_html")
+
+
+def _quality(fields: dict) -> int:
+    """How complete a copy is: a valid EAN, then each of the facts and texts it has."""
+    score = 0 if _placeholder_ean(fields) else len(QUALITY_KEYS) + 1
+    for key in QUALITY_KEYS:
+        row = fields.get(key)
+        if row is not None and not _empty(row.value) and row.status != "blocked":
+            score += 1
+    return score
+
+
+def _best_source(entry: dict, store: str, product_id: int) -> tuple[str, int]:
+    """The open copy, unless another copy of the product is more complete: then that one (store, product). Only
+    the stores' own copies (what is live) are candidates when there are any: a product made here months ago
+    keeps its old picture and texts and is never the truth for the live ones."""
+    live = {s for s, at in entry["stores"].items() if at.get("kind") == "audit"}
+    with Session(_engine()) as session:
+        scores = {
+            s: _quality(_rows(session, at["product_id"]).get(s, {}))
+            for s, at in entry["stores"].items()
+            if (s in live or not live) and (at.get("state") != "bad" or s == store)
+        }
+    if not scores:
+        return store, product_id
+    best = max(scores, key=lambda s: (scores[s], s == store))
+    if store not in scores or scores[best] > scores[store]:
+        return best, entry["stores"][best]["product_id"]
+    return store, product_id
+
+
 def _placeholder_ean(fields: dict) -> bool:
     """The copy's EAN is not a valid barcode (missing, or a placeholder like 5901234000006)."""
     from pipeline import ean as ean_check
@@ -517,6 +549,21 @@ def start_spread(product_id: int, source: str, actor: str | None, client=None) -
     return job_id
 
 
+STALE_DAYS = 1
+
+
+def _stale(row: FieldRow) -> bool:
+    """A change made here that never reached the store and is older than a day (or has no date): left over
+    from earlier work, so it is not the picture the person means to send now."""
+    from datetime import UTC, datetime, timedelta
+
+    from db.live import same
+
+    if row.previous in (None, "") or same(row.value, row.previous):
+        return False
+    return row.decided_at is None or row.decided_at < datetime.now(UTC) - timedelta(days=STALE_DAYS)
+
+
 def _copy_image(source_product: int, source_value, target_product: int, actor: str | None) -> str | None:
     """The source copy's picture onto another store's copy: a finished picture as it is, else its original
     composed for the target store's layout. Returns a note when it could not be done."""
@@ -545,8 +592,8 @@ def _copy_image(source_product: int, source_value, target_product: int, actor: s
                     )
                 data = files.resolve(original.path).read_bytes()
                 ready = shown.kind == "original"  # used as it is in its store: a finished picture
-        elif text.startswith("http"):
-            data, ready = images.from_url(text), False
+        elif text.startswith("http"):  # a store's own picture: finished, used as it is (not laid out again)
+            data, ready = images.from_url(text), True
         else:
             return None
         images.replace(target_product, data, f"от продукта {source_product}", actor, ready)
@@ -571,6 +618,9 @@ def spread_entry(product_id: int, stores: list[str], actor: str | None, client) 
     source = next((s for s, at in entry["stores"].items() if at["product_id"] == product_id), None)
     if source is None:
         raise KeyError(f"Няма продукт {product_id}.")
+    # An incomplete copy (a decant listing with no gender, family or notes and a placeholder EAN) is never the
+    # truth for the others: the most complete copy is (decisions #53).
+    source, product_id = _best_source(entry, source, product_id)
     targets = {s: at["product_id"] for s, at in entry["stores"].items() if s in stores and s != source}
     if not targets:
         return {}, 0.0
@@ -590,7 +640,18 @@ def spread_entry(product_id: int, stores: list[str], actor: str | None, client) 
             if k in src and not _empty(src[k].value) and src[k].status != "blocked"
         }
         image = src["image"].value if "image" in src and not _empty(src["image"].value) else None
+        if "image" in src and _stale(src["image"]):  # an old picture change never sent: the store's picture goes
+            image = src["image"].previous
+            stale_source_image = src["image"].id
+        else:
+            stale_source_image = None
         facts = _facts(src)
+
+    if stale_source_image is not None:  # and it is dropped in the source too, so it never goes live from there
+        with Session(_engine()) as session, session.begin():
+            row = session.get(FieldRow, stale_source_image)
+            row.value, row.status, row.decided_by = row.previous, "ok", None
+            row.message = "Стара неизпратена смяна на снимката: остава снимката от магазина."
 
     cost = 0.0
     english: dict[str, list[str]] = {}
@@ -634,5 +695,5 @@ def spread_entry(product_id: int, stores: list[str], actor: str | None, client) 
         summary, text_cost = write_texts(target, client, force=True, only=[store], facts=facts)
         cost += text_cost
         note = _copy_image(product_id, image, target, actor) if image_differs else None
-        done[store] = "изравнен" + (f"; {note}" if note else "")
+        done[store] = f"изравнен от {source}" + (f"; {note}" if note else "")
     return done, round(cost, 4)

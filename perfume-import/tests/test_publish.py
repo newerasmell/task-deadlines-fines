@@ -214,6 +214,42 @@ def test_align_entry(audits, monkeypatch):  # noqa: F811
     assert entry["stores"]["parfemija"]["state"] == "diff"  # waiting to go live in HR
 
 
+def test_an_incomplete_copy_is_not_the_truth_for_the_others(audits, monkeypatch):  # noqa: F811
+    """„Изравни“ opened from a decant listing with no gender, family or notes and a placeholder EAN: the most
+    complete copy is the source, and the incomplete one is filled from it instead of the other way round."""
+    from db import fill
+    from tests.test_catalog import _hr_rows, _set
+
+    monkeypatch.setattr("pipeline.generate.load_glossary", lambda lang: {})
+    monkeypatch.setattr("pipeline.fill.load_glossary", lambda lang: {})
+    (gr, hr), (shared, _) = audits
+    gr_product = next(p for p in review.get_batch(gr)["products"] if p["ean"] == shared)
+    _set(gr_product["stores"]["premierparfums"]["fields"]["fragrance_family"]["id"], value="Woody", status="ok")
+    poor = _hr_rows(hr, shared)
+    for key in ("gender", "fragrance_family", "top_note", "middle_note", "base_note"):
+        _set(poor[key]["id"], value="", status="ok")
+    _set(poor["ean"]["id"], value="5901234000011", status="ok")
+    hr_id = next(p for p in review.get_batch(hr)["products"] if p["ean"] == shared)["id"]
+
+    def answers(kwargs):
+        system = str(kwargs.get("system", ""))
+        if "Translate perfume note names" in system:
+            return message({"notes": []})
+        if "Extract the perfume notes" in system:  # the GR notes kept only in Greek
+            return message({"notes": ["amber"]})
+        from tests.test_batch import HR, responder, text
+
+        if "for the online perfume shop" in system or " into " in system:
+            return text(HR, notes=[])
+
+        return responder(kwargs)
+
+    done, _ = fill.spread_entry(hr_id, ["premierparfums", "parfemija"], "Мария", FakeClient(responder=answers))
+    assert done == {"parfemija": done["parfemija"]} and "от premierparfums" in done["parfemija"]
+    after = _hr_rows(hr, shared)
+    assert after["fragrance_family"]["value"] == "Woody" and after["ean"]["value"] != "5901234000011"
+
+
 def test_a_product_is_made_in_another_groups_stores_by_their_rules(batch, monkeypatch, fixed_rates):  # noqa: F811
     """Group 2, 3…: a store of another group with a structure is offered too; one quick product per group, one
     after the other, each with the facts in its own group's vocabulary (decisions #50)."""
@@ -275,3 +311,64 @@ def test_a_copy_with_a_placeholder_ean_takes_the_codes_of_the_good_copies(audits
         row(shared["id"], "sku").value = "SK5901234000006"
     assert publish._codes(shared["id"]) == (real, "PR-1")
     assert publish._codes(good["id"]) == (real, "PR-1")
+
+
+def test_changes_waiting_to_go_live_can_be_dropped(batch):  # noqa: F811
+    """„Откажи промените“: an old change left over (a picture replaced long ago, a family) goes back to what the
+    store shows and nothing waits to be sent any more."""
+    from db import live
+
+    batch_id, _ = batch
+    product = _fixed(batch_id)
+    assert live.changes(product["id"])["changes"]  # the gender fix waits
+    after = live.discard(product["id"], "Мария")
+    assert after["changes"] == []
+    gender = review.get_product(product["id"])["stores"]["premierparfums"]["fields"]["gender"]
+    assert gender["value"] == gender["previous"] and gender["decided_by"] == "Мария"
+
+
+def test_an_old_picture_change_never_sent_is_not_spread():
+    """A picture replaced here more than a day ago and never sent is left over from earlier work: „Изравни“
+    sends the store's picture instead; one replaced now is the one the person means."""
+    from datetime import UTC, datetime, timedelta
+
+    from db.fill import _stale
+    from db.models import FieldRow
+
+    old = FieldRow(key="image", value="/api/media/111", previous="https://cdn.shopify.com/a.jpg")
+    old.decided_at = datetime.now(UTC) - timedelta(days=30)
+    assert _stale(old)
+    old.decided_at = datetime.now(UTC)
+    assert not _stale(old)
+    same = FieldRow(key="image", value="https://cdn.shopify.com/a.jpg", previous="https://cdn.shopify.com/a.jpg")
+    assert not _stale(same)
+
+
+def test_an_old_product_made_here_is_never_the_source(monkeypatch):
+    """The first version of a product made here months ago (its old picture, an old AI description) sits in a
+    store with no copy read from it: however complete, the stores' own live copies are the truth."""
+    from db import fill
+    from db.models import FieldRow
+
+    def fields(complete: bool, ean: str) -> dict:
+        out = {"ean": FieldRow(key="ean", value=ean, status="ok")}
+        for key in fill.QUALITY_KEYS[: 7 if complete else 2]:
+            out[key] = FieldRow(key=key, value="x", status="ok")
+        return out
+
+    by_product = {
+        1: {"aromachic": fields(True, "3614272085282")},  # made here months ago, never read back
+        2: {"premierparfums": fields(False, "3614272085282")},  # live, less complete
+        3: {"parfemija": fields(False, "5901234000006")},  # live, a placeholder EAN
+    }
+    monkeypatch.setattr(fill, "_rows", lambda session, pid: by_product[pid])
+    entry = {
+        "stores": {
+            "aromachic": {"product_id": 1, "kind": "new", "state": "ready"},
+            "premierparfums": {"product_id": 2, "kind": "audit", "state": "live"},
+            "parfemija": {"product_id": 3, "kind": "audit", "state": "live"},
+        }
+    }
+    assert fill._best_source(entry, "aromachic", 1) == ("premierparfums", 2)
+    assert fill._best_source(entry, "parfemija", 3) == ("premierparfums", 2)
+    assert fill._best_source(entry, "premierparfums", 2) == ("premierparfums", 2)

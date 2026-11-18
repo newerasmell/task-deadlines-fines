@@ -108,6 +108,7 @@ def test_a_product_is_made_and_sent_in_a_learned_groups_stores(clean, monkeypatc
     monkeypatch.setattr(publish, "_euro_price", lambda pid: ("69", "99"))
     monkeypatch.setattr(publish, "_codes", lambda pid: ("3348901250146", ""))
     monkeypatch.setattr(publish, "_picture", lambda pid: None)
+    monkeypatch.setattr(publish, "_source", lambda pid: pid)
     monkeypatch.setattr(
         review,
         "publish",

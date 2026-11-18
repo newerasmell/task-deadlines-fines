@@ -225,11 +225,23 @@ def _from_live(product_id: int, client=None, target_group: str | None = None) ->
     return raw
 
 
+def _source(product_id: int) -> int:
+    """The copy the facts, codes and picture are taken from (db.fill._best_source)."""
+    from db.fill import _best_source
+
+    entry = catalog.entry_for(product_id)
+    store = next((s for s, at in entry["stores"].items() if at["product_id"] == product_id), None)
+    if store is None:
+        return product_id
+    return _best_source(entry, store, product_id)[1]
+
+
 def _originals(entry: dict) -> list[dict]:
-    """The product's original pictures kept on the media disk, the newest first."""
+    """The original pictures of the product's live copies kept on the media disk, the newest first (not those of
+    an old product made here months ago)."""
     from db.models import Media
 
-    ids = [at["product_id"] for at in entry["stores"].values()]
+    ids = [at["product_id"] for at in entry["stores"].values() if at.get("kind") == "audit"]
     with Session(_engine()) as session:
         rows = session.execute(
             select(Media).where(Media.product_id.in_(ids), Media.kind == "original").order_by(Media.id.desc())
@@ -254,8 +266,9 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
 
     whole = plan(product_id)
     price, compare = _euro_price(product_id)
-    ean, sku = _codes(product_id)
-    picture = _picture(product_id)  # the finished picture as the stores show it, copied as it is
+    source = _source(product_id)  # the most complete live copy, never an old product made here
+    ean, sku = _codes(source)
+    picture = _picture(source)  # the finished picture as the stores show it, copied as it is
     item = {"name": whole["title"], "ean": ean or whole["ean"] or "", "price": price, "compare": compare}
     group_of = {s["key"]: s["group"] for s in list_stores()}
     by_group: dict[str, list[str]] = {}

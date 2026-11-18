@@ -81,6 +81,35 @@ def _changes(rows: list[FieldRow]) -> list[FieldRow]:
     ]
 
 
+def discard(product_id: int, actor: str | None) -> dict:
+    """„Откажи промените“: every change of a store copy that waits to go live goes back to what the store shows
+    (an old picture or text left over from earlier work is not sent by accident). Returns changes()."""
+    with Session(_engine()) as session, session.begin():
+        product = session.get(Product, product_id)
+        if product is None:
+            raise KeyError(f"Няма продукт {product_id}.")
+        sp = session.execute(select(StoreProduct).where(StoreProduct.product_id == product_id)).scalars().first()
+        rows = session.execute(select(FieldRow).where(FieldRow.store_product_id == sp.id)).scalars().all()
+        dropped = []
+        for row in rows:
+            if row.previous is None or row.key not in LABELS or same(row.value, row.previous):
+                continue
+            row.value, row.status, row.origin = row.previous, "ok", "input"
+            row.decided_by, row.decided_at = actor, datetime.now(UTC)
+            row.message, row.issues = "Промяната е отказана: остава стойността от магазина.", []
+            dropped.append(row.key)
+        session.add(
+            Event(
+                actor=actor,
+                kind="changes_discarded",
+                batch_id=product.batch_id,
+                store_product_id=sp.id,
+                payload={"fields": dropped},
+            )
+        )
+    return changes(product_id)
+
+
 def changes(product_id: int) -> dict:
     with Session(_engine()) as session:
         product = session.get(Product, product_id)

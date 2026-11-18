@@ -973,6 +973,21 @@ function LiveChangesSection({ batchId, productId }: { batchId: number; productId
       setBusy(false)
     }
   }
+  const discard = async () => {
+    if (!window.confirm('Всички чакащи промени на това копие се отказват и остава това, което е в магазина. Продължи?'))
+      return
+    setBusy(true)
+    setError(null)
+    try {
+      client.setQueryData(['live', productId, batchId], await api.discardLive(productId))
+      void client.invalidateQueries({ queryKey: ['batch', batchId] })
+      void client.invalidateQueries({ queryKey: ['catalog'] })
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
   const check = async () => {
     setChecking(true)
     setError(null)
@@ -997,6 +1012,15 @@ function LiveChangesSection({ batchId, productId }: { batchId: number; productId
           title="Чете продукта наново от Shopify и показва какво още не е в магазина"
         >
           {checking ? 'Проверявам…' : 'Провери в магазина'}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!d.changes.length || busy}
+          onClick={() => void discard()}
+          title="Чакащите промени се отказват; остава това, което е в магазина"
+        >
+          Откажи промените
         </Button>
         <Button variant="primary" size="sm" disabled={!d.changes.length || busy} onClick={() => void push()}>
           {busy ? 'Обновявам…' : d.live_status === 'uploaded' ? 'Обнови отново' : 'Обнови в магазина (на живо)'}

@@ -573,7 +573,8 @@ export const api = {
     request<Catalog>(
       `/api/catalog?${new URLSearchParams({ q, filter, limit: String(limit) })}`,
     ),
-  trackInventory: () => post<{ job_id: string }>("/api/stores/track-inventory", {}),
+  trackInventory: () =>
+    post<{ job_id: string }>("/api/stores/track-inventory", {}),
   syncStores: (stores?: string[]) =>
     post<{ job_id: string }>("/api/stores/sync", { stores: stores ?? null }),
   deleteProduct: (id: number) =>
@@ -650,6 +651,8 @@ export const api = {
     request<LiveChanges>(`/api/products/${productId}/live`),
   pushLive: (productId: number) =>
     post<LiveChanges>(`/api/products/${productId}/live`, {}),
+  discardLive: (productId: number) =>
+    post<LiveChanges>(`/api/products/${productId}/discard`, {}),
   refreshLive: (productId: number) =>
     post<LiveChanges>(`/api/products/${productId}/refresh`, {}),
   liveBatch: (batchId: number) =>
