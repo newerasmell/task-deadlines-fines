@@ -313,9 +313,10 @@ def make(product_id: int, stores: list[str], status: str, actor: str | None, cli
 
 
 def _codes(product_id: int) -> tuple[str, str]:
-    """The EAN and the SKU to carry over, never made up (decisions #32). The SKU is the open copy's (the team's
-    code). The EAN is a valid barcode: the open copy's when it is one, else the one most of the product's other
-    copies have (a placeholder like 5901234000005 in one store does not travel)."""
+    """The EAN and the SKU to carry over, never made up (decisions #32), both from the product's good copies.
+    The EAN is a valid barcode: the open copy's when it is one, else the one most of the other copies have. The
+    SKU (the team's code) is the open copy's when that copy has the valid EAN, else the SKU most copies with that
+    EAN have: a copy with a placeholder (5901234000006, its SKU SK5901234000006) passes neither on."""
     from collections import Counter
 
     from pipeline import ean as ean_check
@@ -324,32 +325,34 @@ def _codes(product_id: int) -> tuple[str, str]:
         code = str(value or "").strip()
         return code if code.isdigit() and not ean_check.problem(code) else ""
 
+    def text(fields: dict, key: str) -> str:
+        row = fields.get(key)
+        return str(row.value).strip() if row is not None and row.value not in (None, "") else ""
+
     entry = catalog.entry_for(product_id)
+    copies: list[tuple[str, str]] = []  # (valid EAN or "", SKU) per copy
     with Session(_engine()) as session:
-        own = {}
-        seen: Counter = Counter()
+        own: dict = {}
         for store, at in entry["stores"].items():
             fields = review._product_rows(session, at["product_id"]).get(store, {})
             if at["product_id"] == product_id:
                 own = fields
             row = fields.get("ean")
-            for value in (row.value, row.previous) if row is not None else ():
-                if valid(value):
-                    seen[valid(value)] += 1
-                    break
-            product = session.get(Product, at["product_id"])
-            if row is None and product is not None and valid(product.ean):
-                seen[valid(product.ean)] += 1
-
+            code = next((valid(v) for v in ((row.value, row.previous) if row is not None else ()) if valid(v)), "")
+            if not code and row is None:
+                product = session.get(Product, at["product_id"])
+                code = valid(product.ean) if product is not None else ""
+            copies.append((code, text(fields, "sku")))
         if not own:  # the open product is hidden behind its store's own copy in the entry: read it directly
             own = next(iter(review._product_rows(session, product_id).values()), {})
 
-    def text(key: str) -> str:
-        row = own.get(key)
-        return str(row.value).strip() if row is not None and row.value not in (None, "") else ""
-
-    ean = valid(text("ean")) or (seen.most_common(1)[0][0] if seen else "")
-    return ean, text("sku")
+    own_ean = valid(text(own, "ean"))
+    seen = Counter(code for code, _ in copies if code)
+    ean = own_ean or (seen.most_common(1)[0][0] if seen else "")
+    if own_ean or not ean:
+        return ean, text(own, "sku")
+    skus = Counter(sku for code, sku in copies if code == ean and sku)
+    return ean, (skus.most_common(1)[0][0] if skus else "")
 
 
 def _picture(product_id: int) -> tuple[bytes, str] | None:

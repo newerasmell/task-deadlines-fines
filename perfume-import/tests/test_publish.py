@@ -246,3 +246,32 @@ def test_a_product_is_made_in_another_groups_stores_by_their_rules(batch, monkey
     assert calls[-1] == ["bgstore"] and vocab[-1] == "group-9"
     assert set(job["result"]) == {*others, "bgstore"}
     assert sorted(k for c in calls for k in c) == sorted([*others, "bgstore"])
+
+
+def test_a_copy_with_a_placeholder_ean_takes_the_codes_of_the_good_copies(audits):  # noqa: F811
+    """Opened from a store copy with a placeholder EAN (a decant listed as 5901234000006, its SKU made from it):
+    the EAN and SKU carried over are the ones the copies with the real barcode have."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from db.models import FieldRow, StoreProduct
+    from db.repo import engine
+
+    (gr, hr), _ = audits
+    shared = review.get_batch(hr)["products"][0]
+    good = next(p for p in review.get_batch(gr)["products"] if p["ean"] == shared["ean"])
+
+    def row(product_id: int, key: str):
+        return session.execute(
+            select(FieldRow)
+            .join(StoreProduct, StoreProduct.id == FieldRow.store_product_id)
+            .where(FieldRow.key == key, StoreProduct.product_id == product_id)
+        ).scalar_one()
+
+    with Session(engine()) as session, session.begin():
+        real = row(good["id"], "ean").value
+        row(good["id"], "sku").value = "PR-1"
+        row(shared["id"], "ean").value = "5901234000006"
+        row(shared["id"], "sku").value = "SK5901234000006"
+    assert publish._codes(shared["id"]) == (real, "PR-1")
+    assert publish._codes(good["id"]) == (real, "PR-1")

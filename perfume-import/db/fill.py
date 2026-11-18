@@ -380,6 +380,14 @@ def sync_notes(field_id: int, text: str, actor: str | None, client=None) -> dict
 
 
 # The SKU and EAN too: pouring one store into the others is the person saying these codes are right (decisions #45).
+def _placeholder_ean(fields: dict) -> bool:
+    """The copy's EAN is not a valid barcode (missing, or a placeholder like 5901234000006)."""
+    from pipeline import ean as ean_check
+
+    row = fields.get("ean")
+    return row is None or bool(ean_check.problem(str(row.value or "")))
+
+
 SPREAD_KEYS = ("vendor", "name", "concentration", "gender", "fragrance_family", "ingredients", "sku", "ean")
 
 
@@ -404,6 +412,9 @@ def spread(product_id: int, source: str, actor: str | None, client) -> tuple[dic
         copied = {
             k: src[k].value for k in SPREAD_KEYS if k in src and not _empty(src[k].value) and src[k].status != "blocked"
         }
+        if _placeholder_ean(src):  # a copy with a placeholder EAN passes on neither it nor the SKU made from it
+            copied.pop("ean", None)
+            copied.pop("sku", None)
         local_notes = {
             k: (src[k].value_en, src[k].value)
             for k in NOTES
@@ -570,6 +581,9 @@ def spread_entry(product_id: int, stores: list[str], actor: str | None, client) 
         copied = {
             k: src[k].value for k in SPREAD_KEYS if k in src and not _empty(src[k].value) and src[k].status != "blocked"
         }
+        if _placeholder_ean(src):  # a copy with a placeholder EAN passes on neither it nor the SKU made from it
+            copied.pop("ean", None)
+            copied.pop("sku", None)
         local_notes = {
             k: (src[k].value_en, src[k].value)
             for k in NOTES

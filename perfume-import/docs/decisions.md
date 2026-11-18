@@ -376,3 +376,8 @@ A new product goes to every store with inventory tracking on (the team's rule), 
 group learned from its stores had no such column and its products went up untracked. „Включи наличностите“ in
 „Магазини“ turns tracking on for the products the app already created (only those; the stores' own products are
 left as they are), store by store, as a background job beside an AI job.
+
+Later: codes from the good copies. A store copy with a placeholder EAN (a decant listed as 5901234000006, its
+SKU SK5901234000006 made from it) passes on neither code: making a product elsewhere takes the valid EAN most
+copies have and the SKU of a copy with that EAN, and „Изравни“ from such a copy leaves the others' EAN and SKU as
+they are.

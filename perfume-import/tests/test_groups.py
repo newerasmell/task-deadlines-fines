@@ -218,8 +218,7 @@ def test_a_group_1_product_keeps_its_ean_sku_and_picture_in_group_2(batch, clean
                 .join(StoreProduct, StoreProduct.id == FieldRow.store_product_id)
                 .where(FieldRow.key == "ean", StoreProduct.product_id == product_id)
             ).scalar_one()
-            real = ean_row.value
-            ean_row.value = "5901234000005"  # a placeholder in this copy only: the store's real one travels
+            real = ean_row.value  # the open copy has the real EAN: its SKU (the team's own code) travels
             finished = Media(
                 product_id=product_id,
                 kind="composed",
